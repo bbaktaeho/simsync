@@ -1,0 +1,40 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Desktop (Wails) build
+desktop/build/bin/
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+desktop/frontend/wailsjs/
+
+# Mobile (Flutter) build
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/local.properties
+
+# APK
+*.apk
+
+# Env
+.env
+.env.*
+
+# Node
+node_modules/
