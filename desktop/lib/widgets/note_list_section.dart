@@ -1,0 +1,353 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
+import '../models/note.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
+
+class NoteListSection extends StatelessWidget {
+  final List<Note> notes;
+  final String? selectedNoteId;
+  final int currentPage;
+  final int totalPages;
+  final int totalCount;
+  final ValueChanged<Note> onNoteSelected;
+  final VoidCallback onCreateNote;
+  final ValueChanged<int> onPageChanged;
+
+  const NoteListSection({
+    super.key,
+    required this.notes,
+    required this.selectedNoteId,
+    required this.currentPage,
+    required this.totalPages,
+    required this.totalCount,
+    required this.onNoteSelected,
+    required this.onCreateNote,
+    required this.onPageChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildHeader(context),
+        Divider(height: 1, color: context.colors.border),
+        Expanded(
+          child: notes.isEmpty ? _buildEmptyState(context) : _buildList(),
+        ),
+        if (totalPages > 1) _buildPagination(context),
+      ],
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    final c = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingMd,
+        vertical: AppDimensions.spacingSm,
+      ),
+      child: Row(
+        children: [
+          Text(
+            'Notes',
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: c.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: c.surfaceHover,
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            ),
+            child: Text(
+              '$totalCount',
+              style: GoogleFonts.manrope(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: c.textMuted,
+              ),
+            ),
+          ),
+          const Spacer(),
+          _AddNoteButton(onTap: onCreateNote),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    final c = context.colors;
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.article_outlined, size: 32, color: c.textMuted),
+          const SizedBox(height: AppDimensions.spacingSm),
+          Text(
+            'No notes yet',
+            style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
+          Text(
+            'Select a date and create one',
+            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm),
+      itemCount: notes.length,
+      itemBuilder: (context, index) {
+        final note = notes[index];
+        final isSelected = note.id == selectedNoteId;
+        return _NoteListItem(
+          note: note,
+          isSelected: isSelected,
+          onTap: () => onNoteSelected(note),
+        );
+      },
+    );
+  }
+
+  Widget _buildPagination(BuildContext context) {
+    final c = context.colors;
+
+    return Padding(
+      padding: const EdgeInsets.all(AppDimensions.spacingSm),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _PaginationButton(
+            icon: Icons.chevron_left_rounded,
+            enabled: currentPage > 0,
+            onTap: () => onPageChanged(currentPage - 1),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Text(
+            '${currentPage + 1} / $totalPages',
+            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _PaginationButton(
+            icon: Icons.chevron_right_rounded,
+            enabled: currentPage < totalPages - 1,
+            onTap: () => onPageChanged(currentPage + 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NoteListItem extends StatefulWidget {
+  final Note note;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _NoteListItem({
+    required this.note,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  State<_NoteListItem> createState() => _NoteListItemState();
+}
+
+class _NoteListItemState extends State<_NoteListItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    final bgColor = widget.isSelected
+        ? c.surfaceHover
+        : _isHovered
+            ? c.surfaceLight
+            : Colors.transparent;
+
+    final dateStr = DateFormat('HH:mm').format(widget.note.updatedAt);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: AppDimensions.animFast,
+          margin: const EdgeInsets.only(bottom: 2),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingSm,
+            vertical: AppDimensions.spacingSm,
+          ),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            border: widget.isSelected
+                ? Border.all(color: c.accent.withValues(alpha: 0.3))
+                : null,
+          ),
+          child: Row(
+            children: [
+              if (widget.isSelected)
+                Container(
+                  width: 3,
+                  height: 28,
+                  margin: const EdgeInsets.only(right: AppDimensions.spacingSm),
+                  decoration: BoxDecoration(
+                    color: c.accent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.note.title.isEmpty ? 'Untitled' : widget.note.title,
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: widget.isSelected ? c.textPrimary : c.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      dateStr,
+                      style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.note.tags.isNotEmpty) _buildTags(c, widget.note.tags),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTags(AppColorsExtension c, List<String> tags) {
+    final visible = tags.take(AppDimensions.maxVisibleTags).toList();
+    final overflow = tags.length - AppDimensions.maxVisibleTags;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ...visible.map((tag) => _TagChip(label: tag)),
+        if (overflow > 0)
+          Padding(
+            padding: const EdgeInsets.only(left: 2),
+            child: Text(
+              '+$overflow',
+              style: GoogleFonts.manrope(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: c.textMuted,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final String label;
+
+  const _TagChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return Container(
+      margin: const EdgeInsets.only(left: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: c.accentSubtle,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.manrope(
+          fontSize: 9,
+          fontWeight: FontWeight.w500,
+          color: c.accent,
+        ),
+      ),
+    );
+  }
+}
+
+class _AddNoteButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddNoteButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+      child: Container(
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: c.accentSubtle,
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        ),
+        child: Icon(Icons.add_rounded, size: 14, color: c.accent),
+      ),
+    );
+  }
+}
+
+class _PaginationButton extends StatelessWidget {
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  const _PaginationButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Icon(
+          icon,
+          size: 16,
+          color: enabled ? c.textSecondary : c.textMuted,
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,21 @@
+# Flutter / Dart
+desktop/build/
+desktop/.dart_tool/
+desktop/.packages
+desktop/pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# macOS
+desktop/macos/Pods/
+desktop/macos/.symlinks/
+
+# Platform build caches
+desktop/ios/
+desktop/android/
+desktop/windows/
+desktop/linux/
