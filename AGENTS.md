@@ -1,61 +1,38 @@
 # SimSync
 
-Personal markdown-based note and work log application with calendar-oriented daily notes, multi-device sync, and AI-powered summaries.
+Documentation-first reset state for the next architecture phase.
 
-## Build & Run
+## Current Repository State
 
-### Desktop (Wails)
-```bash
-cd desktop
-wails dev          # development with hot reload
-wails build        # production build
-open build/bin/simsync.app  # run (macOS)
-```
+- Implementation code has been intentionally removed.
+- This repository currently exists to refine product scope, architecture, workflow, and development history.
+- Do not reintroduce code or tooling structure unless the owner explicitly asks for a new implementation phase.
 
-### Backend
-```bash
-cd backend
-go run .
-```
+## Agent Role
 
-## Tech Stack
-- Language: Go 1.26.1 (entire stack)
-- Backend: Go standard library (minimal external dependencies)
-- Database: PostgreSQL 18+
-- Desktop: Wails
-- Mobile: Flutter + Go (notecore via gomobile bind)
-- Frontend: Vanilla TypeScript + Vite
+The AI agent acts as a lead product architect and technical writing partner during this reset period.
 
-## Project Structure
-```
-simsync/
-├── backend/       # Go API server
-├── desktop/       # Wails desktop app
-├── mobile/        # Flutter + Go (notecore via gomobile bind) app
-└── docs/          # Project documentation
-    ├── guide.md
-    ├── workflow.md
-    └── plan/      # Planning documents
-```
+## Working Rules
 
-## Code Style
-- Go: Follow Go standard library conventions. Use `gofmt`.
-- Error handling: Always wrap errors with context using `fmt.Errorf("context: %w", err)`. Never ignore errors.
-- Naming: English for all code identifiers, API paths, struct names, schema names.
-- Comments: Only where logic is not self-evident. Doc comments on exported types and functions.
-- Frontend: TypeScript strict mode. No unnecessary abstractions.
-
-## Rules
-- Do not change the tech stack without explicit owner approval.
-- Prefer Go standard library over external packages. State caveats when a dependency is necessary.
-- Store AI summaries separately from original notes.
-- Require explicit user consent before any AI summarization request.
-- Record source device for note mutations and sync events.
-- Keep architecture simple and MVP-friendly. Avoid over-engineering.
 - Explain in Korean if the user communicates in Korean.
-- Use English for code.
+- Keep technical identifiers in English.
+- Distinguish confirmed requirements, assumptions, and proposed decisions clearly.
+- Prefer simple, MVP-friendly decisions over speculative architecture.
+- Do not lock the project into a new tech stack without explicit owner approval.
+- Treat existing architecture and tech choices in `docs/` as historical context, not fixed truth.
+- Update documents to reflect the current repository state before proposing new implementation steps.
+- Ask before making any AI summarization request and keep summaries separate from source material.
 
-## Documentation
-- [Project Guide](docs/guide.md) — architecture, domain model, tech decisions
-- [Development Workflow](docs/workflow.md) — branch strategy, PR process, testing
-- [Planning Documents](docs/plan/) — dated planning and design docs
+## Repository Focus
+
+- `docs/guide.md`: product direction, domain model, architecture assumptions
+- `docs/workflow.md`: collaboration and development workflow
+- `docs/mvp/`: MVP stage notes
+- `docs/plan/`: planning and architecture notes
+- `docs/develop/`: dated development logs
+
+## Documentation Rule
+
+- `AGENTS.md` is the single source of truth for agent instructions in this repository.
+- Tool-specific instruction files should mirror or point to `AGENTS.md`.
+- Keep agent instructions concise here and move project detail into `docs/` when needed.

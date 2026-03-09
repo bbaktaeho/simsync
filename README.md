@@ -1,19 +1,37 @@
-# README
+# SimSync
 
-## About
+SimSync is currently in reset mode.
 
-This is the official Wails Vanilla-TS template.
+The implementation code has been removed, and this repository is temporarily maintained as a documentation-first workspace for redesigning the product, architecture, and MVP scope.
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## Current State
 
-## Live Development
+- Code directories were removed on March 9, 2026.
+- The repository currently keeps planning, architecture, workflow, and development log documents.
+- The next step is to redefine product scope and technical direction before recreating the codebase.
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Repository Structure
 
-## Building
+```text
+simsync/
+├── docs/
+│   ├── guide.md
+│   ├── workflow.md
+│   ├── mvp/
+│   ├── plan/
+│   └── develop/
+├── README.md
+└── AGENTS.md
+```
 
-To build a redistributable, production mode package, use `wails build`.
+## Documents
+
+- [Project Guide](docs/guide.md) — current product and architecture assumptions
+- [Development Workflow](docs/workflow.md) — workflow and collaboration rules
+- [MVP Documents](docs/mvp/) — staged MVP notes
+- [Planning Documents](docs/plan/) — architecture and prototype planning history
+- [Development Logs](docs/develop/) — daily development records
+
+## Note
+
+The current documents still contain historical decisions from the removed implementation. They should be treated as reference material until the redesign is finalized.

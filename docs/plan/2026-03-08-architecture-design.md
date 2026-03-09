@@ -9,28 +9,25 @@
 ### 전체 구조
 
 ```
-┌─────────────────┐    ┌─────────────────┐
-│  Desktop App    │    │  Mobile App     │
-│  (Wails)        │    │ (Flutter + Go)  │
-│  ┌───────────┐  │    │  ┌───────────┐  │
-│  │TS Frontend│  │    │  │Flutter UI │  │
-│  └─────┬─────┘  │    │  └─────┬─────┘  │
-│  ┌─────┴─────┐  │    │  ┌─────┴─────┐  │
-│  │ Go Bridge │  │    │  │ Go Bridge │  │
-│  └─────┬─────┘  │    │  └─────┬─────┘  │
-└────────┼────────┘    └────────┼────────┘
-         │     HTTPS + WSS      │
-         └──────────┬───────────┘
-              ┌─────┴─────┐
-              │  Backend  │
-              │  (Go std) │
-              └─────┬─────┘
-         ┌──────────┼──────────┐
-         │          │          │
-    ┌────┴────┐ ┌───┴───┐ ┌───┴────┐
-    │PostgreSQL│ │  WS   │ │AI API  │
-    │  18+    │ │ Hub   │ │Provider│
-    └─────────┘ └───────┘ └────────┘
+┌──────────────────────────────────────┐
+│       Flutter App (Dart)             │
+│  ┌──────────────────────────────┐    │
+│  │         Flutter UI           │    │
+│  │  (Desktop + Mobile 단일 코드) │    │
+│  └──────────┬───────────────────┘    │
+└─────────────┼────────────────────────┘
+              │     HTTPS + WSS
+              │
+         ┌────┴─────┐
+         │  Backend  │
+         │  (Go std) │
+         └────┬──────┘
+    ┌─────────┼──────────┐
+    │         │          │
+┌───┴─────┐ ┌┴──────┐ ┌─┴──────┐
+│PostgreSQL│ │  WS   │ │AI API  │
+│  18+    │ │ Hub   │ │Provider│
+└─────────┘ └───────┘ └────────┘
 ```
 
 ### 컴포넌트 역할
@@ -40,15 +37,20 @@
 | Backend | REST API + WebSocket Hub | Go `net/http` |
 | Database | 모든 영속 데이터 저장 | PostgreSQL 18+ via `pgx/v5` |
 | WS Hub | 변경사항 실시간 푸시 | `nhooyr.io/websocket` |
-| Desktop | 데스크탑 클라이언트 | Wails + Vanilla TS |
-| Mobile | 모바일 클라이언트 | Flutter + Go (notecore via gomobile bind) |
+| Flutter App | 데스크톱 + 모바일 클라이언트 | Flutter (Dart), 단일 코드베이스 |
 | AI Provider | 주기별 요약 생성 | Provider-agnostic HTTP 호출 |
 
 ### Caveat: 외부 의존성
+
+#### Backend (Go)
 Go 표준 라이브러리에는 PostgreSQL 드라이버와 WebSocket 서버가 없다.
 요구사항(Go 표준 라이브러리 중심)을 유지하되, 아래 최소 의존성을 추가한다:
 - `github.com/jackc/pgx/v5` — PostgreSQL 드라이버 (pure Go, 가장 널리 사용)
 - `nhooyr.io/websocket` — WebSocket (pure Go, `net/http` 호환)
+
+#### Client (Flutter/Dart)
+Flutter 앱의 외부 패키지는 필요 시 명시적으로 승인한다.
+안정적이고 널리 사용되는 패키지를 우선 선택한다.
 
 ---
 
@@ -70,7 +72,7 @@ Note *──* Summary (via SummarySource)
 Summary 1──* SummarySource
 ```
 
-### Go Struct 정의
+### Go Struct 정의 (Backend)
 
 ```go
 type User struct {
@@ -447,7 +449,7 @@ WS 메시지 포맷:
 
 ---
 
-## 7. Mobile/Desktop Screen Flow
+## 7. Screen Flow
 
 ### 화면 구성 (공통)
 
@@ -470,7 +472,7 @@ WS 메시지 포맷:
 | 7 | Summary | 주간/월간/연간 요약 조회 + 생성 |
 | 8 | Settings | 디바이스 관리, 계정 설정 |
 
-### Desktop 화면 흐름
+### Desktop 레이아웃 (≥ 768px)
 
 ```
 Login ──▶ Calendar (메인)
@@ -485,7 +487,6 @@ Login ──▶ Calendar (메인)
               └── 설정 아이콘 ──▶ Settings
 ```
 
-Desktop 레이아웃:
 ```
 ┌─────────┬──────────────────────────────┐
 │ Sidebar │         Main Area            │
@@ -500,7 +501,7 @@ Desktop 레이아웃:
 └────────────────────────────────────────┘
 ```
 
-### Mobile 화면 흐름
+### Mobile 레이아웃 (< 768px)
 
 ```
 Login ──▶ Calendar (메인, 전체 화면)
@@ -515,9 +516,10 @@ Login ──▶ Calendar (메인, 전체 화면)
               └── 하단 탭: 설정 ──▶ Settings
 ```
 
-### Mobile UI 전략
-모바일 UI는 Flutter(Dart)로 구현하고, 비즈니스 로직은 공유 Go notecore 패키지를 gomobile bind로 바인딩하여 사용한다.
-이를 통해 데스크탑과 모바일이 동일한 핵심 로직을 공유하면서, 모바일은 Flutter의 성숙한 UI 생태계를 활용한다.
+### Responsive/Adaptive 전략
+Flutter 단일 코드베이스에서 `LayoutBuilder` 또는 `MediaQuery`를 사용하여
+화면 크기에 따라 데스크톱/모바일 레이아웃을 자동 전환한다.
+플랫폼별 차이(네비게이션, 입력 방식)는 adaptive 패턴으로 처리한다.
 
 ---
 
@@ -535,10 +537,10 @@ Login ──▶ Calendar (메인, 전체 화면)
 - 멀티 디바이스 동기화 (REST + WebSocket)
 - 충돌 감지 (version 기반, LWW)
 - 디바이스 등록 + 액션 추적
+- 데스크톱 + 모바일 앱 (Flutter 단일 코드베이스)
 
 **제외 (Post-MVP)**:
 - AI 요약 기능 (API 연동은 구조만 준비)
-- 모바일 앱
 - 오프라인 편집
 - 노트 히스토리/리비전 브라우징 UI
 - Export/Import
@@ -550,7 +552,7 @@ Login ──▶ Calendar (메인, 전체 화면)
 |-------|----------|------|
 | **Phase 1: Backend Core** | 1단계 | DB 스키마 마이그레이션, User/Device/Note CRUD API, JWT 인증 |
 | **Phase 2: Sync** | 2단계 | WebSocket Hub, sync_event 기록, version 기반 충돌 감지, 변경 푸시 |
-| **Phase 3: Desktop Client** | 3단계 | 현재 프로토타입을 API 연동으로 전환, 캘린더 UI, 로그인 화면 |
+| **Phase 3: Flutter App** | 3단계 | Flutter 앱 구현 (캘린더, 노트 CRUD, 에디터, 로그인), API 연동 |
 | **Phase 4: Search & Tags** | 4단계 | 태그 CRUD, 노트-태그 연결, 날짜/태그 검색 API + UI |
 | **Phase 5: Polish** | 5단계 | 동기화 안정화, 에러 처리, UX 다듬기 |
 | **Phase 6: AI Summary** | 6단계 | AI 요약 API 연동, 동의 흐름, 요약 저장/조회 |
@@ -585,16 +587,16 @@ backend/
 - Server-authoritative sync (REST 쓰기 + WS 푸시)
 - Last-Write-Wins + version 기반 충돌 감지 (MVP)
 - JWT 토큰 기반 인증
-- 외부 의존성: `pgx/v5`, `nhooyr.io/websocket`
+- Backend 외부 의존성: `pgx/v5`, `nhooyr.io/websocket`
+- Flutter 단일 코드베이스 (데스크톱 + 모바일)
 
 ### 제안 (오너 승인 필요)
 - MVP에서 오프라인 편집 미지원
 - MVP에서 AI 요약은 후순위 (Phase 6)
-- 모바일은 Flutter + Go (notecore via gomobile bind)로 구현
 - 노트 삭제는 soft delete가 아닌 hard delete (MVP 단순화)
 
 ### 미확인 (추후 결정)
 - AI provider 선정
-- 모바일 UI 세부 구현 (Flutter 프로젝트 구조, 플러그인 선정)
+- Flutter 패키지 선정 (마크다운 에디터, 상태관리 등)
 - 요약 문서 포맷 상세
 - 태그 자동완성/추천 UX
