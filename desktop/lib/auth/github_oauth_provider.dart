@@ -128,7 +128,7 @@ class GitHubOAuthProvider implements AuthProvider {
       {
         'client_id': _config.clientId,
         'redirect_uri': redirectUri.toString(),
-        'scope': 'read:user user:email',
+        'scope': 'read:user user:email repo',
         'state': state,
         'code_challenge': codeChallenge,
         'code_challenge_method': 'S256',
