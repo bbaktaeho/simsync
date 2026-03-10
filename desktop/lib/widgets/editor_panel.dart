@@ -15,8 +15,16 @@ const _autoSaveDelay = Duration(seconds: 1);
 class EditorPanel extends StatefulWidget {
   final Note? note;
   final ValueChanged<Note>? onNoteChanged;
+  final DateTime? selectedDate;
+  final VoidCallback? onCreateNote;
 
-  const EditorPanel({super.key, this.note, this.onNoteChanged});
+  const EditorPanel({
+    super.key,
+    this.note,
+    this.onNoteChanged,
+    this.selectedDate,
+    this.onCreateNote,
+  });
 
   @override
   State<EditorPanel> createState() => _EditorPanelState();
@@ -123,22 +131,48 @@ class _EditorPanelState extends State<EditorPanel> {
 
   Widget _buildEmptyState(BuildContext context) {
     final c = context.colors;
+    final hasDate = widget.selectedDate != null;
+    final dateLabel = hasDate
+        ? DateFormat('yyyy. M. d. (E)').format(widget.selectedDate!)
+        : null;
 
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.edit_document, size: 48, color: c.textMuted),
+          Icon(
+            hasDate ? Icons.note_add_outlined : Icons.edit_document,
+            size: 48,
+            color: c.textMuted,
+          ),
           const SizedBox(height: AppDimensions.spacingLg),
-          Text(
-            'Select a note to start editing',
-            style: GoogleFonts.manrope(fontSize: 15, color: c.textMuted),
-          ),
-          const SizedBox(height: AppDimensions.spacingSm),
-          Text(
-            'or create a new one from the sidebar',
-            style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
-          ),
+          if (hasDate) ...[
+            Text(
+              dateLabel!,
+              style: GoogleFonts.manrope(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: c.textSecondary,
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spacingSm),
+            Text(
+              'No notes for this date',
+              style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+            ),
+            const SizedBox(height: AppDimensions.spacingXl),
+            _CreateNoteButton(onTap: widget.onCreateNote),
+          ] else ...[
+            Text(
+              'Select a note to start editing',
+              style: GoogleFonts.manrope(fontSize: 15, color: c.textMuted),
+            ),
+            const SizedBox(height: AppDimensions.spacingSm),
+            Text(
+              'or create a new one from the sidebar',
+              style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+            ),
+          ],
         ],
       ),
     );
@@ -373,6 +407,67 @@ class _ToggleButtonState extends State<_ToggleButton> {
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: c.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CreateNoteButton extends StatefulWidget {
+  final VoidCallback? onTap;
+
+  const _CreateNoteButton({this.onTap});
+
+  @override
+  State<_CreateNoteButton> createState() => _CreateNoteButtonState();
+}
+
+class _CreateNoteButtonState extends State<_CreateNoteButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: AppDimensions.animFast,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingXl,
+            vertical: AppDimensions.spacingMd,
+          ),
+          decoration: BoxDecoration(
+            color: _isHovered ? c.surfaceHover : c.surfaceLight,
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            border: Border.all(
+              color: _isHovered
+                  ? c.accent.withValues(alpha: 0.3)
+                  : c.border,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add_rounded,
+                size: 16,
+                color: _isHovered ? c.accent : c.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.spacingSm),
+              Text(
+                'Create note',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: _isHovered ? c.accent : c.textSecondary,
                 ),
               ),
             ],

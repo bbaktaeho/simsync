@@ -249,7 +249,7 @@ class _NoteListItemState extends State<_NoteListItem> {
     final visible = tags.take(AppDimensions.maxVisibleTags).toList();
     final overflow = tags.length - AppDimensions.maxVisibleTags;
 
-    return Row(
+    final tagRow = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ...visible.map((tag) => _TagChip(label: tag)),
@@ -266,6 +266,24 @@ class _NoteListItemState extends State<_NoteListItem> {
             ),
           ),
       ],
+    );
+
+    if (overflow <= 0) return tagRow;
+
+    return Tooltip(
+      message: tags.join(', '),
+      waitDuration: const Duration(milliseconds: 300),
+      textStyle: GoogleFonts.manrope(
+        fontSize: 11,
+        fontWeight: FontWeight.w500,
+        color: c.textPrimary,
+      ),
+      decoration: BoxDecoration(
+        color: c.surfaceHover,
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        border: Border.all(color: c.border),
+      ),
+      child: tagRow,
     );
   }
 }
