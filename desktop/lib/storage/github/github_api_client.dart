@@ -72,26 +72,29 @@ class GitHubConflictException implements Exception {
 class GitHubApiClient {
   static const String _baseUrl = 'https://api.github.com';
 
-  final String token;
-  final String owner;
-  final String repo;
+  final String _token;
+  final String _owner;
+  final String _repo;
   final http.Client _httpClient;
 
   GitHubApiClient({
-    required this.token,
-    required this.owner,
-    required this.repo,
+    required String token,
+    required String owner,
+    required String repo,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+  })  : _token = token,
+        _owner = owner,
+        _repo = repo,
+        _httpClient = httpClient ?? http.Client();
 
   Map<String, String> get _headers => {
-        'Authorization': 'Bearer $token',
+        'Authorization': 'Bearer $_token',
         'Accept': 'application/vnd.github.v3+json',
         'X-GitHub-Api-Version': '2022-11-28',
       };
 
   Uri _contentsUri(String path) =>
-      Uri.parse('$_baseUrl/repos/$owner/$repo/contents/$path');
+      Uri.parse('$_baseUrl/repos/$_owner/$_repo/contents/$path');
 
   /// Fetches a single file. Throws [GitHubNotFoundException] on 404.
   Future<GitHubFile> getFile(String path) async {
