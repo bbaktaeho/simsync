@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../main.dart';
 import '../models/note.dart';
 import '../services/note_service.dart';
+import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../widgets/calendar_section.dart';
@@ -13,8 +16,22 @@ import '../widgets/weekly_view_panel.dart';
 
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
+  final NoteStorage storage;
+  final NoteService noteService;
+  final String? avatarUrl;
 
-  const DocumentScreen({super.key, required this.onLogout});
+  /// Optional notifier that signals when remote data has changed.
+  /// Each value change triggers a full reload of notes from storage.
+  final ValueNotifier<int>? refreshSignal;
+
+  const DocumentScreen({
+    super.key,
+    required this.onLogout,
+    required this.storage,
+    required this.noteService,
+    this.avatarUrl,
+    this.refreshSignal,
+  });
 
   @override
   State<DocumentScreen> createState() => _DocumentScreenState();
@@ -22,7 +39,8 @@ class DocumentScreen extends StatefulWidget {
 
 class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
-  final NoteService _noteService = NoteService();
+  NoteStorage get _storage => widget.storage;
+  NoteService get _noteService => widget.noteService;
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -31,6 +49,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
   bool _isLoading = true;
+  Timer? _saveDebounce;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
 
@@ -38,18 +57,66 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void initState() {
     super.initState();
     _loadNotes();
+    widget.refreshSignal?.addListener(_onRefreshSignal);
+  }
+
+  @override
+  void didUpdateWidget(covariant DocumentScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
+      widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+  }
+
+  @override
+  void dispose() {
+    _saveDebounce?.cancel();
+    widget.refreshSignal?.removeListener(_onRefreshSignal);
+    super.dispose();
+  }
+
+  void _onRefreshSignal() {
+    _loadNotes();
   }
 
   Future<void> _loadNotes() async {
-    final notes = await _noteService.loadAllNotes();
+    // Load all notes from storage (GitHub or local, depending on wiring).
     final now = DateTime.now();
+    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final dates = await _storage.listDates(currentMonth);
+    final notes = <Note>[];
+    for (final date in dates) {
+      final dayNotes = await _storage.listNotes(date);
+      notes.addAll(dayNotes);
+    }
+    // Also load previous month if we're in the first week.
+    if (now.day <= 7) {
+      final prev = DateTime(now.year, now.month - 1);
+      final prevMonth = '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+      final prevDates = await _storage.listDates(prevMonth);
+      for (final date in prevDates) {
+        final dayNotes = await _storage.listNotes(date);
+        notes.addAll(dayNotes);
+      }
+    }
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (!mounted) return;
+    final previousSelectedId = _selectedNote?.id;
     setState(() {
       _allNotes = notes;
       _isLoading = false;
-      _selectedDate = DateTime(now.year, now.month, now.day);
-      final todayNotes = _notesForSelectedDate;
-      if (todayNotes.isNotEmpty) {
-        _selectedNote = todayNotes.first;
+      _selectedDate ??= DateTime(now.year, now.month, now.day);
+      // Preserve selected note if it still exists after refresh.
+      if (previousSelectedId != null) {
+        final match = notes.where((n) => n.id == previousSelectedId);
+        _selectedNote = match.isNotEmpty ? match.first : null;
+      }
+      if (_selectedNote == null) {
+        final todayNotes = _notesForSelectedDate;
+        if (todayNotes.isNotEmpty) {
+          _selectedNote = todayNotes.first;
+        }
       }
     });
   }
@@ -169,17 +236,29 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _selectedNote = updatedNote;
       }
     });
-    _noteService.saveNote(updatedNote);
+    // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(seconds: 2), () {
+      _storage.saveNote(updatedNote);
+    });
   }
 
   Future<void> _createNote() async {
     if (_selectedDate == null) return;
     final existingNotes = _notesForSelectedDate;
     final isDefault = existingNotes.isEmpty;
-    final newNote = await _noteService.createNote(
+    final now = DateTime.now();
+    final newNote = Note(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       noteDate: _selectedDate!,
+      title: '',
+      content: '',
       isDefault: isDefault,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
     );
+    await _storage.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
       _selectedNote = newNote;
@@ -334,6 +413,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
                 fontWeight: FontWeight.w500,
               ),
             ),
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: widget.avatarUrl != null
+                ? NetworkImage(widget.avatarUrl!)
+                : null,
+            child: widget.avatarUrl == null
+                ? const Icon(Icons.person, size: 16)
+                : null,
           ),
         ],
       ),

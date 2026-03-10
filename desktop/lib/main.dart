@@ -2,13 +2,47 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'auth/auth_models.dart';
 import 'auth/auth_service.dart';
 import 'auth/github_oauth_provider.dart';
 import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/repo_selection_screen.dart';
+import 'services/note_service.dart';
+import 'storage/github/github_api_client.dart';
+import 'storage/github/github_note_storage.dart';
+import 'storage/github/github_sync_engine.dart';
+import 'storage/github/repo_cache.dart';
+import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
+
+/// Resolved storage layer after authentication.
+class StorageBundle {
+  final NoteStorage storage;
+  final NoteService noteService;
+  final GitHubSyncEngine? syncEngine;
+
+  const StorageBundle({
+    required this.storage,
+    required this.noteService,
+    this.syncEngine,
+  });
+}
+
+/// Signature for a function that creates a [StorageBundle] from a token and
+/// repo info.
+///
+/// The optional [onRemoteChanged] callback is invoked by the sync engine
+/// when a new remote commit is detected, allowing the caller to refresh the UI.
+typedef StorageFactory = Future<StorageBundle> Function(
+  String accessToken, {
+  required String owner,
+  required String repo,
+  required String branch,
+  Future<void> Function()? onRemoteChanged,
+});
 
 void main() {
   runApp(SimSyncApp(authService: createDefaultAuthService()));
@@ -18,9 +52,19 @@ class SimSyncApp extends StatefulWidget {
   const SimSyncApp({
     super.key,
     required this.authService,
+    this.storageFactory,
+    this.repoCache,
   });
 
   final AuthService authService;
+
+  /// Optional override for storage initialization (useful for testing).
+  /// When null, the default factory uses repo info from [RepoCache].
+  final StorageFactory? storageFactory;
+
+  /// Optional override for repo cache (useful for testing).
+  /// When null, uses the default [RepoCache] backed by `~/.simsync/repos.json`.
+  final RepoCache? repoCache;
 
   @override
   State<SimSyncApp> createState() => SimSyncAppState();
@@ -50,16 +94,26 @@ class SimSyncAppState extends State<SimSyncApp> {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: _themeMode,
-      home: _AppShell(authService: widget.authService),
+      home: _AppShell(
+        authService: widget.authService,
+        storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+        repoCache: widget.repoCache ?? RepoCache(),
+      ),
     );
   }
 }
 
-/// Root shell that manages auth state (login ↔ document screen).
+/// Root shell that manages auth state (login <-> document screen).
 class _AppShell extends StatefulWidget {
-  const _AppShell({required this.authService});
+  const _AppShell({
+    required this.authService,
+    required this.storageFactory,
+    required this.repoCache,
+  });
 
   final AuthService authService;
+  final StorageFactory storageFactory;
+  final RepoCache repoCache;
 
   @override
   State<_AppShell> createState() => _AppShellState();
@@ -68,19 +122,39 @@ class _AppShell extends StatefulWidget {
 class _AppShellState extends State<_AppShell> {
   _AuthStatus _status = _AuthStatus.restoring;
 
+  // Session stored after login, needed for repo selection screen.
+  AuthSession? _session;
+
+  // Storage layer (resolved after auth succeeds).
+  StorageBundle? _bundle;
+
+  /// Notifier incremented when the sync engine detects remote changes.
+  /// DocumentScreen listens to this to reload notes.
+  final ValueNotifier<int> _refreshSignal = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _restoreSession();
   }
 
+  @override
+  void dispose() {
+    _bundle?.syncEngine?.dispose();
+    _refreshSignal.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleLogin() async {
-    await widget.authService.signIn();
+    final session = await widget.authService.signIn();
     if (!mounted) return;
-    setState(() => _status = _AuthStatus.authenticated);
+    _session = session;
+    setState(() => _status = _AuthStatus.repoSelection);
   }
 
   Future<void> _handleLogout() async {
+    _bundle?.syncEngine?.dispose();
+    _bundle = null;
     await widget.authService.logout();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.unauthenticated);
@@ -89,10 +163,56 @@ class _AppShellState extends State<_AppShell> {
   Future<void> _restoreSession() async {
     final session = await widget.authService.restoreSession();
     if (!mounted) return;
-    setState(() {
-      _status =
-          session == null ? _AuthStatus.unauthenticated : _AuthStatus.authenticated;
-    });
+    if (session == null) {
+      setState(() => _status = _AuthStatus.unauthenticated);
+      return;
+    }
+
+    // Check if a cached repo entry exists on disk.
+    final entries = await widget.repoCache.load();
+
+    if (!mounted) return;
+
+    if (entries.isNotEmpty) {
+      // Use the most recently connected repo.
+      final entry = entries.first;
+      _session = session;
+      _bundle = await widget.storageFactory(
+        session.accessToken,
+        owner: entry.owner,
+        repo: entry.repo,
+        branch: entry.branch,
+        onRemoteChanged: _onRemoteChanged,
+      );
+      _bundle?.syncEngine?.start();
+      if (!mounted) return;
+      setState(() => _status = _AuthStatus.authenticated);
+    } else {
+      // No cached repo — let user pick one.
+      _session = session;
+      setState(() => _status = _AuthStatus.repoSelection);
+    }
+  }
+
+  Future<void> _handleRepoSelected(RepoEntry entry) async {
+    // Persist the selected repo to the cache.
+    await widget.repoCache.add(entry);
+
+    // Create storage bundle directly from the repo entry.
+    _bundle = await widget.storageFactory(
+      _session!.accessToken,
+      owner: entry.owner,
+      repo: entry.repo,
+      branch: entry.branch,
+      onRemoteChanged: _onRemoteChanged,
+    );
+    _bundle?.syncEngine?.start();
+    if (!mounted) return;
+    setState(() => _status = _AuthStatus.authenticated);
+  }
+
+  Future<void> _onRemoteChanged() async {
+    _refreshSignal.value++;
   }
 
   @override
@@ -104,15 +224,57 @@ class _AppShellState extends State<_AppShell> {
       );
     }
 
+    if (_status == _AuthStatus.repoSelection) {
+      return RepoSelectionScreen(
+        accessToken: _session!.accessToken,
+        userLogin: _session!.user.login,
+        avatarUrl: _session!.user.avatarUrl,
+        onRepoSelected: _handleRepoSelected,
+        repoCache: widget.repoCache,
+      );
+    }
+
     if (_status == _AuthStatus.authenticated) {
       return DocumentScreen(
         onLogout: _handleLogout,
+        storage: _bundle!.storage,
+        noteService: _bundle!.noteService,
+        refreshSignal: _refreshSignal,
+        avatarUrl: _session?.user.avatarUrl,
       );
     }
     return LoginScreen(
       onGitHubLogin: _handleLogin,
     );
   }
+}
+
+/// Default storage factory: creates GitHub storage from provided repo info.
+Future<StorageBundle> _defaultStorageFactory(
+  String accessToken, {
+  required String owner,
+  required String repo,
+  required String branch,
+  Future<void> Function()? onRemoteChanged,
+}) async {
+  final localService = NoteService();
+  final apiClient = GitHubApiClient(
+    token: accessToken,
+    owner: owner,
+    repo: repo,
+  );
+  return StorageBundle(
+    storage: GitHubNoteStorage(apiClient),
+    noteService: localService,
+    syncEngine: GitHubSyncEngine(
+      token: accessToken,
+      owner: owner,
+      repo: repo,
+      branch: branch,
+      interval: const Duration(seconds: 5),
+      onRemoteChanged: onRemoteChanged,
+    ),
+  );
 }
 
 AuthService createDefaultAuthService() {
@@ -136,6 +298,7 @@ AuthService createDefaultAuthService() {
 
 enum _AuthStatus {
   restoring,
-  authenticated,
   unauthenticated,
+  repoSelection,
+  authenticated,
 }
