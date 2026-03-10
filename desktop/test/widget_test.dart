@@ -105,7 +105,10 @@ void main() {
 }
 
 /// Test storage factory that returns local NoteService without disk config.
-Future<StorageBundle> _fakeStorageFactory(String accessToken) async {
+Future<StorageBundle> _fakeStorageFactory(
+  String accessToken, {
+  Future<void> Function()? onRemoteChanged,
+}) async {
   final service = NoteService();
   return StorageBundle(storage: service, noteService: service);
 }

@@ -30,7 +30,13 @@ class StorageBundle {
 }
 
 /// Signature for a function that creates a [StorageBundle] from a token.
-typedef StorageFactory = Future<StorageBundle> Function(String accessToken);
+///
+/// The optional [onRemoteChanged] callback is invoked by the sync engine
+/// when a new remote commit is detected, allowing the caller to refresh the UI.
+typedef StorageFactory = Future<StorageBundle> Function(
+  String accessToken, {
+  Future<void> Function()? onRemoteChanged,
+});
 
 void main() {
   runApp(SimSyncApp(authService: createDefaultAuthService()));
@@ -105,6 +111,10 @@ class _AppShellState extends State<_AppShell> {
   // Storage layer (resolved after auth succeeds).
   StorageBundle? _bundle;
 
+  /// Notifier incremented when the sync engine detects remote changes.
+  /// DocumentScreen listens to this to reload notes.
+  final ValueNotifier<int> _refreshSignal = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
@@ -114,13 +124,17 @@ class _AppShellState extends State<_AppShell> {
   @override
   void dispose() {
     _bundle?.syncEngine?.dispose();
+    _refreshSignal.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
     final session = await widget.authService.signIn();
     if (!mounted) return;
-    _bundle = await widget.storageFactory(session.accessToken);
+    _bundle = await widget.storageFactory(
+      session.accessToken,
+      onRemoteChanged: _onRemoteChanged,
+    );
     _bundle?.syncEngine?.start();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
@@ -141,10 +155,17 @@ class _AppShellState extends State<_AppShell> {
       setState(() => _status = _AuthStatus.unauthenticated);
       return;
     }
-    _bundle = await widget.storageFactory(session.accessToken);
+    _bundle = await widget.storageFactory(
+      session.accessToken,
+      onRemoteChanged: _onRemoteChanged,
+    );
     _bundle?.syncEngine?.start();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
+  }
+
+  Future<void> _onRemoteChanged() async {
+    _refreshSignal.value++;
   }
 
   @override
@@ -161,6 +182,7 @@ class _AppShellState extends State<_AppShell> {
         onLogout: _handleLogout,
         storage: _bundle!.storage,
         noteService: _bundle!.noteService,
+        refreshSignal: _refreshSignal,
       );
     }
     return LoginScreen(
@@ -170,7 +192,10 @@ class _AppShellState extends State<_AppShell> {
 }
 
 /// Default storage factory: reads GitHub config from disk, falls back to local.
-Future<StorageBundle> _defaultStorageFactory(String accessToken) async {
+Future<StorageBundle> _defaultStorageFactory(
+  String accessToken, {
+  Future<void> Function()? onRemoteChanged,
+}) async {
   final localService = NoteService();
 
   GitHubStorageConfig? config;
@@ -195,6 +220,7 @@ Future<StorageBundle> _defaultStorageFactory(String accessToken) async {
         repo: config.repo,
         branch: config.branch,
         interval: config.syncInterval,
+        onRemoteChanged: onRemoteChanged,
       ),
     );
   }

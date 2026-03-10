@@ -17,11 +17,16 @@ class DocumentScreen extends StatefulWidget {
   final NoteStorage storage;
   final NoteService noteService;
 
+  /// Optional notifier that signals when remote data has changed.
+  /// Each value change triggers a full reload of notes from storage.
+  final ValueNotifier<int>? refreshSignal;
+
   const DocumentScreen({
     super.key,
     required this.onLogout,
     required this.storage,
     required this.noteService,
+    this.refreshSignal,
   });
 
   @override
@@ -47,18 +52,47 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void initState() {
     super.initState();
     _loadNotes();
+    widget.refreshSignal?.addListener(_onRefreshSignal);
+  }
+
+  @override
+  void didUpdateWidget(covariant DocumentScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
+      widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_onRefreshSignal);
+    super.dispose();
+  }
+
+  void _onRefreshSignal() {
+    _loadNotes();
   }
 
   Future<void> _loadNotes() async {
     final notes = await _noteService.loadAllNotes();
+    if (!mounted) return;
     final now = DateTime.now();
+    final previousSelectedId = _selectedNote?.id;
     setState(() {
       _allNotes = notes;
       _isLoading = false;
-      _selectedDate = DateTime(now.year, now.month, now.day);
-      final todayNotes = _notesForSelectedDate;
-      if (todayNotes.isNotEmpty) {
-        _selectedNote = todayNotes.first;
+      _selectedDate ??= DateTime(now.year, now.month, now.day);
+      // Preserve selected note if it still exists after refresh.
+      if (previousSelectedId != null) {
+        final match = notes.where((n) => n.id == previousSelectedId);
+        _selectedNote = match.isNotEmpty ? match.first : null;
+      }
+      if (_selectedNote == null) {
+        final todayNotes = _notesForSelectedDate;
+        if (todayNotes.isNotEmpty) {
+          _selectedNote = todayNotes.first;
+        }
       }
     });
   }
