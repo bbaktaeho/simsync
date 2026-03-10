@@ -503,6 +503,91 @@ Indexed content''';
       expect(listDirCallCount, 1); // Still 1 — no new listDirectory call.
     });
 
+    test('saveNote deletes old file when title changes', () async {
+      final requests = <http.BaseRequest>[];
+
+      final mockClient = MockClient((request) async {
+        requests.add(request);
+        final decodedPath = Uri.decodeFull(request.url.path);
+
+        if (request.method == 'PUT' &&
+            decodedPath.contains('My Note.md')) {
+          return http.Response(
+            jsonEncode({
+              'content': {
+                'sha': 'sha-original',
+                'name': 'My Note.md',
+                'path': 'notes/2026-03/10/My Note.md',
+              }
+            }),
+            201,
+          );
+        }
+
+        if (request.method == 'DELETE' &&
+            decodedPath.contains('My Note.md')) {
+          return http.Response(
+            jsonEncode({'commit': {'sha': 'commit-sha'}}),
+            200,
+          );
+        }
+
+        if (request.method == 'PUT' &&
+            decodedPath.contains('Renamed Note.md')) {
+          return http.Response(
+            jsonEncode({
+              'content': {
+                'sha': 'sha-renamed',
+                'name': 'Renamed Note.md',
+                'path': 'notes/2026-03/10/Renamed Note.md',
+              }
+            }),
+            201,
+          );
+        }
+
+        return http.Response('Not Found', 404);
+      });
+
+      final apiClient = GitHubApiClient(
+        token: token,
+        owner: owner,
+        repo: repo,
+        httpClient: mockClient,
+      );
+
+      final storage = GitHubNoteStorage(apiClient);
+
+      // First save with original title.
+      final note = createTestNote(title: 'My Note');
+      await storage.saveNote(note);
+
+      // Rename title and save again.
+      final renamedNote = Note(
+        id: note.id,
+        noteDate: note.noteDate,
+        title: 'Renamed Note',
+        content: note.content,
+        isDefault: note.isDefault,
+        tags: note.tags,
+        createdAt: note.createdAt,
+        updatedAt: DateTime.utc(2026, 3, 10, 11, 0, 0),
+      );
+      await storage.saveNote(renamedNote);
+
+      // Verify: 1 PUT (original) + 1 DELETE (old file) + 1 PUT (renamed).
+      final puts = requests.where((r) => r.method == 'PUT').toList();
+      final deletes = requests.where((r) => r.method == 'DELETE').toList();
+
+      expect(puts.length, 2);
+      expect(deletes.length, 1);
+
+      expect(Uri.decodeFull(deletes.first.url.path),
+          contains('My Note.md'));
+      expect(Uri.decodeFull(puts.last.url.path),
+          contains('Renamed Note.md'));
+    });
+
     test('saveNote with empty title uses note id as filename', () async {
       final requests = <http.BaseRequest>[];
 

@@ -282,6 +282,27 @@ class GitHubNoteStorage implements NoteStorage {
   Future<void> saveNote(Note note) async {
     final path = _buildPath(note);
     final markdown = serializeNote(note);
+
+    // Detect title rename: old path differs from new path for the same note ID.
+    final oldPath = _idToPath[note.id];
+    if (oldPath != null && oldPath != path) {
+      final oldSha = _shaCache[oldPath];
+      if (oldSha != null) {
+        try {
+          await _client.deleteFile(
+            path: oldPath,
+            sha: oldSha,
+            message: 'Delete renamed note: ${note.title}',
+          );
+        } on GitHubApiException {
+          // Ignore 404/409 — file may already be gone or SHA stale.
+        }
+      }
+      _shaCache.remove(oldPath);
+      _noteCache.remove(oldPath);
+      _idToPath.remove(note.id);
+    }
+
     final cachedSha = _shaCache[path];
 
     try {
