@@ -13,7 +13,6 @@ import 'screens/repo_selection_screen.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_storage.dart';
-import 'storage/github/github_storage_config.dart';
 import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
 import 'storage/note_storage.dart';
@@ -32,12 +31,16 @@ class StorageBundle {
   });
 }
 
-/// Signature for a function that creates a [StorageBundle] from a token.
+/// Signature for a function that creates a [StorageBundle] from a token and
+/// repo info.
 ///
 /// The optional [onRemoteChanged] callback is invoked by the sync engine
 /// when a new remote commit is detected, allowing the caller to refresh the UI.
 typedef StorageFactory = Future<StorageBundle> Function(
   String accessToken, {
+  required String owner,
+  required String repo,
+  required String branch,
   Future<void> Function()? onRemoteChanged,
 });
 
@@ -55,7 +58,7 @@ class SimSyncApp extends StatefulWidget {
   final AuthService authService;
 
   /// Optional override for storage initialization (useful for testing).
-  /// When null, the default factory reads [GitHubStorageConfig] from disk.
+  /// When null, the default factory uses repo info from [RepoCache].
   final StorageFactory? storageFactory;
 
   @override
@@ -157,45 +160,44 @@ class _AppShellState extends State<_AppShell> {
       return;
     }
 
-    // Check if a GitHub storage config already exists on disk.
-    GitHubStorageConfig? config;
-    try {
-      config = await GitHubStorageConfig.load();
-    } catch (_) {
-      // Config missing or unreadable.
-    }
+    // Check if a cached repo entry exists on disk.
+    final repoCache = RepoCache();
+    final entries = await repoCache.load();
 
     if (!mounted) return;
 
-    if (config != null) {
-      // Config exists — go straight to authenticated.
+    if (entries.isNotEmpty) {
+      // Use the most recently connected repo.
+      final entry = entries.first;
       _session = session;
       _bundle = await widget.storageFactory(
         session.accessToken,
+        owner: entry.owner,
+        repo: entry.repo,
+        branch: entry.branch,
         onRemoteChanged: _onRemoteChanged,
       );
       _bundle?.syncEngine?.start();
       if (!mounted) return;
       setState(() => _status = _AuthStatus.authenticated);
     } else {
-      // No config — let user pick a repo.
+      // No cached repo — let user pick one.
       _session = session;
       setState(() => _status = _AuthStatus.repoSelection);
     }
   }
 
   Future<void> _handleRepoSelected(RepoEntry entry) async {
-    // Persist the selected repo as the active GitHub storage config.
-    final config = GitHubStorageConfig(
+    // Persist the selected repo to the cache.
+    final repoCache = RepoCache();
+    await repoCache.add(entry);
+
+    // Create storage bundle directly from the repo entry.
+    _bundle = await widget.storageFactory(
+      _session!.accessToken,
       owner: entry.owner,
       repo: entry.repo,
       branch: entry.branch,
-    );
-    await config.save();
-
-    // Create storage bundle using the stored session token.
-    _bundle = await widget.storageFactory(
-      _session!.accessToken,
       onRemoteChanged: _onRemoteChanged,
     );
     _bundle?.syncEngine?.start();
@@ -241,43 +243,31 @@ class _AppShellState extends State<_AppShell> {
   }
 }
 
-/// Default storage factory: reads GitHub config from disk, falls back to local.
+/// Default storage factory: creates GitHub storage from provided repo info.
 Future<StorageBundle> _defaultStorageFactory(
   String accessToken, {
+  required String owner,
+  required String repo,
+  required String branch,
   Future<void> Function()? onRemoteChanged,
 }) async {
   final localService = NoteService();
-
-  GitHubStorageConfig? config;
-  try {
-    config = await GitHubStorageConfig.load();
-  } catch (_) {
-    // Config file missing or unreadable — fall back to local storage.
-  }
-
-  if (config != null) {
-    final apiClient = GitHubApiClient(
-      token: accessToken,
-      owner: config.owner,
-      repo: config.repo,
-    );
-    return StorageBundle(
-      storage: GitHubNoteStorage(apiClient),
-      noteService: localService,
-      syncEngine: GitHubSyncEngine(
-        token: accessToken,
-        owner: config.owner,
-        repo: config.repo,
-        branch: config.branch,
-        interval: config.syncInterval,
-        onRemoteChanged: onRemoteChanged,
-      ),
-    );
-  }
-
+  final apiClient = GitHubApiClient(
+    token: accessToken,
+    owner: owner,
+    repo: repo,
+  );
   return StorageBundle(
-    storage: localService,
+    storage: GitHubNoteStorage(apiClient),
     noteService: localService,
+    syncEngine: GitHubSyncEngine(
+      token: accessToken,
+      owner: owner,
+      repo: repo,
+      branch: branch,
+      interval: const Duration(seconds: 5),
+      onRemoteChanged: onRemoteChanged,
+    ),
   );
 }
 

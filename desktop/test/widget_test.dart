@@ -49,7 +49,7 @@ void main() {
       ),
     );
 
-    // Allow async _restoreSession + GitHubStorageConfig.load() to complete.
+    // Allow async _restoreSession + RepoCache.load() to complete.
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -113,6 +113,9 @@ final _testSession = AuthSession(
 /// Test storage factory that returns local NoteService without disk config.
 Future<StorageBundle> _fakeStorageFactory(
   String accessToken, {
+  required String owner,
+  required String repo,
+  required String branch,
   Future<void> Function()? onRemoteChanged,
 }) async {
   final service = NoteService();
