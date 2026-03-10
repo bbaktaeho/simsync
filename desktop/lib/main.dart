@@ -53,6 +53,7 @@ class SimSyncApp extends StatefulWidget {
     super.key,
     required this.authService,
     this.storageFactory,
+    this.repoCache,
   });
 
   final AuthService authService;
@@ -60,6 +61,10 @@ class SimSyncApp extends StatefulWidget {
   /// Optional override for storage initialization (useful for testing).
   /// When null, the default factory uses repo info from [RepoCache].
   final StorageFactory? storageFactory;
+
+  /// Optional override for repo cache (useful for testing).
+  /// When null, uses the default [RepoCache] backed by `~/.simsync/repos.json`.
+  final RepoCache? repoCache;
 
   @override
   State<SimSyncApp> createState() => SimSyncAppState();
@@ -92,6 +97,7 @@ class SimSyncAppState extends State<SimSyncApp> {
       home: _AppShell(
         authService: widget.authService,
         storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+        repoCache: widget.repoCache ?? RepoCache(),
       ),
     );
   }
@@ -102,10 +108,12 @@ class _AppShell extends StatefulWidget {
   const _AppShell({
     required this.authService,
     required this.storageFactory,
+    required this.repoCache,
   });
 
   final AuthService authService;
   final StorageFactory storageFactory;
+  final RepoCache repoCache;
 
   @override
   State<_AppShell> createState() => _AppShellState();
@@ -161,8 +169,7 @@ class _AppShellState extends State<_AppShell> {
     }
 
     // Check if a cached repo entry exists on disk.
-    final repoCache = RepoCache();
-    final entries = await repoCache.load();
+    final entries = await widget.repoCache.load();
 
     if (!mounted) return;
 
@@ -189,8 +196,7 @@ class _AppShellState extends State<_AppShell> {
 
   Future<void> _handleRepoSelected(RepoEntry entry) async {
     // Persist the selected repo to the cache.
-    final repoCache = RepoCache();
-    await repoCache.add(entry);
+    await widget.repoCache.add(entry);
 
     // Create storage bundle directly from the repo entry.
     _bundle = await widget.storageFactory(
@@ -224,7 +230,7 @@ class _AppShellState extends State<_AppShell> {
         userLogin: _session!.user.login,
         avatarUrl: _session!.user.avatarUrl,
         onRepoSelected: _handleRepoSelected,
-        repoCache: RepoCache(),
+        repoCache: widget.repoCache,
       );
     }
 

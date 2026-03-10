@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -47,6 +49,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
   bool _isLoading = true;
+  Timer? _saveDebounce;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
 
@@ -68,6 +71,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   @override
   void dispose() {
+    _saveDebounce?.cancel();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
     super.dispose();
   }
@@ -77,9 +81,27 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Future<void> _loadNotes() async {
-    final notes = await _noteService.loadAllNotes();
-    if (!mounted) return;
+    // Load all notes from storage (GitHub or local, depending on wiring).
     final now = DateTime.now();
+    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final dates = await _storage.listDates(currentMonth);
+    final notes = <Note>[];
+    for (final date in dates) {
+      final dayNotes = await _storage.listNotes(date);
+      notes.addAll(dayNotes);
+    }
+    // Also load previous month if we're in the first week.
+    if (now.day <= 7) {
+      final prev = DateTime(now.year, now.month - 1);
+      final prevMonth = '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+      final prevDates = await _storage.listDates(prevMonth);
+      for (final date in prevDates) {
+        final dayNotes = await _storage.listNotes(date);
+        notes.addAll(dayNotes);
+      }
+    }
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (!mounted) return;
     final previousSelectedId = _selectedNote?.id;
     setState(() {
       _allNotes = notes;
@@ -214,17 +236,29 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _selectedNote = updatedNote;
       }
     });
-    _storage.saveNote(updatedNote);
+    // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(seconds: 2), () {
+      _storage.saveNote(updatedNote);
+    });
   }
 
   Future<void> _createNote() async {
     if (_selectedDate == null) return;
     final existingNotes = _notesForSelectedDate;
     final isDefault = existingNotes.isEmpty;
-    final newNote = await _noteService.createNote(
+    final now = DateTime.now();
+    final newNote = Note(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
       noteDate: _selectedDate!,
+      title: '',
+      content: '',
       isDefault: isDefault,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
     );
+    await _storage.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
       _selectedNote = newNote;

@@ -8,6 +8,7 @@ import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
 import 'package:simsync/screens/repo_selection_screen.dart';
 import 'package:simsync/services/note_service.dart';
+import 'package:simsync/storage/github/repo_cache.dart';
 
 void main() {
   testWidgets('App renders GitHub login screen when no session exists', (
@@ -19,6 +20,7 @@ void main() {
           restoreResult: null,
         ),
         storageFactory: _fakeStorageFactory,
+        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
       ),
     );
     await tester.pumpAndSettle();
@@ -46,6 +48,7 @@ void main() {
           restoreResult: _testSession,
         ),
         storageFactory: _fakeStorageFactory,
+        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
       ),
     );
 
@@ -78,6 +81,7 @@ void main() {
       SimSyncApp(
         authService: authService,
         storageFactory: _fakeStorageFactory,
+        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
       ),
     );
     await tester.pumpAndSettle();
