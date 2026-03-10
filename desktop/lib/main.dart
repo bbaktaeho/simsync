@@ -232,8 +232,7 @@ class _AppShellState extends State<_AppShell> {
         storage: _bundle!.storage,
         noteService: _bundle!.noteService,
         refreshSignal: _refreshSignal,
-        // TODO(Task 6): pass avatarUrl to DocumentScreen
-        // avatarUrl: _session?.user.avatarUrl,
+        avatarUrl: _session?.user.avatarUrl,
       );
     }
     return LoginScreen(

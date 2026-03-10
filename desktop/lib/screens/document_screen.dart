@@ -16,6 +16,7 @@ class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final NoteStorage storage;
   final NoteService noteService;
+  final String? avatarUrl;
 
   /// Optional notifier that signals when remote data has changed.
   /// Each value change triggers a full reload of notes from storage.
@@ -26,6 +27,7 @@ class DocumentScreen extends StatefulWidget {
     required this.onLogout,
     required this.storage,
     required this.noteService,
+    this.avatarUrl,
     this.refreshSignal,
   });
 
@@ -377,6 +379,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
                 fontWeight: FontWeight.w500,
               ),
             ),
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
+          CircleAvatar(
+            radius: 16,
+            backgroundImage: widget.avatarUrl != null
+                ? NetworkImage(widget.avatarUrl!)
+                : null,
+            child: widget.avatarUrl == null
+                ? const Icon(Icons.person, size: 16)
+                : null,
           ),
         ],
       ),
