@@ -277,6 +277,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return EditorPanel(
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
+      selectedDate: _selectedNote == null ? _selectedDate : null,
+      onCreateNote: _createNote,
     );
   }
 
