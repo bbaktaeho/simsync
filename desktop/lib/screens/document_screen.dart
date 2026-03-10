@@ -12,7 +12,7 @@ import '../widgets/note_list_section.dart';
 import '../widgets/weekly_view_panel.dart';
 
 class DocumentScreen extends StatefulWidget {
-  final VoidCallback onLogout;
+  final Future<void> Function() onLogout;
 
   const DocumentScreen({super.key, required this.onLogout});
 
@@ -324,7 +324,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           ),
           const SizedBox(width: AppDimensions.spacingXs),
           TextButton.icon(
-            onPressed: widget.onLogout,
+            onPressed: () async => widget.onLogout(),
             icon: const Icon(Icons.logout_rounded, size: 14),
             label: const Text('Logout'),
             style: TextButton.styleFrom(

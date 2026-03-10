@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../auth/github_oauth_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 
 class LoginScreen extends StatefulWidget {
-  final VoidCallback onLoginSuccess;
+  final Future<void> Function() onGitHubLogin;
 
-  const LoginScreen({super.key, required this.onLoginSuccess});
+  const LoginScreen({super.key, required this.onGitHubLogin});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -15,12 +16,8 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _emailFocus = FocusNode();
-  final _passwordFocus = FocusNode();
-  bool _obscurePassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
   late final Animation<Offset> _slideAnimation;
@@ -49,26 +46,27 @@ class _LoginScreenState extends State<LoginScreen>
   @override
   void dispose() {
     _fadeController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    _emailFocus.dispose();
-    _passwordFocus.dispose();
     super.dispose();
   }
 
-  void _handleLogin() async {
-    final email = _emailController.text.trim();
-    final password = _passwordController.text;
-
-    if (email.isEmpty || password.isEmpty) return;
-
+  Future<void> _handleLogin() async {
     setState(() => _isLoading = true);
 
-    // Shell login — always succeeds after brief delay
-    await Future.delayed(const Duration(milliseconds: 400));
-
-    if (mounted) {
-      widget.onLoginSuccess();
+    try {
+      setState(() => _errorMessage = null);
+      await widget.onGitHubLogin();
+    } on AuthException catch (error) {
+      if (mounted) {
+        setState(() => _errorMessage = error.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _errorMessage = 'GitHub 로그인 중 오류가 발생했습니다.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -114,10 +112,12 @@ class _LoginScreenState extends State<LoginScreen>
         children: [
           _buildLogo(c),
           const SizedBox(height: AppDimensions.spacingXxl),
-          _buildEmailField(c),
-          const SizedBox(height: AppDimensions.spacingLg),
-          _buildPasswordField(c),
+          _buildDescription(c),
           const SizedBox(height: AppDimensions.spacingXl),
+          if (_errorMessage != null) ...[
+            _buildErrorMessage(c),
+            const SizedBox(height: AppDimensions.spacingLg),
+          ],
           _buildLoginButton(c),
         ],
       ),
@@ -159,84 +159,44 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
-  Widget _buildEmailField(AppColorsExtension c) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Email',
-          style: TextStyle(
-            color: c.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.spacingSm),
-        TextField(
-          controller: _emailController,
-          focusNode: _emailFocus,
-          keyboardType: TextInputType.emailAddress,
-          style: TextStyle(color: c.textPrimary, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: 'you@example.com',
-            prefixIcon: Icon(
-              Icons.mail_outline_rounded,
-              size: 18,
-              color: c.textMuted,
-            ),
-          ),
-          onSubmitted: (_) => _passwordFocus.requestFocus(),
-        ),
-      ],
+  Widget _buildDescription(AppColorsExtension c) {
+    return Text(
+      'Use your GitHub account to access SimSync on this desktop device.',
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: c.textSecondary,
+        fontSize: 13,
+        height: 1.5,
+      ),
     );
   }
 
-  Widget _buildPasswordField(AppColorsExtension c) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Password',
-          style: TextStyle(
-            color: c.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: AppDimensions.spacingSm),
-        TextField(
-          controller: _passwordController,
-          focusNode: _passwordFocus,
-          obscureText: _obscurePassword,
-          style: TextStyle(color: c.textPrimary, fontSize: 14),
-          decoration: InputDecoration(
-            hintText: '••••••••',
-            prefixIcon: Icon(
-              Icons.lock_outline_rounded,
-              size: 18,
-              color: c.textMuted,
-            ),
-            suffixIcon: IconButton(
-              icon: Icon(
-                _obscurePassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                size: 18,
-                color: c.textMuted,
-              ),
-              onPressed: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
+  Widget _buildErrorMessage(AppColorsExtension c) {
+    return Container(
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline_rounded, size: 18, color: c.accent),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(color: c.textPrimary, fontSize: 12),
             ),
           ),
-          onSubmitted: (_) => _handleLogin(),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
   Widget _buildLoginButton(AppColorsExtension c) {
     return SizedBox(
-      height: 46,
+      height: 50,
       child: ElevatedButton(
         onPressed: _isLoading ? null : _handleLogin,
         child: _isLoading
@@ -248,7 +208,18 @@ class _LoginScreenState extends State<LoginScreen>
                   color: c.textOnAccent,
                 ),
               )
-            : const Text('Sign In'),
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.code_rounded, color: c.textOnAccent, size: 18),
+                    const SizedBox(width: AppDimensions.spacingSm),
+                    const Text('Continue with GitHub'),
+                  ],
+                ),
+              ),
       ),
     );
   }

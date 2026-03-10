@@ -1,17 +1,18 @@
-# simsync
+# SimSync Desktop
 
-A new Flutter project.
+Flutter desktop prototype for SimSync.
 
-## Getting Started
+## GitHub OAuth Setup
 
-This project is a starting point for a Flutter application.
+1. Create a GitHub OAuth App.
+2. Set the callback URL to `http://127.0.0.1/callback`.
+3. Run the app with `--dart-define` values for the OAuth credentials.
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+cd desktop
+flutter run -d macos \
+  --dart-define=SIMSYNC_GITHUB_CLIENT_ID=your_client_id \
+  --dart-define=SIMSYNC_GITHUB_CLIENT_SECRET=your_client_secret
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+The desktop app opens the system browser for GitHub login, receives the callback on a loopback URL, and stores the session locally until logout or the 24-hour expiry time.
