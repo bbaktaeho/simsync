@@ -46,6 +46,25 @@ go vet ./...           # static analysis
 - Focus on "why" not "what"
 - One logical change per commit
 
+## Implementation Workflow
+
+코드를 구현할 때 다음 절차를 따른다. 매 단계에서 관련 스킬이 있는지 확인한다.
+
+1. 계획 수립
+2. 계획 검토
+3. 구현
+4. 구현이 목적에 부합하는지 검토
+5. 잠재적 버그, 크리티컬 이슈, 보안 문제 검토
+6. 개선 사항에 문제가 없는지 검토
+7. 기존 코드와 통합/재사용 가능 여부 검토
+8. 사이드 이펙트 검토
+9. 전체 변경 사항 재검토
+10. 불필요해진 코드 정리
+11. 최종 코드 품질 검토
+12. 사용자 흐름에서 문제가 없는지 확인
+13. 배포 가능 퀄리티인지 검토
+14. 커밋 및 PR 작성
+
 ## Code Review Checklist
 
 ### Backend (Go)

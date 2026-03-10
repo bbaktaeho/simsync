@@ -25,8 +25,11 @@ The AI agent acts as a lead product architect and technical writing partner duri
 
 ## Repository Focus
 
+### Requirements
 - `docs/guide.md`: product direction, domain model, architecture assumptions
 - `docs/workflow.md`: collaboration and development workflow
+
+### Optional
 - `docs/mvp/`: MVP stage notes
 - `docs/plan/`: planning and architecture notes
 - `docs/develop/`: dated development logs
