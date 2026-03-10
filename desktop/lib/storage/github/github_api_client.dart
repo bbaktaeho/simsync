@@ -199,6 +199,50 @@ class GitHubApiClient {
     }
   }
 
+  /// Creates a private repo with auto-init. Returns `full_name`.
+  /// Throws [GitHubApiException] with 422 on duplicate name.
+  Future<String> createRepo({required String name}) async {
+    final response = await _httpClient.post(
+      Uri.parse('$_baseUrl/user/repos'),
+      headers: {
+        ..._headers,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'name': name,
+        'private': true,
+        'auto_init': true,
+      }),
+    );
+
+    if (response.statusCode == 422) {
+      throw GitHubApiException(422, 'Repository already exists');
+    }
+
+    if (response.statusCode != 201) {
+      throw GitHubApiException(response.statusCode, response.body);
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return json['full_name'] as String;
+  }
+
+  /// Checks whether a repo exists. Returns true on 200, false on 404.
+  Future<bool> repoExists({
+    required String owner,
+    required String repo,
+  }) async {
+    final response = await _httpClient.get(
+      Uri.parse('$_baseUrl/repos/$owner/$repo'),
+      headers: _headers,
+    );
+
+    if (response.statusCode == 200) return true;
+    if (response.statusCode == 404) return false;
+
+    throw GitHubApiException(response.statusCode, response.body);
+  }
+
   /// Closes the underlying HTTP client.
   void dispose() {
     _httpClient.close();

@@ -154,6 +154,78 @@ void main() {
     });
   });
 
+  group('createRepo', () {
+    test('creates private repo and returns full_name', () async {
+      final mock = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(
+          request.url.toString(),
+          'https://api.github.com/user/repos',
+        );
+
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['name'], 'my-repo');
+        expect(body['private'], isTrue);
+        expect(body['auto_init'], isTrue);
+
+        return http.Response(
+          jsonEncode({
+            'full_name': '$owner/my-repo',
+          }),
+          201,
+        );
+      });
+
+      final client = createClient(mock);
+      final fullName = await client.createRepo(name: 'my-repo');
+
+      expect(fullName, '$owner/my-repo');
+    });
+
+    test('throws GitHubApiException on 422', () async {
+      final mock = MockClient(
+        (_) async => http.Response('Validation Failed', 422),
+      );
+      final client = createClient(mock);
+
+      expect(
+        () => client.createRepo(name: 'duplicate-repo'),
+        throwsA(
+          isA<GitHubApiException>().having(
+            (e) => e.statusCode,
+            'statusCode',
+            422,
+          ),
+        ),
+      );
+    });
+  });
+
+  group('repoExists', () {
+    test('returns true for existing repo (200)', () async {
+      final mock = MockClient((_) async {
+        return http.Response(jsonEncode({'full_name': '$owner/$repo'}), 200);
+      });
+
+      final client = createClient(mock);
+      final exists = await client.repoExists(owner: owner, repo: repo);
+
+      expect(exists, isTrue);
+    });
+
+    test('returns false for missing repo (404)', () async {
+      final mock = MockClient((_) async => http.Response('Not Found', 404));
+
+      final client = createClient(mock);
+      final exists = await client.repoExists(
+        owner: owner,
+        repo: 'nonexistent',
+      );
+
+      expect(exists, isFalse);
+    });
+  });
+
   group('deleteFile', () {
     test('sends DELETE with sha in body', () async {
       final mock = MockClient((request) async {
