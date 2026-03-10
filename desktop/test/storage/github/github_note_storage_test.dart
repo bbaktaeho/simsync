@@ -360,6 +360,149 @@ Found it''';
       expect(parsed.noteDate, note.noteDate);
     });
 
+    test('listNotes uses cache when SHA unchanged', () async {
+      int getFileCallCount = 0;
+
+      final noteMarkdown = '''---
+id: "cached-note"
+title: "Cached"
+note_date: 2026-03-10
+is_default: false
+tags: []
+created_at: 2026-03-10T09:00:00+0000
+updated_at: 2026-03-10T10:00:00+0000
+---
+Cached content''';
+
+      final mockClient = MockClient((request) async {
+        final path = request.url.path;
+
+        // Directory listing — always returns the same SHA.
+        if (request.method == 'GET' && path.endsWith('notes/2026-03/10')) {
+          return http.Response(
+            jsonEncode([
+              {
+                'name': 'Cached.md',
+                'path': 'notes/2026-03/10/Cached.md',
+                'sha': 'stable-sha',
+                'type': 'file',
+              },
+            ]),
+            200,
+          );
+        }
+
+        // Individual file fetch.
+        if (request.method == 'GET' &&
+            Uri.decodeFull(path).contains('Cached.md')) {
+          getFileCallCount++;
+          return http.Response(
+            jsonEncode({
+              'name': 'Cached.md',
+              'path': 'notes/2026-03/10/Cached.md',
+              'sha': 'stable-sha',
+              'content': githubBase64(noteMarkdown),
+              'type': 'file',
+            }),
+            200,
+          );
+        }
+
+        return http.Response('Not Found', 404);
+      });
+
+      final apiClient = GitHubApiClient(
+        token: token,
+        owner: owner,
+        repo: repo,
+        httpClient: mockClient,
+      );
+
+      final storage = GitHubNoteStorage(apiClient);
+
+      // First call: should fetch the file.
+      final notes1 = await storage.listNotes(DateTime(2026, 3, 10));
+      expect(notes1.length, 1);
+      expect(getFileCallCount, 1);
+
+      // Second call: same SHA, should use cache — no additional getFile call.
+      final notes2 = await storage.listNotes(DateTime(2026, 3, 10));
+      expect(notes2.length, 1);
+      expect(notes2.first.id, 'cached-note');
+      expect(getFileCallCount, 1); // Still 1 — no new getFile call.
+    });
+
+    test('getNote uses _idToPath index after listNotes', () async {
+      int listDirCallCount = 0;
+
+      final noteMarkdown = '''---
+id: "indexed-note"
+title: "Indexed"
+note_date: 2026-03-10
+is_default: false
+tags: []
+created_at: 2026-03-10T09:00:00+0000
+updated_at: 2026-03-10T10:00:00+0000
+---
+Indexed content''';
+
+      final mockClient = MockClient((request) async {
+        final path = request.url.path;
+
+        if (request.method == 'GET' && path.endsWith('notes/2026-03/10')) {
+          listDirCallCount++;
+          return http.Response(
+            jsonEncode([
+              {
+                'name': 'Indexed.md',
+                'path': 'notes/2026-03/10/Indexed.md',
+                'sha': 'idx-sha',
+                'type': 'file',
+              },
+            ]),
+            200,
+          );
+        }
+
+        if (request.method == 'GET' &&
+            Uri.decodeFull(path).contains('Indexed.md')) {
+          return http.Response(
+            jsonEncode({
+              'name': 'Indexed.md',
+              'path': 'notes/2026-03/10/Indexed.md',
+              'sha': 'idx-sha',
+              'content': githubBase64(noteMarkdown),
+              'type': 'file',
+            }),
+            200,
+          );
+        }
+
+        return http.Response('Not Found', 404);
+      });
+
+      final apiClient = GitHubApiClient(
+        token: token,
+        owner: owner,
+        repo: repo,
+        httpClient: mockClient,
+      );
+
+      final storage = GitHubNoteStorage(apiClient);
+
+      // Populate cache via listNotes.
+      await storage.listNotes(DateTime(2026, 3, 10));
+      expect(listDirCallCount, 1);
+
+      // getNote should use the index — no additional directory listing.
+      final note =
+          await storage.getNote('indexed-note', DateTime(2026, 3, 10));
+      expect(note, isNotNull);
+      expect(note!.id, 'indexed-note');
+      expect(note.content, 'Indexed content');
+      expect(listDirCallCount, 1); // Still 1 — no new listDirectory call.
+    });
+
     test('saveNote with empty title uses note id as filename', () async {
       final requests = <http.BaseRequest>[];
 

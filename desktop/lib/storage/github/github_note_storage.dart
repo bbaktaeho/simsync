@@ -14,6 +14,12 @@ class GitHubNoteStorage implements NoteStorage {
   /// SHA cache: file path → SHA (required for PUT/DELETE operations).
   final Map<String, String> _shaCache = {};
 
+  /// Parsed note cache: file path → Note.
+  final Map<String, Note> _noteCache = {};
+
+  /// ID-to-path index: noteId → file path (for fast getNote lookups).
+  final Map<String, String> _idToPath = {};
+
   GitHubNoteStorage(this._client);
 
   // --- Path helpers ---
@@ -166,11 +172,23 @@ class GitHubNoteStorage implements NoteStorage {
     final dirPath = _dayDirPath(date);
     final files = await _client.listDirectory(dirPath);
 
+    // Track current file paths to prune stale cache entries.
+    final currentPaths = <String>{};
     final notes = <Note>[];
+
     for (final file in files) {
       if (file.type != 'file' || !file.name.endsWith('.md')) continue;
 
-      final fullFile = await _client.getFile(file.path);
+      final path = file.path;
+      currentPaths.add(path);
+
+      // Use cached note if SHA is unchanged.
+      if (_shaCache[path] == file.sha && _noteCache.containsKey(path)) {
+        notes.add(_noteCache[path]!);
+        continue;
+      }
+
+      final fullFile = await _client.getFile(path);
       _shaCache[fullFile.path] = fullFile.sha;
 
       final decoded = fullFile.decodedContent;
@@ -179,8 +197,24 @@ class GitHubNoteStorage implements NoteStorage {
       final note = parseNote(decoded);
       if (note != null) {
         notes.add(note);
+        _noteCache[path] = note;
+        _idToPath[note.id] = path;
       }
     }
+
+    // Prune cache entries for files no longer in the directory.
+    final dirPrefix = '$dirPath/';
+    final stalePaths = _noteCache.keys
+        .where((p) => p.startsWith(dirPrefix) && !currentPaths.contains(p))
+        .toList();
+    for (final stalePath in stalePaths) {
+      final staleNote = _noteCache.remove(stalePath);
+      _shaCache.remove(stalePath);
+      if (staleNote != null) {
+        _idToPath.remove(staleNote.id);
+      }
+    }
+
     return notes;
   }
 
@@ -210,24 +244,38 @@ class GitHubNoteStorage implements NoteStorage {
 
   @override
   Future<Note?> getNote(String noteId, DateTime noteDate) async {
-    final dirPath = _dayDirPath(noteDate);
-    final files = await _client.listDirectory(dirPath);
+    // Fast path: use ID-to-path index.
+    final cachedPath = _idToPath[noteId];
+    if (cachedPath != null && _noteCache.containsKey(cachedPath)) {
+      return _noteCache[cachedPath];
+    }
 
-    for (final file in files) {
-      if (file.type != 'file' || !file.name.endsWith('.md')) continue;
-
-      final fullFile = await _client.getFile(file.path);
-      _shaCache[fullFile.path] = fullFile.sha;
-
-      final decoded = fullFile.decodedContent;
-      if (decoded == null) continue;
-
-      final note = parseNote(decoded);
-      if (note != null && note.id == noteId) {
-        return note;
+    // If we have a path but no cached note, fetch directly.
+    if (cachedPath != null) {
+      try {
+        final fullFile = await _client.getFile(cachedPath);
+        _shaCache[fullFile.path] = fullFile.sha;
+        final decoded = fullFile.decodedContent;
+        if (decoded != null) {
+          final note = parseNote(decoded);
+          if (note != null && note.id == noteId) {
+            _noteCache[cachedPath] = note;
+            return note;
+          }
+        }
+      } on GitHubNotFoundException {
+        // Path is stale; remove from index and fall through.
+        _idToPath.remove(noteId);
+        _noteCache.remove(cachedPath);
+        _shaCache.remove(cachedPath);
       }
     }
-    return null;
+
+    // Fallback: list all notes for the date (populates caches for next time).
+    final notes = await listNotes(noteDate);
+    return notes.where((n) => n.id == noteId).isEmpty
+        ? null
+        : notes.firstWhere((n) => n.id == noteId);
   }
 
   @override
@@ -255,6 +303,9 @@ class GitHubNoteStorage implements NoteStorage {
       );
       _shaCache[path] = newSha;
     }
+
+    _noteCache[path] = note;
+    _idToPath[note.id] = path;
   }
 
   @override
@@ -285,5 +336,7 @@ class GitHubNoteStorage implements NoteStorage {
     }
 
     _shaCache.remove(path);
+    _noteCache.remove(path);
+    _idToPath.remove(note.id);
   }
 }
