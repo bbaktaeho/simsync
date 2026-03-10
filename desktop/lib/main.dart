@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
+import 'auth/auth_models.dart';
 import 'auth/auth_service.dart';
 import 'auth/github_oauth_provider.dart';
 import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/repo_selection_screen.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_storage.dart';
 import 'storage/github/github_storage_config.dart';
 import 'storage/github/github_sync_engine.dart';
+import 'storage/github/repo_cache.dart';
 import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
 
@@ -108,6 +111,9 @@ class _AppShell extends StatefulWidget {
 class _AppShellState extends State<_AppShell> {
   _AuthStatus _status = _AuthStatus.restoring;
 
+  // Session stored after login, needed for repo selection screen.
+  AuthSession? _session;
+
   // Storage layer (resolved after auth succeeds).
   StorageBundle? _bundle;
 
@@ -131,13 +137,8 @@ class _AppShellState extends State<_AppShell> {
   Future<void> _handleLogin() async {
     final session = await widget.authService.signIn();
     if (!mounted) return;
-    _bundle = await widget.storageFactory(
-      session.accessToken,
-      onRemoteChanged: _onRemoteChanged,
-    );
-    _bundle?.syncEngine?.start();
-    if (!mounted) return;
-    setState(() => _status = _AuthStatus.authenticated);
+    _session = session;
+    setState(() => _status = _AuthStatus.repoSelection);
   }
 
   Future<void> _handleLogout() async {
@@ -155,8 +156,46 @@ class _AppShellState extends State<_AppShell> {
       setState(() => _status = _AuthStatus.unauthenticated);
       return;
     }
+
+    // Check if a GitHub storage config already exists on disk.
+    GitHubStorageConfig? config;
+    try {
+      config = await GitHubStorageConfig.load();
+    } catch (_) {
+      // Config missing or unreadable.
+    }
+
+    if (!mounted) return;
+
+    if (config != null) {
+      // Config exists — go straight to authenticated.
+      _session = session;
+      _bundle = await widget.storageFactory(
+        session.accessToken,
+        onRemoteChanged: _onRemoteChanged,
+      );
+      _bundle?.syncEngine?.start();
+      if (!mounted) return;
+      setState(() => _status = _AuthStatus.authenticated);
+    } else {
+      // No config — let user pick a repo.
+      _session = session;
+      setState(() => _status = _AuthStatus.repoSelection);
+    }
+  }
+
+  Future<void> _handleRepoSelected(RepoEntry entry) async {
+    // Persist the selected repo as the active GitHub storage config.
+    final config = GitHubStorageConfig(
+      owner: entry.owner,
+      repo: entry.repo,
+      branch: entry.branch,
+    );
+    await config.save();
+
+    // Create storage bundle using the stored session token.
     _bundle = await widget.storageFactory(
-      session.accessToken,
+      _session!.accessToken,
       onRemoteChanged: _onRemoteChanged,
     );
     _bundle?.syncEngine?.start();
@@ -177,12 +216,24 @@ class _AppShellState extends State<_AppShell> {
       );
     }
 
+    if (_status == _AuthStatus.repoSelection) {
+      return RepoSelectionScreen(
+        accessToken: _session!.accessToken,
+        userLogin: _session!.user.login,
+        avatarUrl: _session!.user.avatarUrl,
+        onRepoSelected: _handleRepoSelected,
+        repoCache: RepoCache(),
+      );
+    }
+
     if (_status == _AuthStatus.authenticated) {
       return DocumentScreen(
         onLogout: _handleLogout,
         storage: _bundle!.storage,
         noteService: _bundle!.noteService,
         refreshSignal: _refreshSignal,
+        // TODO(Task 6): pass avatarUrl to DocumentScreen
+        // avatarUrl: _session?.user.avatarUrl,
       );
     }
     return LoginScreen(
@@ -252,6 +303,7 @@ AuthService createDefaultAuthService() {
 
 enum _AuthStatus {
   restoring,
-  authenticated,
   unauthenticated,
+  repoSelection,
+  authenticated,
 }

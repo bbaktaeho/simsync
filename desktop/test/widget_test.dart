@@ -6,7 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:simsync/auth/auth_models.dart';
 import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
-import 'package:simsync/screens/document_screen.dart';
+import 'package:simsync/screens/repo_selection_screen.dart';
 import 'package:simsync/services/note_service.dart';
 
 void main() {
@@ -29,39 +29,45 @@ void main() {
     expect(find.text('Password'), findsNothing);
   });
 
-  testWidgets('App restores session and routes to document screen', (
+  testWidgets('App restores session and routes to repo selection when no config exists', (
     WidgetTester tester,
   ) async {
+    // Suppress network image errors from RepoSelectionScreen's avatar.
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (details.toString().contains('NetworkImageLoadException')) return;
+      originalOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = originalOnError);
+
     await tester.pumpWidget(
       SimSyncApp(
         authService: _FakeAuthService(
-          restoreResult: AuthSession(
-            provider: 'github',
-            accessToken: 'token',
-            tokenType: 'bearer',
-            scope: 'read:user',
-            issuedAt: DateTime.utc(2026, 3, 10, 9),
-            expiresAt: DateTime.utc(2026, 3, 11, 9),
-            user: const AuthUser(
-              id: '1',
-              login: 'octocat',
-              name: null,
-              avatarUrl: 'https://example.com/avatar.png',
-            ),
-          ),
+          restoreResult: _testSession,
         ),
         storageFactory: _fakeStorageFactory,
       ),
     );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.byType(DocumentScreen), findsOneWidget);
+    // Allow async _restoreSession + GitHubStorageConfig.load() to complete.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(RepoSelectionScreen), findsOneWidget);
   });
 
   testWidgets('Login button shows loading indicator while auth is in progress', (
     WidgetTester tester,
   ) async {
+    // Suppress network image errors from RepoSelectionScreen's avatar.
+    final originalOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (details.toString().contains('NetworkImageLoadException')) return;
+      originalOnError?.call(details);
+    };
+    addTearDown(() => FlutterError.onError = originalOnError);
+
     final completer = Completer<AuthSession>();
     final authService = _FakeAuthService(
       restoreResult: null,
@@ -81,28 +87,28 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    completer.complete(
-      AuthSession(
-        provider: 'github',
-        accessToken: 'token',
-        tokenType: 'bearer',
-        scope: 'read:user',
-        issuedAt: DateTime.utc(2026, 3, 10, 9),
-        expiresAt: DateTime.utc(2026, 3, 11, 9),
-        user: const AuthUser(
-          id: '1',
-          login: 'octocat',
-          name: null,
-          avatarUrl: 'https://example.com/avatar.png',
-        ),
-      ),
-    );
+    completer.complete(_testSession);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 50));
+    await tester.pump(const Duration(milliseconds: 100));
 
-    expect(find.byType(DocumentScreen), findsOneWidget);
+    expect(find.byType(RepoSelectionScreen), findsOneWidget);
   });
 }
+
+final _testSession = AuthSession(
+  provider: 'github',
+  accessToken: 'token',
+  tokenType: 'bearer',
+  scope: 'read:user',
+  issuedAt: DateTime.utc(2026, 3, 10, 9),
+  expiresAt: DateTime.utc(2026, 3, 11, 9),
+  user: const AuthUser(
+    id: '1',
+    login: 'octocat',
+    name: null,
+    avatarUrl: 'https://example.com/avatar.png',
+  ),
+);
 
 /// Test storage factory that returns local NoteService without disk config.
 Future<StorageBundle> _fakeStorageFactory(
