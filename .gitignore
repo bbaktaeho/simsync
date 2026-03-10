@@ -1,3 +1,6 @@
+# Worktrees
+.worktrees/
+
 # Flutter / Dart
 desktop/build/
 desktop/.dart_tool/
