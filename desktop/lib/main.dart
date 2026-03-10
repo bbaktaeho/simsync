@@ -8,7 +8,29 @@ import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
+import 'services/note_service.dart';
+import 'storage/github/github_api_client.dart';
+import 'storage/github/github_note_storage.dart';
+import 'storage/github/github_storage_config.dart';
+import 'storage/github/github_sync_engine.dart';
+import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
+
+/// Resolved storage layer after authentication.
+class StorageBundle {
+  final NoteStorage storage;
+  final NoteService noteService;
+  final GitHubSyncEngine? syncEngine;
+
+  const StorageBundle({
+    required this.storage,
+    required this.noteService,
+    this.syncEngine,
+  });
+}
+
+/// Signature for a function that creates a [StorageBundle] from a token.
+typedef StorageFactory = Future<StorageBundle> Function(String accessToken);
 
 void main() {
   runApp(SimSyncApp(authService: createDefaultAuthService()));
@@ -18,9 +40,14 @@ class SimSyncApp extends StatefulWidget {
   const SimSyncApp({
     super.key,
     required this.authService,
+    this.storageFactory,
   });
 
   final AuthService authService;
+
+  /// Optional override for storage initialization (useful for testing).
+  /// When null, the default factory reads [GitHubStorageConfig] from disk.
+  final StorageFactory? storageFactory;
 
   @override
   State<SimSyncApp> createState() => SimSyncAppState();
@@ -50,16 +77,23 @@ class SimSyncAppState extends State<SimSyncApp> {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: _themeMode,
-      home: _AppShell(authService: widget.authService),
+      home: _AppShell(
+        authService: widget.authService,
+        storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+      ),
     );
   }
 }
 
-/// Root shell that manages auth state (login ↔ document screen).
+/// Root shell that manages auth state (login <-> document screen).
 class _AppShell extends StatefulWidget {
-  const _AppShell({required this.authService});
+  const _AppShell({
+    required this.authService,
+    required this.storageFactory,
+  });
 
   final AuthService authService;
+  final StorageFactory storageFactory;
 
   @override
   State<_AppShell> createState() => _AppShellState();
@@ -68,19 +102,33 @@ class _AppShell extends StatefulWidget {
 class _AppShellState extends State<_AppShell> {
   _AuthStatus _status = _AuthStatus.restoring;
 
+  // Storage layer (resolved after auth succeeds).
+  StorageBundle? _bundle;
+
   @override
   void initState() {
     super.initState();
     _restoreSession();
   }
 
+  @override
+  void dispose() {
+    _bundle?.syncEngine?.dispose();
+    super.dispose();
+  }
+
   Future<void> _handleLogin() async {
-    await widget.authService.signIn();
+    final session = await widget.authService.signIn();
+    if (!mounted) return;
+    _bundle = await widget.storageFactory(session.accessToken);
+    _bundle?.syncEngine?.start();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
   }
 
   Future<void> _handleLogout() async {
+    _bundle?.syncEngine?.dispose();
+    _bundle = null;
     await widget.authService.logout();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.unauthenticated);
@@ -89,10 +137,14 @@ class _AppShellState extends State<_AppShell> {
   Future<void> _restoreSession() async {
     final session = await widget.authService.restoreSession();
     if (!mounted) return;
-    setState(() {
-      _status =
-          session == null ? _AuthStatus.unauthenticated : _AuthStatus.authenticated;
-    });
+    if (session == null) {
+      setState(() => _status = _AuthStatus.unauthenticated);
+      return;
+    }
+    _bundle = await widget.storageFactory(session.accessToken);
+    _bundle?.syncEngine?.start();
+    if (!mounted) return;
+    setState(() => _status = _AuthStatus.authenticated);
   }
 
   @override
@@ -107,12 +159,50 @@ class _AppShellState extends State<_AppShell> {
     if (_status == _AuthStatus.authenticated) {
       return DocumentScreen(
         onLogout: _handleLogout,
+        storage: _bundle!.storage,
+        noteService: _bundle!.noteService,
       );
     }
     return LoginScreen(
       onGitHubLogin: _handleLogin,
     );
   }
+}
+
+/// Default storage factory: reads GitHub config from disk, falls back to local.
+Future<StorageBundle> _defaultStorageFactory(String accessToken) async {
+  final localService = NoteService();
+
+  GitHubStorageConfig? config;
+  try {
+    config = await GitHubStorageConfig.load();
+  } catch (_) {
+    // Config file missing or unreadable — fall back to local storage.
+  }
+
+  if (config != null) {
+    final apiClient = GitHubApiClient(
+      token: accessToken,
+      owner: config.owner,
+      repo: config.repo,
+    );
+    return StorageBundle(
+      storage: GitHubNoteStorage(apiClient),
+      noteService: localService,
+      syncEngine: GitHubSyncEngine(
+        token: accessToken,
+        owner: config.owner,
+        repo: config.repo,
+        branch: config.branch,
+        interval: config.syncInterval,
+      ),
+    );
+  }
+
+  return StorageBundle(
+    storage: localService,
+    noteService: localService,
+  );
 }
 
 AuthService createDefaultAuthService() {

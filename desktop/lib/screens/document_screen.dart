@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 import '../models/note.dart';
 import '../services/note_service.dart';
+import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../widgets/calendar_section.dart';
@@ -13,8 +14,15 @@ import '../widgets/weekly_view_panel.dart';
 
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
+  final NoteStorage storage;
+  final NoteService noteService;
 
-  const DocumentScreen({super.key, required this.onLogout});
+  const DocumentScreen({
+    super.key,
+    required this.onLogout,
+    required this.storage,
+    required this.noteService,
+  });
 
   @override
   State<DocumentScreen> createState() => _DocumentScreenState();
@@ -22,7 +30,8 @@ class DocumentScreen extends StatefulWidget {
 
 class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
-  final NoteService _noteService = NoteService();
+  NoteStorage get _storage => widget.storage;
+  NoteService get _noteService => widget.noteService;
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -169,7 +178,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _selectedNote = updatedNote;
       }
     });
-    _noteService.saveNote(updatedNote);
+    _storage.saveNote(updatedNote);
   }
 
   Future<void> _createNote() async {

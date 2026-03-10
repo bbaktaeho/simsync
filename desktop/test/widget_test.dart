@@ -7,6 +7,7 @@ import 'package:simsync/auth/auth_models.dart';
 import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
 import 'package:simsync/screens/document_screen.dart';
+import 'package:simsync/services/note_service.dart';
 
 void main() {
   testWidgets('App renders GitHub login screen when no session exists', (
@@ -17,6 +18,7 @@ void main() {
         authService: _FakeAuthService(
           restoreResult: null,
         ),
+        storageFactory: _fakeStorageFactory,
       ),
     );
     await tester.pumpAndSettle();
@@ -48,6 +50,7 @@ void main() {
             ),
           ),
         ),
+        storageFactory: _fakeStorageFactory,
       ),
     );
     await tester.pump();
@@ -68,6 +71,7 @@ void main() {
     await tester.pumpWidget(
       SimSyncApp(
         authService: authService,
+        storageFactory: _fakeStorageFactory,
       ),
     );
     await tester.pumpAndSettle();
@@ -98,6 +102,12 @@ void main() {
 
     expect(find.byType(DocumentScreen), findsOneWidget);
   });
+}
+
+/// Test storage factory that returns local NoteService without disk config.
+Future<StorageBundle> _fakeStorageFactory(String accessToken) async {
+  final service = NoteService();
+  return StorageBundle(storage: service, noteService: service);
 }
 
 class _FakeAuthService implements AuthService {
