@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 import 'package:yaml/yaml.dart';
 
 import '../models/note.dart';
+import '../storage/note_storage.dart';
 
 const _uuid = Uuid();
 
@@ -25,7 +26,7 @@ final _isoFmt = DateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
 /// └── 2026-03-09/
 ///     └── <uuid>.md
 /// ```
-class NoteService {
+class NoteService implements NoteStorage {
   final String _basePath;
 
   NoteService._(this._basePath);
@@ -124,6 +125,40 @@ class NoteService {
       final remaining = await dir.list().length;
       if (remaining == 0) await dir.delete();
     }
+  }
+
+  // ── NoteStorage interface ──
+
+  @override
+  Future<List<Note>> listNotes(DateTime date) => loadNotesByDate(date);
+
+  @override
+  Future<List<DateTime>> listDates(String yearMonth) async {
+    if (!await _baseDir.exists()) return [];
+
+    final dates = <DateTime>[];
+    await for (final entity in _baseDir.list()) {
+      if (entity is! Directory) continue;
+      final dirName = entity.uri.pathSegments
+          .where((s) => s.isNotEmpty)
+          .last;
+      if (!dirName.startsWith(yearMonth)) continue;
+      try {
+        dates.add(DateTime.parse(dirName));
+      } catch (_) {
+        // skip directories that don't parse as dates
+      }
+    }
+    dates.sort();
+    return dates;
+  }
+
+  @override
+  Future<Note?> getNote(String noteId, DateTime noteDate) async {
+    final filePath = '${_dateDirPath(noteDate)}/$noteId.md';
+    final file = File(filePath);
+    if (!await file.exists()) return null;
+    return _parseNoteFile(file);
   }
 
   // ── Helpers ──
