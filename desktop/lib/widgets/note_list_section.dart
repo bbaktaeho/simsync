@@ -201,8 +201,7 @@ class _NoteListItemState extends State<_NoteListItem> {
         onTap: widget.onTap,
         onSecondaryTapUp: (details) =>
             _showContextMenu(context, details.globalPosition),
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
+        child: Container(
           margin: const EdgeInsets.only(bottom: 2),
           padding: const EdgeInsets.symmetric(
             horizontal: AppDimensions.spacingSm,
