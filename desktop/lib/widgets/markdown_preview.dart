@@ -34,6 +34,8 @@ class MarkdownPreviewWidget extends StatelessWidget {
       styleSheet: _buildStyleSheet(c),
       builders: {
         'code': _CodeBlockBuilder(context),
+        'h1': _HeadingBuilder(borderColor: c.border),
+        'h2': _HeadingBuilder(borderColor: c.border),
       },
     );
   }
@@ -52,6 +54,18 @@ class MarkdownPreviewWidget extends StatelessWidget {
       h4: GoogleFonts.manrope(
         fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
       ),
+      h5: GoogleFonts.manrope(
+        fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
+      ),
+      h6: GoogleFonts.manrope(
+        fontSize: 13, fontWeight: FontWeight.w600, color: c.textSecondary, height: 1.4,
+      ),
+      h1Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h2Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h3Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h4Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h5Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h6Padding: const EdgeInsets.only(top: 16, bottom: 8),
       p: GoogleFonts.manrope(
         fontSize: 14, color: c.textPrimary, height: 1.7,
       ),
@@ -85,6 +99,35 @@ class MarkdownPreviewWidget extends StatelessWidget {
       tableBody: GoogleFonts.manrope(fontSize: 13, color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
+    );
+  }
+}
+
+/// Custom builder that adds a GitHub-style bottom divider to h1/h2 headings.
+class _HeadingBuilder extends MarkdownElementBuilder {
+  final Color borderColor;
+
+  _HeadingBuilder({required this.borderColor});
+
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final text = element.textContent;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: borderColor, width: 1)),
+      ),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: SelectableText(
+        text,
+        style: preferredStyle,
+      ),
     );
   }
 }
