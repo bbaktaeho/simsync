@@ -327,6 +327,53 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  Future<void> _deleteNote(Note note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final c = ctx.colors;
+        return AlertDialog(
+          backgroundColor: c.surface,
+          title: Text('노트 삭제',
+              style: TextStyle(color: c.textPrimary, fontSize: 16)),
+          content: Text(
+            "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+            style: TextStyle(color: c.textSecondary, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('취소', style: TextStyle(color: c.textMuted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('삭제', style: TextStyle(color: c.error)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _storage.deleteNote(note);
+      setState(() {
+        _allNotes.removeWhere((n) => n.id == note.id);
+        if (_selectedNote?.id == note.id) {
+          final remaining = _notesForSelectedDate;
+          _selectedNote = remaining.isNotEmpty ? remaining.first : null;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('삭제 실패: $e')),
+        );
+      }
+    }
+  }
+
   void _toggleWeeklyView() {
     setState(() => _weeklyViewActive = !_weeklyViewActive);
   }
@@ -503,6 +550,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
               onNoteSelected: _onNoteSelected,
               onCreateNote: _createNote,
               onPageChanged: (page) => setState(() => _currentPage = page),
+              onDeleteNote: _deleteNote,
             ),
           ),
         ],

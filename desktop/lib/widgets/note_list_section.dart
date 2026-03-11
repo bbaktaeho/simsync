@@ -15,6 +15,7 @@ class NoteListSection extends StatelessWidget {
   final ValueChanged<Note> onNoteSelected;
   final VoidCallback onCreateNote;
   final ValueChanged<int> onPageChanged;
+  final Future<void> Function(Note note)? onDeleteNote;
 
   const NoteListSection({
     super.key,
@@ -26,6 +27,7 @@ class NoteListSection extends StatelessWidget {
     required this.onNoteSelected,
     required this.onCreateNote,
     required this.onPageChanged,
+    this.onDeleteNote,
   });
 
   @override
@@ -119,6 +121,7 @@ class NoteListSection extends StatelessWidget {
           note: note,
           isSelected: isSelected,
           onTap: () => onNoteSelected(note),
+          onDelete: onDeleteNote != null ? () => onDeleteNote!(note) : null,
         );
       },
     );
@@ -158,11 +161,13 @@ class _NoteListItem extends StatefulWidget {
   final Note note;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   const _NoteListItem({
     required this.note,
     required this.isSelected,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -189,6 +194,8 @@ class _NoteListItemState extends State<_NoteListItem> {
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        onSecondaryTapUp: (details) =>
+            _showContextMenu(context, details.globalPosition),
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           margin: const EdgeInsets.only(bottom: 2),
@@ -243,6 +250,29 @@ class _NoteListItemState extends State<_NoteListItem> {
         ),
       ),
     );
+  }
+
+  void _showContextMenu(BuildContext context, Offset position) {
+    final c = context.colors;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
+      items: [
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 16, color: c.error),
+              const SizedBox(width: 8),
+              Text('삭제', style: TextStyle(color: c.error, fontSize: 13)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') widget.onDelete?.call();
+    });
   }
 
   Widget _buildTags(AppColorsExtension c, List<String> tags) {
