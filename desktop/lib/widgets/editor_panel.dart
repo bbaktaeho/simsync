@@ -75,6 +75,7 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   void _onContentChanged() {
+    widget.note?.isDirty = true;
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(_autoSaveDelay, _save);
   }
@@ -86,6 +87,7 @@ class _EditorPanelState extends State<EditorPanel> {
       title: _titleController.text,
       content: _contentController.text,
       updatedAt: now,
+      isDirty: false,
     );
     widget.onNoteChanged?.call(updated);
     setState(() => _lastSaved = now);

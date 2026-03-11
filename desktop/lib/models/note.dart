@@ -9,6 +9,10 @@ class Note {
   final DateTime createdAt;
   DateTime updatedAt;
 
+  /// Runtime-only flag indicating unsaved local edits.
+  /// Not serialized — defaults to false.
+  bool isDirty;
+
   Note({
     required this.id,
     required this.noteDate,
@@ -18,6 +22,7 @@ class Note {
     required this.tags,
     required this.createdAt,
     required this.updatedAt,
+    this.isDirty = false,
   });
 
   Note copyWith({
@@ -25,6 +30,7 @@ class Note {
     String? content,
     List<String>? tags,
     DateTime? updatedAt,
+    bool? isDirty,
   }) {
     return Note(
       id: id,
@@ -35,6 +41,7 @@ class Note {
       tags: tags ?? List.from(this.tags),
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isDirty: isDirty ?? this.isDirty,
     );
   }
 }

@@ -50,6 +50,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _weeklyViewActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
+  bool _isSyncing = false;
+  bool _savePending = false;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
 
@@ -76,8 +78,23 @@ class _DocumentScreenState extends State<DocumentScreen> {
     super.dispose();
   }
 
-  void _onRefreshSignal() {
-    _loadNotes();
+  void _onRefreshSignal() async {
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      await _loadNotes();
+    } finally {
+      _isSyncing = false;
+      if (_savePending) {
+        _savePending = false;
+        for (final note in _allNotes) {
+          if (note.isDirty) {
+            await _storage.saveNote(note);
+            note.isDirty = false;
+          }
+        }
+      }
+    }
   }
 
   Future<void> _loadNotes() async {
@@ -103,6 +120,28 @@ class _DocumentScreenState extends State<DocumentScreen> {
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (!mounted) return;
     final previousSelectedId = _selectedNote?.id;
+
+    // Merge remote notes with local dirty notes to prevent overwriting
+    // unsaved edits during sync.
+    final dirtyById = <String, Note>{};
+    for (final local in _allNotes) {
+      if (local.isDirty) {
+        dirtyById[local.id] = local;
+      }
+    }
+    if (dirtyById.isNotEmpty) {
+      // For each remote note, keep local version if it has unsaved edits.
+      for (var i = 0; i < notes.length; i++) {
+        final dirty = dirtyById.remove(notes[i].id);
+        if (dirty != null) {
+          notes[i] = dirty;
+        }
+      }
+      // Keep dirty notes that don't exist on remote yet (newly created).
+      notes.addAll(dirtyById.values);
+      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    }
+
     setState(() {
       _allNotes = notes;
       _isLoading = false;
@@ -238,8 +277,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
     // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 2), () {
-      _storage.saveNote(updatedNote);
+    _saveDebounce = Timer(const Duration(seconds: 2), () async {
+      if (_isSyncing) {
+        _savePending = true;
+        return;
+      }
+      await _storage.saveNote(updatedNote);
     });
   }
 
