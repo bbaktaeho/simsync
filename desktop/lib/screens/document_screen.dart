@@ -337,6 +337,28 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  Future<void> _createLocalNote() async {
+    if (_selectedDate == null || widget.localStorage == null) return;
+    final now = DateTime.now();
+    final newNote = Note(
+      id: now.millisecondsSinceEpoch.toString(),
+      noteDate: _selectedDate!,
+      title: '',
+      content: '',
+      isDefault: false,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+      storageType: StorageType.local,
+    );
+    await widget.localStorage!.saveNote(newNote);
+    setState(() {
+      _allNotes.add(newNote);
+      _selectedNote = newNote;
+      _weeklyViewActive = false;
+    });
+  }
+
   void _previousMonth() {
     setState(() {
       _displayedMonth = DateTime(
@@ -576,7 +598,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
               totalPages: _totalPages,
               totalCount: _notesForSelectedDate.length,
               onNoteSelected: _onNoteSelected,
-              onCreateNote: _createNote,
+              onCreateSyncNote: _createNote,
+              onCreateLocalNote:
+                  widget.localStorage != null ? _createLocalNote : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
               onDeleteNote: _deleteNote,
             ),

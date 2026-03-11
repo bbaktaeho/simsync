@@ -13,7 +13,8 @@ class NoteListSection extends StatelessWidget {
   final int totalPages;
   final int totalCount;
   final ValueChanged<Note> onNoteSelected;
-  final VoidCallback onCreateNote;
+  final VoidCallback onCreateSyncNote;
+  final VoidCallback? onCreateLocalNote;
   final ValueChanged<int> onPageChanged;
   final Future<void> Function(Note note)? onDeleteNote;
 
@@ -25,7 +26,8 @@ class NoteListSection extends StatelessWidget {
     required this.totalPages,
     required this.totalCount,
     required this.onNoteSelected,
-    required this.onCreateNote,
+    required this.onCreateSyncNote,
+    this.onCreateLocalNote,
     required this.onPageChanged,
     this.onDeleteNote,
   });
@@ -81,7 +83,10 @@ class NoteListSection extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _AddNoteButton(onTap: onCreateNote),
+          _AddNoteButton(
+            onCreateSync: onCreateSyncNote,
+            onCreateLocal: onCreateLocalNote,
+          ),
         ],
       ),
     );
@@ -347,17 +352,54 @@ class _TagChip extends StatelessWidget {
 }
 
 class _AddNoteButton extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback onCreateSync;
+  final VoidCallback? onCreateLocal;
 
-  const _AddNoteButton({required this.onTap});
+  const _AddNoteButton({required this.onCreateSync, this.onCreateLocal});
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value == 'sync') onCreateSync();
+        if (value == 'local') onCreateLocal?.call();
+      },
+      offset: const Offset(0, 28),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        side: BorderSide(color: c.border),
+      ),
+      color: c.surface,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'sync',
+          child: Row(
+            children: [
+              Icon(Icons.cloud_outlined, size: 14, color: c.accent),
+              const SizedBox(width: 8),
+              Text('동기화 노트',
+                  style: GoogleFonts.manrope(
+                      fontSize: 12, color: c.textPrimary)),
+            ],
+          ),
+        ),
+        if (onCreateLocal != null)
+          PopupMenuItem(
+            value: 'local',
+            child: Row(
+              children: [
+                Icon(Icons.folder_outlined,
+                    size: 14, color: const Color(0xFFD97706)),
+                const SizedBox(width: 8),
+                Text('로컬 노트',
+                    style: GoogleFonts.manrope(
+                        fontSize: 12, color: c.textPrimary)),
+              ],
+            ),
+          ),
+      ],
       child: Container(
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
