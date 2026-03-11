@@ -389,20 +389,42 @@ class _DocumentScreenState extends State<DocumentScreen> {
         final c = ctx.colors;
         return AlertDialog(
           backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: c.border),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
           title: Text('노트 삭제',
-              style: TextStyle(color: c.textPrimary, fontSize: 16)),
+              style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
           content: Text(
             "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-            style: TextStyle(color: c.textSecondary, fontSize: 13),
+            style: TextStyle(color: c.textSecondary, fontSize: 12.5),
           ),
           actions: [
             TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('취소', style: TextStyle(color: c.textMuted)),
+              child: Text('취소',
+                  style: TextStyle(color: c.textMuted, fontSize: 12.5)),
             ),
             TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('삭제', style: TextStyle(color: c.error)),
+              child: Text('삭제',
+                  style: TextStyle(color: c.error, fontSize: 12.5)),
             ),
           ],
         );

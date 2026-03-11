@@ -269,14 +269,24 @@ class _NoteListItemState extends State<_NoteListItem> {
       context: context,
       position: RelativeRect.fromLTRB(
           position.dx, position.dy, position.dx, position.dy),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: c.border),
+      ),
+      color: c.surface,
+      menuPadding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 100),
       items: [
         PopupMenuItem(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           value: 'delete',
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.delete_outline_rounded, size: 16, color: c.error),
-              const SizedBox(width: 8),
-              Text('삭제', style: TextStyle(color: c.error, fontSize: 13)),
+              Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
+              const SizedBox(width: 6),
+              Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
             ],
           ),
         ),
