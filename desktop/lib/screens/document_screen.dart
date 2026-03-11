@@ -525,6 +525,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,
       onCreateNote: _createNote,
+      onCreateLocalNote: widget.localStorage != null ? _createLocalNote : null,
     );
   }
 
