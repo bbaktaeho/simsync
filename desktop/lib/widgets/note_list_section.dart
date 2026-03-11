@@ -212,7 +212,11 @@ class _NoteListItemState extends State<_NoteListItem> {
             color: bgColor,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
             border: widget.isSelected
-                ? Border.all(color: c.accent.withValues(alpha: 0.3))
+                ? Border.all(
+                    color: (widget.note.storageType == StorageType.local
+                            ? c.localAccent
+                            : c.accent)
+                        .withValues(alpha: 0.3))
                 : null,
           ),
           child: Row(
@@ -223,7 +227,9 @@ class _NoteListItemState extends State<_NoteListItem> {
                   height: 28,
                   margin: const EdgeInsets.only(right: AppDimensions.spacingSm),
                   decoration: BoxDecoration(
-                    color: c.accent,
+                    color: widget.note.storageType == StorageType.local
+                        ? c.localAccent
+                        : c.accent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),

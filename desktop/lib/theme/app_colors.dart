@@ -21,6 +21,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
   final Color calendarToday;
   final Color calendarDot;
   final Color calendarSelected;
+  final Color localAccent;
 
   const AppColorsExtension({
     required this.scaffold,
@@ -41,6 +42,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     required this.calendarToday,
     required this.calendarDot,
     required this.calendarSelected,
+    required this.localAccent,
   });
 
   /// Dark theme palette — muted warm sand accent.
@@ -63,6 +65,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarToday: Color(0xFFC4A882),
     calendarDot: Color(0xFFC4A882),
     calendarSelected: Color(0xFF2D333B),
+    localAccent: Color(0xFFD97706),
   );
 
   /// Light theme palette.
@@ -85,10 +88,11 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarToday: Color(0xFF9C7E56),
     calendarDot: Color(0xFF9C7E56),
     calendarSelected: Color(0xFFE8EBF0),
+    localAccent: Color(0xFFB45309),
   );
 
   @override
-  AppColorsExtension copyWith({Color? accent}) {
+  AppColorsExtension copyWith({Color? accent, Color? localAccent}) {
     return AppColorsExtension(
       scaffold: scaffold,
       surface: surface,
@@ -108,6 +112,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarToday: calendarToday,
       calendarDot: calendarDot,
       calendarSelected: calendarSelected,
+      localAccent: localAccent ?? this.localAccent,
     );
   }
 
@@ -133,6 +138,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarToday: Color.lerp(calendarToday, other.calendarToday, t)!,
       calendarDot: Color.lerp(calendarDot, other.calendarDot, t)!,
       calendarSelected: Color.lerp(calendarSelected, other.calendarSelected, t)!,
+      localAccent: Color.lerp(localAccent, other.localAccent, t)!,
     );
   }
 }
