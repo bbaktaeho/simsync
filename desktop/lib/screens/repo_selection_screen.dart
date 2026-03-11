@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../storage/github/github_api_client.dart';
 import '../storage/github/repo_cache.dart';
@@ -31,6 +35,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
   List<RepoEntry> _cachedRepos = [];
   bool _isLoading = false;
   String? _errorMessage;
+  String _localNotePath = '';
 
   bool _showCreateForm = false;
   bool _showConnectForm = false;
@@ -62,12 +67,38 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
     ));
     _fadeController.forward();
     _loadCache();
+    _loadLocalNotePath();
   }
 
   Future<void> _loadCache() async {
     final entries = await widget.repoCache.load();
     if (mounted) {
       setState(() => _cachedRepos = entries);
+    }
+  }
+
+  Future<void> _loadLocalNotePath() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('local_note_path');
+    if (saved != null && saved.isNotEmpty) {
+      setState(() => _localNotePath = saved);
+    } else {
+      final home = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'] ??
+          '';
+      setState(() => _localNotePath = '$home/Documents/SimSync');
+    }
+  }
+
+  Future<void> _pickLocalPath() async {
+    final result = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '로컬 노트 저장 경로 선택',
+      initialDirectory: _localNotePath,
+    );
+    if (result != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('local_note_path', result);
+      setState(() => _localNotePath = result);
     }
   }
 
@@ -250,6 +281,8 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               const SizedBox(height: AppDimensions.spacingLg),
             ],
             _buildActionsSection(c),
+            const SizedBox(height: AppDimensions.spacingXl),
+            _buildLocalPathSection(c),
           ],
         ),
       ),
@@ -617,6 +650,71 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                     ),
                   )
                 : const Text('연결'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLocalPathSection(AppColorsExtension c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '로컬 노트 저장 경로',
+          style: GoogleFonts.manrope(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: c.textMuted,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: AppDimensions.spacingSm),
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingMd,
+            vertical: AppDimensions.spacingSm,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            border: Border.all(color: c.borderSubtle),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.folder_outlined, size: 16, color: c.textSecondary),
+              const SizedBox(width: AppDimensions.spacingSm),
+              Expanded(
+                child: Text(
+                  _localNotePath,
+                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: AppDimensions.spacingSm),
+              InkWell(
+                onTap: _isLoading ? null : _pickLocalPath,
+                borderRadius:
+                    BorderRadius.circular(AppDimensions.borderRadiusSm),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: c.surfaceLight,
+                    borderRadius:
+                        BorderRadius.circular(AppDimensions.borderRadiusSm),
+                    border: Border.all(color: c.border),
+                  ),
+                  child: Text(
+                    '변경',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: c.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
