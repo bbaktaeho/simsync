@@ -186,11 +186,20 @@ class _NoteListItemState extends State<_NoteListItem> {
   Widget build(BuildContext context) {
     final c = context.colors;
 
+    final isLocal = widget.note.storageType == StorageType.local;
+    final itemAccent = isLocal ? c.localAccent : c.accent;
+
     final bgColor = widget.isSelected
-        ? c.surfaceHover
+        ? (isLocal
+            ? itemAccent.withValues(alpha: 0.10)
+            : c.surfaceHover)
         : _isHovered
-            ? c.surfaceLight
-            : Colors.transparent;
+            ? (isLocal
+                ? itemAccent.withValues(alpha: 0.06)
+                : c.surfaceLight)
+            : (isLocal
+                ? itemAccent.withValues(alpha: 0.03)
+                : Colors.transparent);
 
     final dateStr = DateFormat('HH:mm').format(widget.note.updatedAt);
 
@@ -211,12 +220,10 @@ class _NoteListItemState extends State<_NoteListItem> {
             color: bgColor,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
             border: widget.isSelected
-                ? Border.all(
-                    color: (widget.note.storageType == StorageType.local
-                            ? c.localAccent
-                            : c.accent)
-                        .withValues(alpha: 0.3))
-                : null,
+                ? Border.all(color: itemAccent.withValues(alpha: 0.3))
+                : isLocal
+                    ? Border.all(color: itemAccent.withValues(alpha: 0.08))
+                    : null,
           ),
           child: Row(
             children: [
@@ -226,9 +233,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                   height: 28,
                   margin: const EdgeInsets.only(right: AppDimensions.spacingSm),
                   decoration: BoxDecoration(
-                    color: widget.note.storageType == StorageType.local
-                        ? c.localAccent
-                        : c.accent,
+                    color: itemAccent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -247,9 +252,18 @@ class _NoteListItemState extends State<_NoteListItem> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      dateStr,
-                      style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                    Row(
+                      children: [
+                        if (isLocal) ...[
+                          Icon(Icons.folder_outlined,
+                              size: 10, color: itemAccent.withValues(alpha: 0.7)),
+                          const SizedBox(width: 3),
+                        ],
+                        Text(
+                          dateStr,
+                          style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                        ),
+                      ],
                     ),
                   ],
                 ),
