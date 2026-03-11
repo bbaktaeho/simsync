@@ -397,7 +397,7 @@ class _AddNoteButton extends StatelessWidget {
             child: Row(
               children: [
                 Icon(Icons.folder_outlined,
-                    size: 14, color: const Color(0xFFD97706)),
+                    size: 14, color: c.localAccent),
                 const SizedBox(width: 8),
                 Text('로컬 노트',
                     style: GoogleFonts.manrope(

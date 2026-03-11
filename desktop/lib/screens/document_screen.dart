@@ -97,11 +97,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _isSyncing = false;
       if (_savePending) {
         _savePending = false;
-        for (final note in _allNotes) {
-          if (note.isDirty) {
-            await _storageFor(note).saveNote(note);
-            note.isDirty = false;
-          }
+        final dirtyNotes = _allNotes.where((n) => n.isDirty).toList();
+        for (final note in dirtyNotes) {
+          await _storageFor(note).saveNote(note);
+          note.isDirty = false;
         }
       }
     }
@@ -310,7 +309,13 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _savePending = true;
         return;
       }
-      await _storageFor(updatedNote).saveNote(updatedNote);
+      final latest = _allNotes.where((n) => n.id == updatedNote.id).firstOrNull;
+      if (latest != null) {
+        await _storageFor(latest).saveNote(latest);
+        setState(() {
+          latest.isDirty = false;
+        });
+      }
     });
   }
 

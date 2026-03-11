@@ -33,7 +33,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
       padding: EdgeInsets.zero,
       styleSheet: _buildStyleSheet(c),
       builders: {
-        'code': _CodeBlockBuilder(context),
+        'pre': _CodeBlockBuilder(),
         'h1': _HeadingBuilder(borderColor: c.border),
         'h2': _HeadingBuilder(borderColor: c.border),
       },
@@ -132,37 +132,20 @@ class _HeadingBuilder extends MarkdownElementBuilder {
   }
 }
 
-/// Custom builder that applies syntax highlighting to fenced code blocks
-/// while keeping inline code styled by the default stylesheet.
+/// Custom builder that applies syntax highlighting to fenced code blocks.
+/// Registered under the 'pre' key so it only fires for fenced code blocks.
 class _CodeBlockBuilder extends MarkdownElementBuilder {
-  final BuildContext context;
-
-  _CodeBlockBuilder(this.context);
-
   @override
-  Widget? visitElementAfter(md.Element element, TextStyle? preferredStyle) {
-    // Only handle fenced code blocks (pre > code), not inline code.
-    // Inline code elements have no children that are Elements with className.
-    // For fenced code blocks, flutter_markdown wraps them in 'pre' > 'code'.
-    // The builder key 'code' is called for both inline and block code.
-    // Block code elements are nested inside a 'pre' tag, which we detect
-    // by checking if the element has a class attribute (language info).
-    // However, fenced code blocks without a language also need handling.
-    // The element.attributes['class'] is set to 'language-xxx' for fenced blocks.
-
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
     final textContent = element.textContent;
 
-    // Detect if this is a code block vs inline code.
-    // Fenced code blocks have class attribute or are multi-line.
-    final className = element.attributes['class'];
-    final isCodeBlock = className != null || textContent.contains('\n');
-
-    if (!isCodeBlock) {
-      // Inline code — return null to let the default style handle it.
-      return null;
-    }
-
     // Extract language from class name (e.g., 'language-go' -> 'go').
+    final className = element.attributes['class'];
     String language = 'plaintext';
     if (className != null && className.startsWith('language-')) {
       language = className.substring('language-'.length);
