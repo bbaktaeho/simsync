@@ -17,6 +17,7 @@ import '../widgets/weekly_view_panel.dart';
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final NoteStorage storage;
+  final NoteStorage? localStorage;
   final NoteService noteService;
   final String? avatarUrl;
 
@@ -29,6 +30,7 @@ class DocumentScreen extends StatefulWidget {
     required this.onLogout,
     required this.storage,
     required this.noteService,
+    this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
   });
@@ -41,6 +43,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
   NoteStorage get _storage => widget.storage;
   NoteService get _noteService => widget.noteService;
+
+  /// Returns the appropriate storage for the given note based on its storageType.
+  NoteStorage _storageFor(Note note) {
+    if (note.storageType == StorageType.local && widget.localStorage != null) {
+      return widget.localStorage!;
+    }
+    return _storage;
+  }
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -89,7 +99,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _savePending = false;
         for (final note in _allNotes) {
           if (note.isDirty) {
-            await _storage.saveNote(note);
+            await _storageFor(note).saveNote(note);
             note.isDirty = false;
           }
         }
@@ -117,6 +127,24 @@ class _DocumentScreenState extends State<DocumentScreen> {
         notes.addAll(dayNotes);
       }
     }
+
+    // Load local notes.
+    if (widget.localStorage != null) {
+      final localDates = await widget.localStorage!.listDates(currentMonth);
+      for (final date in localDates) {
+        notes.addAll(await widget.localStorage!.listNotes(date));
+      }
+      if (now.day <= 7) {
+        final prev = DateTime(now.year, now.month - 1);
+        final prevMonth =
+            '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+        final prevLocalDates = await widget.localStorage!.listDates(prevMonth);
+        for (final date in prevLocalDates) {
+          notes.addAll(await widget.localStorage!.listNotes(date));
+        }
+      }
+    }
+
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (!mounted) return;
     final previousSelectedId = _selectedNote?.id;
@@ -282,7 +310,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _savePending = true;
         return;
       }
-      await _storage.saveNote(updatedNote);
+      await _storageFor(updatedNote).saveNote(updatedNote);
     });
   }
 
@@ -357,7 +385,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (confirmed != true) return;
 
     try {
-      await _storage.deleteNote(note);
+      await _storageFor(note).deleteNote(note);
       setState(() {
         _allNotes.removeWhere((n) => n.id == note.id);
         if (_selectedNote?.id == note.id) {

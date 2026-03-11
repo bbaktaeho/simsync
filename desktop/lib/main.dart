@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth/auth_models.dart';
 import 'auth/auth_service.dart';
@@ -15,18 +18,21 @@ import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_storage.dart';
 import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
+import 'storage/local/local_note_storage.dart';
 import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
 
 /// Resolved storage layer after authentication.
 class StorageBundle {
-  final NoteStorage storage;
+  final NoteStorage storage;          // GitHub (remote)
+  final NoteStorage? localStorage;    // Local file system
   final NoteService noteService;
   final GitHubSyncEngine? syncEngine;
 
   const StorageBundle({
     required this.storage,
     required this.noteService,
+    this.localStorage,
     this.syncEngine,
   });
 }
@@ -238,6 +244,7 @@ class _AppShellState extends State<_AppShell> {
       return DocumentScreen(
         onLogout: _handleLogout,
         storage: _bundle!.storage,
+        localStorage: _bundle!.localStorage,
         noteService: _bundle!.noteService,
         refreshSignal: _refreshSignal,
         avatarUrl: _session?.user.avatarUrl,
@@ -263,8 +270,15 @@ Future<StorageBundle> _defaultStorageFactory(
     owner: owner,
     repo: repo,
   );
+
+  // Load local note path from SharedPreferences.
+  final prefs = await SharedPreferences.getInstance();
+  final localPath =
+      prefs.getString('local_note_path') ?? _defaultLocalNotePath();
+
   return StorageBundle(
     storage: GitHubNoteStorage(apiClient),
+    localStorage: LocalNoteStorage(basePath: localPath),
     noteService: localService,
     syncEngine: GitHubSyncEngine(
       token: accessToken,
@@ -275,6 +289,12 @@ Future<StorageBundle> _defaultStorageFactory(
       onRemoteChanged: onRemoteChanged,
     ),
   );
+}
+
+String _defaultLocalNotePath() {
+  final home =
+      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+  return '$home/Documents/SimSync';
 }
 
 AuthService createDefaultAuthService() {
