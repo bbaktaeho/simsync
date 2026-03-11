@@ -34,8 +34,6 @@ class MarkdownPreviewWidget extends StatelessWidget {
       styleSheet: _buildStyleSheet(c),
       builders: {
         'pre': _CodeBlockBuilder(),
-        'h1': _HeadingBuilder(borderColor: c.border),
-        'h2': _HeadingBuilder(borderColor: c.border),
       },
     );
   }
@@ -99,35 +97,6 @@ class MarkdownPreviewWidget extends StatelessWidget {
       tableBody: GoogleFonts.manrope(fontSize: 13, color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
-    );
-  }
-}
-
-/// Custom builder that adds a GitHub-style bottom divider to h1/h2 headings.
-class _HeadingBuilder extends MarkdownElementBuilder {
-  final Color borderColor;
-
-  _HeadingBuilder({required this.borderColor});
-
-  @override
-  Widget? visitElementAfterWithContext(
-    BuildContext context,
-    md.Element element,
-    TextStyle? preferredStyle,
-    TextStyle? parentStyle,
-  ) {
-    final text = element.textContent;
-
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: borderColor, width: 1)),
-      ),
-      padding: const EdgeInsets.only(bottom: 8),
-      child: SelectableText(
-        text,
-        style: preferredStyle,
-      ),
     );
   }
 }
