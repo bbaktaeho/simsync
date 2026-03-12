@@ -17,6 +17,7 @@ class EditorPanel extends StatefulWidget {
   final ValueChanged<Note>? onNoteChanged;
   final DateTime? selectedDate;
   final VoidCallback? onCreateNote;
+  final VoidCallback? onCreateLocalNote;
 
   const EditorPanel({
     super.key,
@@ -24,6 +25,7 @@ class EditorPanel extends StatefulWidget {
     this.onNoteChanged,
     this.selectedDate,
     this.onCreateNote,
+    this.onCreateLocalNote,
   });
 
   @override
@@ -75,6 +77,7 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   void _onContentChanged() {
+    widget.note?.isDirty = true;
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(_autoSaveDelay, _save);
   }
@@ -161,7 +164,25 @@ class _EditorPanelState extends State<EditorPanel> {
               style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingXl),
-            _CreateNoteButton(onTap: widget.onCreateNote),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _CreateNoteButton(
+                  label: '동기화 노트',
+                  icon: Icons.cloud_outlined,
+                  onTap: widget.onCreateNote,
+                ),
+                if (widget.onCreateLocalNote != null) ...[
+                  const SizedBox(width: AppDimensions.spacingSm),
+                  _CreateNoteButton(
+                    label: '로컬 노트',
+                    icon: Icons.folder_outlined,
+                    useLocalAccent: true,
+                    onTap: widget.onCreateLocalNote,
+                  ),
+                ],
+              ],
+            ),
           ] else ...[
             Text(
               'Select a note to start editing',
@@ -418,9 +439,17 @@ class _ToggleButtonState extends State<_ToggleButton> {
 }
 
 class _CreateNoteButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final bool useLocalAccent;
   final VoidCallback? onTap;
 
-  const _CreateNoteButton({this.onTap});
+  const _CreateNoteButton({
+    required this.label,
+    required this.icon,
+    this.useLocalAccent = false,
+    this.onTap,
+  });
 
   @override
   State<_CreateNoteButton> createState() => _CreateNoteButtonState();
@@ -432,42 +461,38 @@ class _CreateNoteButtonState extends State<_CreateNoteButton> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final accentColor = widget.useLocalAccent ? c.localAccent : c.accent;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovered = true),
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
+        child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: AppDimensions.spacingXl,
-            vertical: AppDimensions.spacingMd,
+            horizontal: AppDimensions.spacingLg,
+            vertical: AppDimensions.spacingSm,
           ),
           decoration: BoxDecoration(
             color: _isHovered ? c.surfaceHover : c.surfaceLight,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             border: Border.all(
               color: _isHovered
-                  ? c.accent.withValues(alpha: 0.3)
+                  ? accentColor.withValues(alpha: 0.3)
                   : c.border,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.add_rounded,
-                size: 16,
-                color: _isHovered ? c.accent : c.textSecondary,
-              ),
+              Icon(widget.icon, size: 14, color: _isHovered ? accentColor : c.textSecondary),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                'Create note',
+                widget.label,
                 style: GoogleFonts.manrope(
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: _isHovered ? c.accent : c.textSecondary,
+                  color: _isHovered ? accentColor : c.textSecondary,
                 ),
               ),
             ],

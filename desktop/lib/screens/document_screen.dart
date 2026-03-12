@@ -17,6 +17,7 @@ import '../widgets/weekly_view_panel.dart';
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
   final NoteStorage storage;
+  final NoteStorage? localStorage;
   final NoteService noteService;
   final String? avatarUrl;
 
@@ -29,6 +30,7 @@ class DocumentScreen extends StatefulWidget {
     required this.onLogout,
     required this.storage,
     required this.noteService,
+    this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
   });
@@ -41,6 +43,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
   NoteStorage get _storage => widget.storage;
   NoteService get _noteService => widget.noteService;
+
+  /// Returns the appropriate storage for the given note based on its storageType.
+  NoteStorage _storageFor(Note note) {
+    if (note.storageType == StorageType.local && widget.localStorage != null) {
+      return widget.localStorage!;
+    }
+    return _storage;
+  }
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -50,6 +60,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _weeklyViewActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
+  bool _isSyncing = false;
+  bool _savePending = false;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
 
@@ -76,8 +88,22 @@ class _DocumentScreenState extends State<DocumentScreen> {
     super.dispose();
   }
 
-  void _onRefreshSignal() {
-    _loadNotes();
+  void _onRefreshSignal() async {
+    if (_isSyncing) return;
+    _isSyncing = true;
+    try {
+      await _loadNotes();
+    } finally {
+      _isSyncing = false;
+      if (_savePending) {
+        _savePending = false;
+        final dirtyNotes = _allNotes.where((n) => n.isDirty).toList();
+        for (final note in dirtyNotes) {
+          await _storageFor(note).saveNote(note);
+          note.isDirty = false;
+        }
+      }
+    }
   }
 
   Future<void> _loadNotes() async {
@@ -100,9 +126,49 @@ class _DocumentScreenState extends State<DocumentScreen> {
         notes.addAll(dayNotes);
       }
     }
+
+    // Load local notes.
+    if (widget.localStorage != null) {
+      final localDates = await widget.localStorage!.listDates(currentMonth);
+      for (final date in localDates) {
+        notes.addAll(await widget.localStorage!.listNotes(date));
+      }
+      if (now.day <= 7) {
+        final prev = DateTime(now.year, now.month - 1);
+        final prevMonth =
+            '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
+        final prevLocalDates = await widget.localStorage!.listDates(prevMonth);
+        for (final date in prevLocalDates) {
+          notes.addAll(await widget.localStorage!.listNotes(date));
+        }
+      }
+    }
+
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (!mounted) return;
     final previousSelectedId = _selectedNote?.id;
+
+    // Merge remote notes with local dirty notes to prevent overwriting
+    // unsaved edits during sync.
+    final dirtyById = <String, Note>{};
+    for (final local in _allNotes) {
+      if (local.isDirty) {
+        dirtyById[local.id] = local;
+      }
+    }
+    if (dirtyById.isNotEmpty) {
+      // For each remote note, keep local version if it has unsaved edits.
+      for (var i = 0; i < notes.length; i++) {
+        final dirty = dirtyById.remove(notes[i].id);
+        if (dirty != null) {
+          notes[i] = dirty;
+        }
+      }
+      // Keep dirty notes that don't exist on remote yet (newly created).
+      notes.addAll(dirtyById.values);
+      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    }
+
     setState(() {
       _allNotes = notes;
       _isLoading = false;
@@ -238,8 +304,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
     // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(seconds: 2), () {
-      _storage.saveNote(updatedNote);
+    _saveDebounce = Timer(const Duration(seconds: 2), () async {
+      if (_isSyncing) {
+        _savePending = true;
+        return;
+      }
+      final latest = _allNotes.where((n) => n.id == updatedNote.id).firstOrNull;
+      if (latest != null) {
+        await _storageFor(latest).saveNote(latest);
+        setState(() {
+          latest.isDirty = false;
+        });
+      }
     });
   }
 
@@ -266,6 +342,28 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  Future<void> _createLocalNote() async {
+    if (_selectedDate == null || widget.localStorage == null) return;
+    final now = DateTime.now();
+    final newNote = Note(
+      id: now.millisecondsSinceEpoch.toString(),
+      noteDate: _selectedDate!,
+      title: '',
+      content: '',
+      isDefault: false,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+      storageType: StorageType.local,
+    );
+    await widget.localStorage!.saveNote(newNote);
+    setState(() {
+      _allNotes.add(newNote);
+      _selectedNote = newNote;
+      _weeklyViewActive = false;
+    });
+  }
+
   void _previousMonth() {
     setState(() {
       _displayedMonth = DateTime(
@@ -282,6 +380,75 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _displayedMonth.month + 1,
       );
     });
+  }
+
+  Future<void> _deleteNote(Note note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final c = ctx.colors;
+        return AlertDialog(
+          backgroundColor: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: c.border),
+          ),
+          titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          title: Text('노트 삭제',
+              style: TextStyle(
+                  color: c.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+          content: Text(
+            "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+            style: TextStyle(color: c.textSecondary, fontSize: 12.5),
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('취소',
+                  style: TextStyle(color: c.textMuted, fontSize: 12.5)),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('삭제',
+                  style: TextStyle(color: c.error, fontSize: 12.5)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _storageFor(note).deleteNote(note);
+      setState(() {
+        _allNotes.removeWhere((n) => n.id == note.id);
+        if (_selectedNote?.id == note.id) {
+          final remaining = _notesForSelectedDate;
+          _selectedNote = remaining.isNotEmpty ? remaining.first : null;
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('삭제 실패: $e')),
+        );
+      }
+    }
   }
 
   void _toggleWeeklyView() {
@@ -358,6 +525,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,
       onCreateNote: _createNote,
+      onCreateLocalNote: widget.localStorage != null ? _createLocalNote : null,
     );
   }
 
@@ -458,8 +626,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
               totalPages: _totalPages,
               totalCount: _notesForSelectedDate.length,
               onNoteSelected: _onNoteSelected,
-              onCreateNote: _createNote,
+              onCreateSyncNote: _createNote,
+              onCreateLocalNote:
+                  widget.localStorage != null ? _createLocalNote : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
+              onDeleteNote: _deleteNote,
             ),
           ),
         ],

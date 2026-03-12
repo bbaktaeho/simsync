@@ -1,3 +1,6 @@
+/// Whether a note is synced to remote or stored locally.
+enum StorageType { synced, local }
+
 /// Represents a single markdown note.
 class Note {
   final String id;
@@ -9,6 +12,13 @@ class Note {
   final DateTime createdAt;
   DateTime updatedAt;
 
+  /// Runtime-only flag indicating unsaved local edits.
+  /// Not serialized — defaults to false.
+  bool isDirty;
+
+  /// Whether this note is synced to remote or stored locally.
+  final StorageType storageType;
+
   Note({
     required this.id,
     required this.noteDate,
@@ -18,6 +28,8 @@ class Note {
     required this.tags,
     required this.createdAt,
     required this.updatedAt,
+    this.isDirty = false,
+    this.storageType = StorageType.synced,
   });
 
   Note copyWith({
@@ -25,6 +37,7 @@ class Note {
     String? content,
     List<String>? tags,
     DateTime? updatedAt,
+    bool? isDirty,
   }) {
     return Note(
       id: id,
@@ -35,6 +48,8 @@ class Note {
       tags: tags ?? List.from(this.tags),
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isDirty: isDirty ?? this.isDirty,
+      storageType: storageType,
     );
   }
 }

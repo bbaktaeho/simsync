@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_highlight/themes/github.dart';
+import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:markdown/markdown.dart' as md;
 
 import '../theme/app_colors.dart';
 
@@ -28,6 +32,9 @@ class MarkdownPreviewWidget extends StatelessWidget {
       selectable: true,
       padding: EdgeInsets.zero,
       styleSheet: _buildStyleSheet(c),
+      builders: {
+        'pre': _CodeBlockBuilder(),
+      },
     );
   }
 
@@ -45,6 +52,18 @@ class MarkdownPreviewWidget extends StatelessWidget {
       h4: GoogleFonts.manrope(
         fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
       ),
+      h5: GoogleFonts.manrope(
+        fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
+      ),
+      h6: GoogleFonts.manrope(
+        fontSize: 13, fontWeight: FontWeight.w600, color: c.textSecondary, height: 1.4,
+      ),
+      h1Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h2Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h3Padding: const EdgeInsets.only(top: 24, bottom: 16),
+      h4Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h5Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h6Padding: const EdgeInsets.only(top: 16, bottom: 8),
       p: GoogleFonts.manrope(
         fontSize: 14, color: c.textPrimary, height: 1.7,
       ),
@@ -78,6 +97,56 @@ class MarkdownPreviewWidget extends StatelessWidget {
       tableBody: GoogleFonts.manrope(fontSize: 13, color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
+    );
+  }
+}
+
+/// Custom builder that applies syntax highlighting to fenced code blocks.
+/// Registered under the 'pre' key so it only fires for fenced code blocks.
+class _CodeBlockBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    md.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    final textContent = element.textContent;
+
+    // Extract language from class name (e.g., 'language-go' -> 'go').
+    final className = element.attributes['class'];
+    String language = 'plaintext';
+    if (className != null && className.startsWith('language-')) {
+      language = className.substring('language-'.length);
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final highlightTheme = isDark ? atomOneDarkTheme : githubTheme;
+
+    // Make HighlightView background transparent so Container handles it.
+    final transparentTheme = Map<String, TextStyle>.from(highlightTheme);
+    transparentTheme['root'] = (transparentTheme['root'] ?? const TextStyle())
+        .copyWith(backgroundColor: Colors.transparent);
+
+    final c = context.colors;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: c.border),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: HighlightView(
+        textContent.endsWith('\n')
+            ? textContent.substring(0, textContent.length - 1)
+            : textContent,
+        language: language,
+        theme: transparentTheme,
+        textStyle: GoogleFonts.jetBrainsMono(fontSize: 13),
+        padding: EdgeInsets.zero,
+      ),
     );
   }
 }

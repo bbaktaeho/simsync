@@ -13,8 +13,10 @@ class NoteListSection extends StatelessWidget {
   final int totalPages;
   final int totalCount;
   final ValueChanged<Note> onNoteSelected;
-  final VoidCallback onCreateNote;
+  final VoidCallback onCreateSyncNote;
+  final VoidCallback? onCreateLocalNote;
   final ValueChanged<int> onPageChanged;
+  final Future<void> Function(Note note)? onDeleteNote;
 
   const NoteListSection({
     super.key,
@@ -24,8 +26,10 @@ class NoteListSection extends StatelessWidget {
     required this.totalPages,
     required this.totalCount,
     required this.onNoteSelected,
-    required this.onCreateNote,
+    required this.onCreateSyncNote,
+    this.onCreateLocalNote,
     required this.onPageChanged,
+    this.onDeleteNote,
   });
 
   @override
@@ -79,7 +83,10 @@ class NoteListSection extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _AddNoteButton(onTap: onCreateNote),
+          _AddNoteButton(
+            onCreateSync: onCreateSyncNote,
+            onCreateLocal: onCreateLocalNote,
+          ),
         ],
       ),
     );
@@ -119,6 +126,7 @@ class NoteListSection extends StatelessWidget {
           note: note,
           isSelected: isSelected,
           onTap: () => onNoteSelected(note),
+          onDelete: onDeleteNote != null ? () => onDeleteNote!(note) : null,
         );
       },
     );
@@ -158,11 +166,13 @@ class _NoteListItem extends StatefulWidget {
   final Note note;
   final bool isSelected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   const _NoteListItem({
     required this.note,
     required this.isSelected,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -176,11 +186,20 @@ class _NoteListItemState extends State<_NoteListItem> {
   Widget build(BuildContext context) {
     final c = context.colors;
 
+    final isLocal = widget.note.storageType == StorageType.local;
+    final itemAccent = isLocal ? c.localAccent : c.accent;
+
     final bgColor = widget.isSelected
-        ? c.surfaceHover
+        ? (isLocal
+            ? itemAccent.withValues(alpha: 0.10)
+            : c.surfaceHover)
         : _isHovered
-            ? c.surfaceLight
-            : Colors.transparent;
+            ? (isLocal
+                ? itemAccent.withValues(alpha: 0.06)
+                : c.surfaceLight)
+            : (isLocal
+                ? itemAccent.withValues(alpha: 0.03)
+                : Colors.transparent);
 
     final dateStr = DateFormat('HH:mm').format(widget.note.updatedAt);
 
@@ -189,8 +208,9 @@ class _NoteListItemState extends State<_NoteListItem> {
       onExit: (_) => setState(() => _isHovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
+        onSecondaryTapUp: (details) =>
+            _showContextMenu(context, details.globalPosition),
+        child: Container(
           margin: const EdgeInsets.only(bottom: 2),
           padding: const EdgeInsets.symmetric(
             horizontal: AppDimensions.spacingSm,
@@ -200,8 +220,10 @@ class _NoteListItemState extends State<_NoteListItem> {
             color: bgColor,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
             border: widget.isSelected
-                ? Border.all(color: c.accent.withValues(alpha: 0.3))
-                : null,
+                ? Border.all(color: itemAccent.withValues(alpha: 0.3))
+                : isLocal
+                    ? Border.all(color: itemAccent.withValues(alpha: 0.08))
+                    : null,
           ),
           child: Row(
             children: [
@@ -211,7 +233,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                   height: 28,
                   margin: const EdgeInsets.only(right: AppDimensions.spacingSm),
                   decoration: BoxDecoration(
-                    color: c.accent,
+                    color: itemAccent,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -230,9 +252,18 @@ class _NoteListItemState extends State<_NoteListItem> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      dateStr,
-                      style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                    Row(
+                      children: [
+                        if (isLocal) ...[
+                          Icon(Icons.folder_outlined,
+                              size: 10, color: itemAccent.withValues(alpha: 0.7)),
+                          const SizedBox(width: 3),
+                        ],
+                        Text(
+                          dateStr,
+                          style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -243,6 +274,39 @@ class _NoteListItemState extends State<_NoteListItem> {
         ),
       ),
     );
+  }
+
+  void _showContextMenu(BuildContext context, Offset position) {
+    final c = context.colors;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+          position.dx, position.dy, position.dx, position.dy),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: c.border),
+      ),
+      color: c.surface,
+      menuPadding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 100),
+      items: [
+        PopupMenuItem(
+          height: 32,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          value: 'delete',
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
+              const SizedBox(width: 6),
+              Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'delete') widget.onDelete?.call();
+    });
   }
 
   Widget _buildTags(AppColorsExtension c, List<String> tags) {
@@ -317,17 +381,54 @@ class _TagChip extends StatelessWidget {
 }
 
 class _AddNoteButton extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback onCreateSync;
+  final VoidCallback? onCreateLocal;
 
-  const _AddNoteButton({required this.onTap});
+  const _AddNoteButton({required this.onCreateSync, this.onCreateLocal});
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+    return PopupMenuButton<String>(
+      onSelected: (value) {
+        if (value == 'sync') onCreateSync();
+        if (value == 'local') onCreateLocal?.call();
+      },
+      offset: const Offset(0, 28),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        side: BorderSide(color: c.border),
+      ),
+      color: c.surface,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'sync',
+          child: Row(
+            children: [
+              Icon(Icons.cloud_outlined, size: 14, color: c.accent),
+              const SizedBox(width: 8),
+              Text('동기화 노트',
+                  style: GoogleFonts.manrope(
+                      fontSize: 12, color: c.textPrimary)),
+            ],
+          ),
+        ),
+        if (onCreateLocal != null)
+          PopupMenuItem(
+            value: 'local',
+            child: Row(
+              children: [
+                Icon(Icons.folder_outlined,
+                    size: 14, color: c.localAccent),
+                const SizedBox(width: 8),
+                Text('로컬 노트',
+                    style: GoogleFonts.manrope(
+                        fontSize: 12, color: c.textPrimary)),
+              ],
+            ),
+          ),
+      ],
       child: Container(
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
