@@ -39,3 +39,5 @@ created: 2026-03-13
 - [01-current-repo-state.md](01-current-repo-state.md)
 - [02-desktop-dependency-refresh.md](02-desktop-dependency-refresh.md)
 - [03-mobile-mvp-stages.md](03-mobile-mvp-stages.md)
+- [04-settings-foundation-implementation.md](04-settings-foundation-implementation.md)
+- [05-search-foundation-implementation.md](05-search-foundation-implementation.md)

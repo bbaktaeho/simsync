@@ -1,0 +1,122 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:simsync/models/note.dart';
+import 'package:simsync/search/note_search_index.dart';
+import 'package:simsync/search/note_search_query.dart';
+
+void main() {
+  Note buildNote({
+    required String id,
+    required DateTime noteDate,
+    required String title,
+    required String content,
+    List<String> tags = const [],
+    StorageType storageType = StorageType.synced,
+  }) {
+    return Note(
+      id: id,
+      noteDate: noteDate,
+      title: title,
+      content: content,
+      isDefault: false,
+      tags: List<String>.from(tags),
+      createdAt: noteDate,
+      updatedAt: noteDate.add(const Duration(hours: 1)),
+      storageType: storageType,
+    );
+  }
+
+  group('NoteSearchIndex', () {
+    test('matches full text across title, content, and tags', () {
+      final index = NoteSearchIndex();
+      final releaseNote = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Release Plan',
+        content: 'Ship mobile search foundation this week.',
+        tags: ['work', 'mvp'],
+      );
+      final journalNote = buildNote(
+        id: '2',
+        noteDate: DateTime(2026, 3, 11),
+        title: 'Journal',
+        content: 'Went for a walk after lunch.',
+        tags: ['personal'],
+      );
+
+      index.replaceAll([releaseNote, journalNote]);
+
+      expect(index.search(const NoteSearchQuery(text: 'release')), [
+        releaseNote,
+      ]);
+      expect(index.search(const NoteSearchQuery(text: 'mobile search')), [
+        releaseNote,
+      ]);
+      expect(index.search(const NoteSearchQuery(text: 'MVP')), [releaseNote]);
+    });
+
+    test('applies exact tag and inclusive date range filters', () {
+      final index = NoteSearchIndex();
+      final marchFirst = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 1),
+        title: 'Kickoff',
+        content: 'Initial planning',
+        tags: ['work'],
+      );
+      final marchFifth = buildNote(
+        id: '2',
+        noteDate: DateTime(2026, 3, 5),
+        title: 'Search notes',
+        content: 'Need tag filter',
+        tags: ['work', 'search'],
+      );
+      final marchTwelfth = buildNote(
+        id: '3',
+        noteDate: DateTime(2026, 3, 12),
+        title: 'Family',
+        content: 'Dinner plans',
+        tags: ['personal'],
+      );
+
+      index.replaceAll([marchFirst, marchFifth, marchTwelfth]);
+
+      final results = index.search(
+        NoteSearchQuery(
+          tag: 'work',
+          startDate: DateTime(2026, 3, 1),
+          endDate: DateTime(2026, 3, 5),
+        ),
+      );
+
+      expect(results, [marchFifth, marchFirst]);
+    });
+
+    test('upsert and remove keep search results in sync', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Original',
+        content: 'alpha',
+      );
+
+      index.replaceAll([note]);
+      expect(index.search(const NoteSearchQuery(text: 'alpha')), [note]);
+
+      final updated = note.copyWith(
+        title: 'Updated',
+        content: 'beta',
+        updatedAt: DateTime(2026, 3, 10, 12),
+      );
+
+      index.upsert(updated);
+
+      expect(index.search(const NoteSearchQuery(text: 'alpha')), isEmpty);
+      expect(index.search(const NoteSearchQuery(text: 'beta')), [updated]);
+
+      index.remove('1');
+
+      expect(index.search(const NoteSearchQuery(text: 'beta')), isEmpty);
+    });
+  });
+}

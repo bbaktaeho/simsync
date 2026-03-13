@@ -6,6 +6,8 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../main.dart';
 import '../models/note.dart';
+import '../search/note_search_index.dart';
+import '../search/note_search_query.dart';
 import '../settings/app_settings_controller.dart';
 import '../services/note_service.dart';
 import '../storage/github/github_sync_engine.dart';
@@ -16,6 +18,7 @@ import '../theme/app_dimensions.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/note_list_section.dart';
+import '../widgets/note_search_section.dart';
 import '../widgets/weekly_view_panel.dart';
 import 'settings_screen.dart';
 
@@ -75,10 +78,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _savePending = false;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
+  late final TextEditingController _searchController;
+  final NoteSearchIndex _searchIndex = NoteSearchIndex();
+  NoteSearchQuery _searchQuery = const NoteSearchQuery();
+  List<Note> _searchResults = [];
+  bool _isSearchLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
@@ -96,6 +105,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _searchController.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     super.dispose();
@@ -198,9 +208,13 @@ class _DocumentScreenState extends State<DocumentScreen> {
         }
       }
     });
+
+    unawaited(_rebuildSearchIndex());
   }
 
   // ── Derived data ──
+
+  bool get _isSearchActive => !_searchQuery.isEmpty;
 
   Set<DateTime> get _datesWithNotes {
     return _allNotes
@@ -221,8 +235,13 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  List<Note> get _visibleNotes {
+    if (_isSearchActive) return _searchResults;
+    return _notesForSelectedDate;
+  }
+
   List<Note> get _paginatedNotes {
-    final notes = _notesForSelectedDate;
+    final notes = _visibleNotes;
     final start = _currentPage * AppDimensions.notesPerPage;
     final end = (start + AppDimensions.notesPerPage).clamp(0, notes.length);
     if (start >= notes.length) return [];
@@ -230,7 +249,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   int get _totalPages {
-    final count = _notesForSelectedDate.length;
+    final count = _visibleNotes.length;
     return (count / AppDimensions.notesPerPage).ceil().clamp(1, 999);
   }
 
@@ -291,8 +310,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
-      _currentPage = 0;
-      if (!_weeklyViewActive) {
+      if (!_weeklyViewActive && !_isSearchActive) {
+        _currentPage = 0;
         final notes = _notesForSelectedDate;
         _selectedNote = notes.isNotEmpty ? notes.first : null;
       }
@@ -302,6 +321,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onNoteSelected(Note note) {
     setState(() {
       _selectedNote = note;
+      _selectedDate = DateTime(
+        note.noteDate.year,
+        note.noteDate.month,
+        note.noteDate.day,
+      );
       _weeklyViewActive = false;
     });
   }
@@ -314,6 +338,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _selectedNote = updatedNote;
       }
     });
+    _searchIndex.upsert(updatedNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
     // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(seconds: 2), () async {
@@ -352,6 +378,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _selectedNote = newNote;
       _weeklyViewActive = false;
     });
+    _searchIndex.upsert(newNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   Future<void> _createLocalNote() async {
@@ -374,6 +402,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _selectedNote = newNote;
       _weeklyViewActive = false;
     });
+    _searchIndex.upsert(newNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   void _previousMonth() {
@@ -463,10 +493,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
       setState(() {
         _allNotes.removeWhere((n) => n.id == note.id);
         if (_selectedNote?.id == note.id) {
-          final remaining = _notesForSelectedDate;
+          final remaining = _visibleNotes.where((n) => n.id != note.id);
           _selectedNote = remaining.isNotEmpty ? remaining.first : null;
         }
       });
+      _searchIndex.remove(note.id);
+      _applySearchQuery(_searchQuery, resetPage: false);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -507,6 +539,221 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   void _applySyncInterval(int seconds) {
     widget.syncEngine?.updateInterval(Duration(seconds: seconds));
+  }
+
+  Future<void> _rebuildSearchIndex() async {
+    if (!mounted) return;
+
+    setState(() => _isSearchLoading = true);
+
+    final notes = <Note>[
+      ...await _storage.listAllNotes(),
+      if (widget.localStorage != null)
+        ...await widget.localStorage!.listAllNotes(),
+    ];
+
+    _searchIndex.replaceAll(notes);
+    for (final note in _allNotes.where((note) => note.isDirty)) {
+      _searchIndex.upsert(note);
+    }
+
+    if (!mounted) return;
+    setState(() => _isSearchLoading = false);
+    _applySearchQuery(_searchQuery, resetPage: false);
+  }
+
+  void _applySearchQuery(NoteSearchQuery query, {bool resetPage = true}) {
+    final results = query.isEmpty ? <Note>[] : _searchIndex.search(query);
+
+    setState(() {
+      _searchQuery = query;
+      _searchResults = results;
+
+      if (resetPage) {
+        _currentPage = 0;
+      }
+
+      final maxPage =
+          ((_visibleNotes.length / AppDimensions.notesPerPage).ceil().clamp(
+            1,
+            999,
+          )) -
+          1;
+      if (_currentPage > maxPage) {
+        _currentPage = maxPage;
+      }
+
+      if (_isSearchActive) {
+        final selected = results.where((n) => n.id == _selectedNote?.id);
+        _selectedNote = selected.isNotEmpty
+            ? selected.first
+            : results.firstOrNull;
+        if (_selectedNote != null) {
+          _selectedDate = DateTime(
+            _selectedNote!.noteDate.year,
+            _selectedNote!.noteDate.month,
+            _selectedNote!.noteDate.day,
+          );
+        }
+      }
+    });
+  }
+
+  void _onSearchTextChanged(String value) {
+    _applySearchQuery(_searchQuery.copyWith(text: value));
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _applySearchQuery(const NoteSearchQuery());
+  }
+
+  Future<void> _openSearchFilters() async {
+    final tagController = TextEditingController(text: _searchQuery.tag);
+    DateTime? startDate = _searchQuery.startDate;
+    DateTime? endDate = _searchQuery.endDate;
+
+    final result = await showDialog<NoteSearchQuery>(
+      context: context,
+      builder: (context) {
+        final c = context.colors;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> pickStartDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: startDate ?? _selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+
+              setState(() {
+                startDate = DateTime(picked.year, picked.month, picked.day);
+                if (endDate != null && endDate!.isBefore(startDate!)) {
+                  endDate = startDate;
+                }
+              });
+            }
+
+            Future<void> pickEndDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate:
+                    endDate ?? startDate ?? _selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+
+              setState(() {
+                endDate = DateTime(picked.year, picked.month, picked.day);
+                if (startDate != null && startDate!.isAfter(endDate!)) {
+                  startDate = endDate;
+                }
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: c.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: c.border),
+              ),
+              title: const Text('Search Filters'),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: tagController,
+                      decoration: const InputDecoration(
+                        labelText: 'Tag',
+                        hintText: 'work',
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingMd),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: pickStartDate,
+                            child: Text(
+                              startDate == null
+                                  ? 'Start date'
+                                  : _formatDate(startDate),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.spacingSm),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: pickEndDate,
+                            child: Text(
+                              endDate == null
+                                  ? 'End date'
+                                  : _formatDate(endDate),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    tagController.clear();
+                    Navigator.of(context).pop(
+                      _searchQuery.copyWith(
+                        tag: '',
+                        startDate: null,
+                        endDate: null,
+                      ),
+                    );
+                  },
+                  child: const Text('Clear'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _searchQuery.copyWith(
+                        tag: tagController.text.trim(),
+                        startDate: startDate,
+                        endDate: endDate,
+                      ),
+                    );
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    tagController.dispose();
+
+    if (result != null) {
+      _applySearchQuery(result);
+    }
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return '...';
+
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
   }
 
   bool _handleHardwareKeyEvent(KeyEvent event) {
@@ -710,6 +957,17 @@ class _DocumentScreenState extends State<DocumentScreen> {
             isActive: _weeklyViewActive,
             onTap: _toggleWeeklyView,
           ),
+          NoteSearchSection(
+            controller: _searchController,
+            query: _searchQuery.text,
+            tag: _searchQuery.tag,
+            startDate: _searchQuery.startDate,
+            endDate: _searchQuery.endDate,
+            isLoading: _isSearchLoading,
+            onQueryChanged: _onSearchTextChanged,
+            onClear: _clearSearch,
+            onOpenFilters: () => unawaited(_openSearchFilters()),
+          ),
           Divider(height: 1, color: c.border),
           Expanded(
             child: NoteListSection(
@@ -717,7 +975,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
               selectedNoteId: _weeklyViewActive ? null : _selectedNote?.id,
               currentPage: _currentPage,
               totalPages: _totalPages,
-              totalCount: _notesForSelectedDate.length,
+              totalCount: _visibleNotes.length,
               onNoteSelected: _onNoteSelected,
               onCreateSyncNote: _createNote,
               onCreateLocalNote: widget.localStorage != null

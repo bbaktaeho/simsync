@@ -132,6 +132,9 @@ class NoteService implements NoteStorage {
   // ── NoteStorage interface ──
 
   @override
+  Future<List<Note>> listAllNotes() => loadAllNotes();
+
+  @override
   Future<List<Note>> listNotes(DateTime date) => loadNotesByDate(date);
 
   @override
@@ -141,9 +144,7 @@ class NoteService implements NoteStorage {
     final dates = <DateTime>[];
     await for (final entity in _baseDir.list()) {
       if (entity is! Directory) continue;
-      final dirName = entity.uri.pathSegments
-          .where((s) => s.isNotEmpty)
-          .last;
+      final dirName = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
       if (!dirName.startsWith(yearMonth)) continue;
       try {
         dates.add(DateTime.parse(dirName));
