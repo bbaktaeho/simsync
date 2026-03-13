@@ -237,6 +237,8 @@ class _AppShellState extends State<_AppShell> {
     // Persist the selected repo to the cache.
     await widget.repoCache.add(entry);
 
+    _bundle?.syncEngine?.dispose();
+
     // Create storage bundle directly from the repo entry.
     _activeRepo = entry;
     _bundle = await widget.storageFactory(
@@ -249,6 +251,10 @@ class _AppShellState extends State<_AppShell> {
     _bundle?.syncEngine?.start();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
+  }
+
+  Future<List<RepoEntry>> _loadCachedRepos() {
+    return widget.repoCache.load();
   }
 
   Future<void> _handleLocalNotePathChanged(String path) async {
@@ -268,6 +274,47 @@ class _AppShellState extends State<_AppShell> {
 
     setState(() => _bundle = nextBundle);
     _refreshSignal.value++;
+  }
+
+  Future<RepoEntry> _handleCreateRepo(String name) async {
+    final session = _session;
+    if (session == null) {
+      throw StateError('No authenticated session');
+    }
+
+    final client = GitHubApiClient(
+      token: session.accessToken,
+      owner: session.user.login,
+      repo: '_',
+    );
+    try {
+      await client.createRepo(name: name);
+      return RepoEntry(owner: session.user.login, repo: name);
+    } finally {
+      client.dispose();
+    }
+  }
+
+  Future<RepoEntry> _handleConnectRepo(String owner, String repo) async {
+    final session = _session;
+    if (session == null) {
+      throw StateError('No authenticated session');
+    }
+
+    final client = GitHubApiClient(
+      token: session.accessToken,
+      owner: session.user.login,
+      repo: '_',
+    );
+    try {
+      final exists = await client.repoExists(owner: owner, repo: repo);
+      if (!exists) {
+        throw StateError('Repository not found');
+      }
+      return RepoEntry(owner: owner, repo: repo);
+    } finally {
+      client.dispose();
+    }
   }
 
   void _startSessionMonitor() {
@@ -353,7 +400,11 @@ class _AppShellState extends State<_AppShell> {
         activeRepo: _activeRepo,
         settingsController: _settingsController,
         syncEngine: _bundle!.syncEngine,
+        loadCachedRepos: _loadCachedRepos,
         onLocalNotePathChanged: _handleLocalNotePathChanged,
+        onRepoSelected: _handleRepoSelected,
+        onCreateRepo: _handleCreateRepo,
+        onConnectRepo: _handleConnectRepo,
       );
     }
     return LoginScreen(onGitHubLogin: _handleLogin);

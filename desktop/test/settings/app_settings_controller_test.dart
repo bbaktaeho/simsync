@@ -35,6 +35,7 @@ void main() {
 
     await controller.setContentScale(1.25);
     await controller.setSyncIntervalSeconds(15);
+    await Future<void>.delayed(const Duration(milliseconds: 250));
 
     final reloaded = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',

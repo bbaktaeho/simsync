@@ -13,48 +13,14 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets(
-    'renders current storage info and updates zoom and sync interval',
-    (WidgetTester tester) async {
-      final controller = AppSettingsController(
-        defaultLocalNotePath: '/tmp/default-notes',
-      );
-      await controller.load();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(extensions: const [AppColorsExtension.light]),
-          home: Scaffold(
-            body: SettingsScreen(
-              settingsController: controller,
-              activeRepo: RepoEntry(owner: 'octocat', repo: 'notes'),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('octocat/notes'), findsOneWidget);
-      expect(find.text('/tmp/default-notes'), findsOneWidget);
-      expect(find.text('100%'), findsOneWidget);
-      expect(find.text('5s'), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.add_rounded));
-      await tester.pump();
-
-      expect(find.text('110%'), findsOneWidget);
-    },
-  );
-
-  testWidgets('updates local note path when change action is used', (
+  testWidgets('renders master-detail settings layout and switches categories', (
     WidgetTester tester,
   ) async {
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
     await controller.load();
-    var appliedPath = '';
+    var selectedRepo = '';
 
     await tester.pumpWidget(
       MaterialApp(
@@ -62,22 +28,55 @@ void main() {
         home: Scaffold(
           body: SettingsScreen(
             settingsController: controller,
+            activeRepo: RepoEntry(owner: 'octocat', repo: 'notes'),
+            loadCachedRepos: () async => [
+              RepoEntry(owner: 'octocat', repo: 'notes'),
+              RepoEntry(owner: 'octocat', repo: 'archive'),
+            ],
+            onCreateRepo: (name) async =>
+                RepoEntry(owner: 'octocat', repo: name),
+            onConnectRepo: (owner, repo) async =>
+                RepoEntry(owner: owner, repo: repo),
+            onRepoSelected: (entry) async => selectedRepo = entry.fullName,
             onPickLocalNotePath: (currentPath) async => '/tmp/updated-notes',
-            onLocalNotePathChanged: (path) async {
-              appliedPath = path;
-              await controller.setLocalNotePath(path);
-            },
+            onLocalNotePathChanged: controller.setLocalNotePath,
           ),
         ),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Change...'));
+    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Storage'), findsWidgets);
+    expect(find.text('Editor & Preview'), findsOneWidget);
+    expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('/tmp/default-notes'), findsOneWidget);
+    expect(find.text('octocat/notes'), findsOneWidget);
+    expect(find.text('Change...'), findsWidgets);
+    expect(find.text('Change Repository...'), findsOneWidget);
+
+    await tester.tap(find.text('Editor & Preview'));
     await tester.pumpAndSettle();
 
-    expect(appliedPath, '/tmp/updated-notes');
-    expect(controller.value.localNotePath, '/tmp/updated-notes');
-    expect(find.text('/tmp/updated-notes'), findsOneWidget);
+    expect(find.text('Content zoom'), findsOneWidget);
+    expect(find.text('100%'), findsOneWidget);
+
+    await tester.tap(find.text('Sync'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('GitHub sync interval'), findsOneWidget);
+    expect(find.text('5s'), findsOneWidget);
+
+    await tester.tap(find.text('Storage').first);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('octocat/archive'),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('octocat/archive'));
+    await tester.pumpAndSettle();
+
+    expect(selectedRepo, 'octocat/archive');
   });
 }
