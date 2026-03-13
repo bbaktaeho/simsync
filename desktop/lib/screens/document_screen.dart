@@ -42,7 +42,6 @@ class DocumentScreen extends StatefulWidget {
 class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
   NoteStorage get _storage => widget.storage;
-  NoteService get _noteService => widget.noteService;
 
   /// Returns the appropriate storage for the given note based on its storageType.
   NoteStorage _storageFor(Note note) {

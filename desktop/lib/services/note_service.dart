@@ -78,6 +78,7 @@ class NoteService implements NoteStorage {
   // ── Write ──
 
   /// Saves a note to disk. Creates directories as needed.
+  @override
   Future<void> saveNote(Note note) async {
     final dirPath = _dateDirPath(note.noteDate);
     await Directory(dirPath).create(recursive: true);
@@ -113,6 +114,7 @@ class NoteService implements NoteStorage {
   // ── Delete ──
 
   /// Deletes a note file from disk.
+  @override
   Future<void> deleteNote(Note note) async {
     final filePath = '${_dateDirPath(note.noteDate)}/${note.id}.md';
     final file = File(filePath);
