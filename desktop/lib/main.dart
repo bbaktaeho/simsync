@@ -11,6 +11,8 @@ import 'auth/auth_service.dart';
 import 'auth/github_oauth_provider.dart';
 import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
+import 'settings/app_settings.dart';
+import 'settings/app_settings_controller.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
@@ -25,8 +27,8 @@ import 'theme/app_theme.dart';
 
 /// Resolved storage layer after authentication.
 class StorageBundle {
-  final NoteStorage storage;          // GitHub (remote)
-  final NoteStorage? localStorage;    // Local file system
+  final NoteStorage storage; // GitHub (remote)
+  final NoteStorage? localStorage; // Local file system
   final NoteService noteService;
   final GitHubSyncEngine? syncEngine;
 
@@ -43,13 +45,14 @@ class StorageBundle {
 ///
 /// The optional [onRemoteChanged] callback is invoked by the sync engine
 /// when a new remote commit is detected, allowing the caller to refresh the UI.
-typedef StorageFactory = Future<StorageBundle> Function(
-  String accessToken, {
-  required String owner,
-  required String repo,
-  required String branch,
-  Future<void> Function()? onRemoteChanged,
-});
+typedef StorageFactory =
+    Future<StorageBundle> Function(
+      String accessToken, {
+      required String owner,
+      required String repo,
+      required String branch,
+      Future<void> Function()? onRemoteChanged,
+    });
 
 void main() {
   runApp(SimSyncApp(authService: createDefaultAuthService()));
@@ -92,8 +95,9 @@ class SimSyncAppState extends State<SimSyncApp> {
 
   void toggleTheme() {
     setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+      _themeMode = _themeMode == ThemeMode.dark
+          ? ThemeMode.light
+          : ThemeMode.dark;
     });
   }
 
@@ -135,9 +139,11 @@ class _AppShell extends StatefulWidget {
 
 class _AppShellState extends State<_AppShell> {
   _AuthStatus _status = _AuthStatus.restoring;
+  late final AppSettingsController _settingsController;
 
   // Session stored after login, needed for repo selection screen.
   AuthSession? _session;
+  RepoEntry? _activeRepo;
 
   // Storage layer (resolved after auth succeeds).
   StorageBundle? _bundle;
@@ -151,15 +157,24 @@ class _AppShellState extends State<_AppShell> {
   @override
   void initState() {
     super.initState();
-    _restoreSession();
+    _settingsController = AppSettingsController(
+      defaultLocalNotePath: _defaultLocalNotePath(),
+    );
+    _initialize();
   }
 
   @override
   void dispose() {
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
+    _settingsController.dispose();
     _refreshSignal.dispose();
     super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    await _settingsController.load();
+    await _restoreSession();
   }
 
   Future<void> _handleLogin() async {
@@ -175,6 +190,7 @@ class _AppShellState extends State<_AppShell> {
     _bundle?.syncEngine?.dispose();
     _bundle = null;
     _session = null;
+    _activeRepo = null;
     await widget.authService.logout();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.unauthenticated);
@@ -197,6 +213,7 @@ class _AppShellState extends State<_AppShell> {
       // Use the most recently connected repo.
       final entry = entries.first;
       _session = session;
+      _activeRepo = entry;
       _startSessionMonitor();
       _bundle = await widget.storageFactory(
         session.accessToken,
@@ -221,6 +238,7 @@ class _AppShellState extends State<_AppShell> {
     await widget.repoCache.add(entry);
 
     // Create storage bundle directly from the repo entry.
+    _activeRepo = entry;
     _bundle = await widget.storageFactory(
       _session!.accessToken,
       owner: entry.owner,
@@ -253,7 +271,9 @@ class _AppShellState extends State<_AppShell> {
 
   Future<void> _runSessionCheckCycle() async {
     await _checkSessionValidity();
-    if (!mounted || _session == null || _status == _AuthStatus.unauthenticated) {
+    if (!mounted ||
+        _session == null ||
+        _status == _AuthStatus.unauthenticated) {
       return;
     }
     _scheduleNextSessionCheck();
@@ -311,11 +331,12 @@ class _AppShellState extends State<_AppShell> {
         noteService: _bundle!.noteService,
         refreshSignal: _refreshSignal,
         avatarUrl: _session?.user.avatarUrl,
+        activeRepo: _activeRepo,
+        settingsController: _settingsController,
+        syncEngine: _bundle!.syncEngine,
       );
     }
-    return LoginScreen(
-      onGitHubLogin: _handleLogin,
-    );
+    return LoginScreen(onGitHubLogin: _handleLogin);
   }
 }
 
@@ -337,7 +358,10 @@ Future<StorageBundle> _defaultStorageFactory(
   // Load local note path from SharedPreferences.
   final prefs = await SharedPreferences.getInstance();
   final localPath =
-      prefs.getString('local_note_path') ?? _defaultLocalNotePath();
+      prefs.getString(AppSettingsController.localNotePathKey) ??
+      _defaultLocalNotePath();
+  final syncIntervalSeconds =
+      prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
   return StorageBundle(
     storage: GitHubNoteStorage(apiClient),
@@ -348,7 +372,12 @@ Future<StorageBundle> _defaultStorageFactory(
       owner: owner,
       repo: repo,
       branch: branch,
-      interval: const Duration(seconds: 5),
+      interval: Duration(
+        seconds: syncIntervalSeconds.clamp(
+          AppSettings.minSyncIntervalSeconds,
+          AppSettings.maxSyncIntervalSeconds,
+        ),
+      ),
       onRemoteChanged: onRemoteChanged,
     ),
   );
@@ -367,21 +396,11 @@ AuthService createDefaultAuthService() {
   );
 
   return DefaultAuthService(
-    provider: GitHubOAuthProvider(
-      config: config,
-      httpClient: http.Client(),
-    ),
-    store: FileSessionStore(
-      directoryProvider: getApplicationSupportDirectory,
-    ),
+    provider: GitHubOAuthProvider(config: config, httpClient: http.Client()),
+    store: FileSessionStore(directoryProvider: getApplicationSupportDirectory),
     policy: const SessionPolicy(maxAge: Duration(hours: 24)),
     nowProvider: DateTime.now,
   );
 }
 
-enum _AuthStatus {
-  restoring,
-  unauthenticated,
-  repoSelection,
-  authenticated,
-}
+enum _AuthStatus { restoring, unauthenticated, repoSelection, authenticated }

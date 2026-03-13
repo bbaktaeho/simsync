@@ -1,11 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../main.dart';
 import '../models/note.dart';
+import '../settings/app_settings_controller.dart';
 import '../services/note_service.dart';
+import '../storage/github/github_sync_engine.dart';
+import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -13,6 +17,7 @@ import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/weekly_view_panel.dart';
+import 'settings_screen.dart';
 
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
@@ -20,6 +25,9 @@ class DocumentScreen extends StatefulWidget {
   final NoteStorage? localStorage;
   final NoteService noteService;
   final String? avatarUrl;
+  final RepoEntry? activeRepo;
+  final AppSettingsController settingsController;
+  final GitHubSyncEngine? syncEngine;
 
   /// Optional notifier that signals when remote data has changed.
   /// Each value change triggers a full reload of notes from storage.
@@ -33,6 +41,9 @@ class DocumentScreen extends StatefulWidget {
     this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
+    required this.settingsController,
+    this.activeRepo,
+    this.syncEngine,
   });
 
   @override
@@ -50,6 +61,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
     return _storage;
   }
+
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -69,6 +81,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     super.initState();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
   @override
@@ -84,6 +97,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void dispose() {
     _saveDebounce?.cancel();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     super.dispose();
   }
 
@@ -200,12 +214,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return n.noteDate.year == _selectedDate!.year &&
           n.noteDate.month == _selectedDate!.month &&
           n.noteDate.day == _selectedDate!.day;
-    }).toList()
-      ..sort((a, b) {
-        if (a.isDefault && !b.isDefault) return -1;
-        if (!a.isDefault && b.isDefault) return 1;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    }).toList()..sort((a, b) {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return a.createdAt.compareTo(b.createdAt);
+    });
   }
 
   List<Note> get _paginatedNotes {
@@ -233,12 +246,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return _allNotes.where((n) {
       final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
       return !d.isBefore(start) && d.isBefore(end);
-    }).toList()
-      ..sort((a, b) {
-        final cmp = a.noteDate.compareTo(b.noteDate);
-        if (cmp != 0) return cmp;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    }).toList()..sort((a, b) {
+      final cmp = a.noteDate.compareTo(b.noteDate);
+      if (cmp != 0) return cmp;
+      return a.createdAt.compareTo(b.createdAt);
+    });
   }
 
   // ── Sidebar resize ──
@@ -256,7 +268,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
       if (newWidth < AppDimensions.sidebarCollapseThreshold) {
         // Auto-collapse
         _sidebarOpen = false;
-        _sidebarWidth = AppDimensions.sidebarDefaultWidth; // remember for re-open
+        _sidebarWidth =
+            AppDimensions.sidebarDefaultWidth; // remember for re-open
       } else {
         _sidebarOpen = true;
         _sidebarWidth = newWidth.clamp(AppDimensions.sidebarMinWidth, maxWidth);
@@ -395,11 +408,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
           titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
           contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           actionsPadding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-          title: Text('노트 삭제',
-              style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600)),
+          title: Text(
+            '노트 삭제',
+            style: TextStyle(
+              color: c.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           content: Text(
             "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
             style: TextStyle(color: c.textSecondary, fontSize: 12.5),
@@ -407,23 +423,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
           actions: [
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('취소',
-                  style: TextStyle(color: c.textMuted, fontSize: 12.5)),
+              child: Text(
+                '취소',
+                style: TextStyle(color: c.textMuted, fontSize: 12.5),
+              ),
             ),
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('삭제',
-                  style: TextStyle(color: c.error, fontSize: 12.5)),
+              child: Text(
+                '삭제',
+                style: TextStyle(color: c.error, fontSize: 12.5),
+              ),
             ),
           ],
         );
@@ -443,15 +469,70 @@ class _DocumentScreenState extends State<DocumentScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
       }
     }
   }
 
   void _toggleWeeklyView() {
     setState(() => _weeklyViewActive = !_weeklyViewActive);
+  }
+
+  Future<void> _openSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return SettingsScreen(
+          settingsController: widget.settingsController,
+          activeRepo: widget.activeRepo,
+          onSyncIntervalChanged: _applySyncInterval,
+        );
+      },
+    );
+  }
+
+  Future<void> _increaseContentScale() async {
+    await widget.settingsController.increaseContentScale();
+  }
+
+  Future<void> _decreaseContentScale() async {
+    await widget.settingsController.decreaseContentScale();
+  }
+
+  Future<void> _setContentScale(double scale) async {
+    await widget.settingsController.setContentScale(scale);
+  }
+
+  void _applySyncInterval(int seconds) {
+    widget.syncEngine?.updateInterval(Duration(seconds: seconds));
+  }
+
+  bool _handleHardwareKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent || !HardwareKeyboard.instance.isMetaPressed) {
+      return false;
+    }
+
+    final key = event.logicalKey;
+    if (key == LogicalKeyboardKey.comma) {
+      unawaited(_openSettings());
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.equal ||
+        key == LogicalKeyboardKey.numpadAdd) {
+      unawaited(_increaseContentScale());
+      return true;
+    }
+
+    if (key == LogicalKeyboardKey.minus ||
+        key == LogicalKeyboardKey.numpadSubtract) {
+      unawaited(_decreaseContentScale());
+      return true;
+    }
+
+    return false;
   }
 
   void _onWeeklyNoteTap(Note note) {
@@ -474,39 +555,37 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: c.scaffold,
-        body: Center(
-          child: CircularProgressIndicator(color: c.accent),
-        ),
+        body: Center(child: CircularProgressIndicator(color: c.accent)),
       );
     }
 
-    return Scaffold(
-      backgroundColor: c.scaffold,
-      body: Column(
-        children: [
-          _buildTitleBar(c),
-          Divider(height: 1, color: c.border),
-          Expanded(
-            child: Row(
-              children: [
-                // Sidebar
-                if (_sidebarOpen)
-                  SizedBox(
-                    width: _clampSidebarWidth(_sidebarWidth, screenWidth),
-                    child: _buildSidebarContent(c),
+    return Focus(
+      autofocus: true,
+      child: Scaffold(
+        backgroundColor: c.scaffold,
+        body: Column(
+          children: [
+            _buildTitleBar(c),
+            Divider(height: 1, color: c.border),
+            Expanded(
+              child: Row(
+                children: [
+                  if (_sidebarOpen)
+                    SizedBox(
+                      width: _clampSidebarWidth(_sidebarWidth, screenWidth),
+                      child: _buildSidebarContent(c),
+                    ),
+                  _ResizeHandle(
+                    isVisible: _sidebarOpen,
+                    onDragUpdate: (details) =>
+                        _onResizeUpdate(details, screenWidth),
                   ),
-                // Resize handle
-                _ResizeHandle(
-                  isVisible: _sidebarOpen,
-                  onDragUpdate: (details) =>
-                      _onResizeUpdate(details, screenWidth),
-                ),
-                // Right panel
-                Expanded(child: _buildRightPanel()),
-              ],
+                  Expanded(child: _buildRightPanel()),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -525,6 +604,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       selectedDate: _selectedNote == null ? _selectedDate : null,
       onCreateNote: _createNote,
       onCreateLocalNote: widget.localStorage != null ? _createLocalNote : null,
+      contentScale: widget.settingsController.value.contentScale,
+      onIncreaseContentScale: _increaseContentScale,
+      onDecreaseContentScale: _decreaseContentScale,
+      onSetContentScale: _setContentScale,
     );
   }
 
@@ -558,6 +641,17 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
           ),
           const Spacer(),
+          IconButton(
+            icon: Icon(
+              Icons.settings_outlined,
+              size: 18,
+              color: c.textSecondary,
+            ),
+            onPressed: () => unawaited(_openSettings()),
+            tooltip: 'Settings',
+            splashRadius: 16,
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
           IconButton(
             icon: Icon(
               isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
@@ -626,8 +720,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
               totalCount: _notesForSelectedDate.length,
               onNoteSelected: _onNoteSelected,
               onCreateSyncNote: _createNote,
-              onCreateLocalNote:
-                  widget.localStorage != null ? _createLocalNote : null,
+              onCreateLocalNote: widget.localStorage != null
+                  ? _createLocalNote
+                  : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
               onDeleteNote: _deleteNote,
             ),
@@ -643,10 +738,7 @@ class _ResizeHandle extends StatefulWidget {
   final bool isVisible;
   final ValueChanged<DragUpdateDetails> onDragUpdate;
 
-  const _ResizeHandle({
-    required this.isVisible,
-    required this.onDragUpdate,
-  });
+  const _ResizeHandle({required this.isVisible, required this.onDragUpdate});
 
   @override
   State<_ResizeHandle> createState() => _ResizeHandleState();
@@ -673,9 +765,7 @@ class _ResizeHandleState extends State<_ResizeHandle> {
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           width: AppDimensions.resizeHandleWidth,
-          color: _showHighlight
-              ? c.accent.withValues(alpha: 0.5)
-              : c.border,
+          color: _showHighlight ? c.accent.withValues(alpha: 0.5) : c.border,
         ),
       ),
     );
@@ -719,15 +809,15 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
             color: widget.isActive
                 ? c.accentMuted
                 : _isHovered
-                    ? c.surfaceHover
-                    : Colors.transparent,
+                ? c.surfaceHover
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
             border: Border.all(
               color: widget.isActive
                   ? c.accent.withValues(alpha: 0.4)
                   : _isHovered
-                      ? c.border
-                      : Colors.transparent,
+                  ? c.border
+                  : Colors.transparent,
             ),
           ),
           child: Row(
