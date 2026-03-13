@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -18,6 +20,10 @@ class EditorPanel extends StatefulWidget {
   final DateTime? selectedDate;
   final VoidCallback? onCreateNote;
   final VoidCallback? onCreateLocalNote;
+  final double contentScale;
+  final Future<void> Function()? onIncreaseContentScale;
+  final Future<void> Function()? onDecreaseContentScale;
+  final Future<void> Function(double value)? onSetContentScale;
 
   const EditorPanel({
     super.key,
@@ -26,6 +32,10 @@ class EditorPanel extends StatefulWidget {
     this.selectedDate,
     this.onCreateNote,
     this.onCreateLocalNote,
+    this.contentScale = 1.0,
+    this.onIncreaseContentScale,
+    this.onDecreaseContentScale,
+    this.onSetContentScale,
   });
 
   @override
@@ -40,6 +50,7 @@ class _EditorPanelState extends State<EditorPanel> {
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
+  double _panZoomBaseScale = 1.0;
 
   @override
   void initState() {
@@ -124,9 +135,7 @@ class _EditorPanelState extends State<EditorPanel> {
         Divider(height: 1, color: c.border),
         _buildMetaHeader(c),
         Divider(height: 1, color: c.border),
-        Expanded(
-          child: _showPreview ? _buildPreview(c) : _buildEditor(c),
-        ),
+        Expanded(child: _showPreview ? _buildPreview(c) : _buildEditor(c)),
         _buildStatusBar(c),
       ],
     );
@@ -311,41 +320,74 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   Widget _buildEditor(AppColorsExtension c) {
-    return Container(
-      color: c.scaffold,
-      padding: const EdgeInsets.all(AppDimensions.spacingLg),
-      child: TextField(
-        controller: _contentController,
-        onChanged: (_) => _onContentChanged(),
-        maxLines: null,
-        expands: true,
-        textAlignVertical: TextAlignVertical.top,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 14,
-          color: c.textPrimary,
-          height: 1.7,
-        ),
-        decoration: InputDecoration(
-          hintText: 'Start writing in markdown...',
-          hintStyle: GoogleFonts.jetBrainsMono(
-            fontSize: 14,
-            color: c.textMuted,
+    return _buildZoomAwareSurface(
+      Container(
+        color: c.scaffold,
+        padding: const EdgeInsets.all(AppDimensions.spacingLg),
+        child: TextField(
+          controller: _contentController,
+          onChanged: (_) => _onContentChanged(),
+          maxLines: null,
+          expands: true,
+          textAlignVertical: TextAlignVertical.top,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 14 * widget.contentScale,
+            color: c.textPrimary,
+            height: 1.7,
           ),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          filled: false,
-          contentPadding: EdgeInsets.zero,
+          decoration: InputDecoration(
+            hintText: 'Start writing in markdown...',
+            hintStyle: GoogleFonts.jetBrainsMono(
+              fontSize: 14 * widget.contentScale,
+              color: c.textMuted,
+            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            filled: false,
+            contentPadding: EdgeInsets.zero,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildPreview(AppColorsExtension c) {
-    return Container(
-      color: c.scaffold,
-      padding: const EdgeInsets.all(AppDimensions.spacingLg),
-      child: MarkdownPreviewWidget(content: _contentController.text),
+    return _buildZoomAwareSurface(
+      Container(
+        color: c.scaffold,
+        padding: const EdgeInsets.all(AppDimensions.spacingLg),
+        child: MarkdownPreviewWidget(
+          content: _contentController.text,
+          contentScale: widget.contentScale,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildZoomAwareSurface(Widget child) {
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is! PointerScrollEvent ||
+            !HardwareKeyboard.instance.isMetaPressed) {
+          return;
+        }
+
+        if (event.scrollDelta.dy < 0) {
+          unawaited(widget.onIncreaseContentScale?.call());
+        } else if (event.scrollDelta.dy > 0) {
+          unawaited(widget.onDecreaseContentScale?.call());
+        }
+      },
+      onPointerPanZoomStart: (_) {
+        _panZoomBaseScale = widget.contentScale;
+      },
+      onPointerPanZoomUpdate: (event) {
+        unawaited(
+          widget.onSetContentScale?.call(_panZoomBaseScale * event.scale),
+        );
+      },
+      child: child,
     );
   }
 
@@ -364,7 +406,11 @@ class _EditorPanelState extends State<EditorPanel> {
       child: Row(
         children: [
           if (savedText.isNotEmpty) ...[
-            Icon(Icons.check_circle_outline_rounded, size: 12, color: c.success),
+            Icon(
+              Icons.check_circle_outline_rounded,
+              size: 12,
+              color: c.success,
+            ),
             const SizedBox(width: AppDimensions.spacingXs),
             Text(
               savedText,
@@ -373,7 +419,7 @@ class _EditorPanelState extends State<EditorPanel> {
           ],
           const Spacer(),
           Text(
-            'Markdown',
+            'Markdown ${(widget.contentScale * 100).round()}%',
             style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
           ),
         ],
@@ -477,15 +523,17 @@ class _CreateNoteButtonState extends State<_CreateNoteButton> {
             color: _isHovered ? c.surfaceHover : c.surfaceLight,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             border: Border.all(
-              color: _isHovered
-                  ? accentColor.withValues(alpha: 0.3)
-                  : c.border,
+              color: _isHovered ? accentColor.withValues(alpha: 0.3) : c.border,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(widget.icon, size: 14, color: _isHovered ? accentColor : c.textSecondary),
+              Icon(
+                widget.icon,
+                size: 14,
+                color: _isHovered ? accentColor : c.textSecondary,
+              ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 widget.label,

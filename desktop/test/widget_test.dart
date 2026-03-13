@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:simsync/auth/auth_models.dart';
 import 'package:simsync/auth/auth_service.dart';
@@ -11,6 +12,12 @@ import 'package:simsync/services/note_service.dart';
 import 'package:simsync/storage/github/repo_cache.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('App renders GitHub login screen when no session exists', (
     WidgetTester tester,
   ) async {
@@ -21,11 +28,11 @@ void main() {
 
     await tester.pumpWidget(
       SimSyncApp(
-        authService: _FakeAuthService(
-          restoreResult: null,
-        ),
+        authService: _FakeAuthService(restoreResult: null),
         storageFactory: _fakeStorageFactory,
-        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
+        repoCache: RepoCache.withPath(
+          '/tmp/simsync_test_nonexistent/repos.json',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -36,122 +43,129 @@ void main() {
     expect(find.text('Password'), findsNothing);
   });
 
-  testWidgets('App restores session and routes to repo selection when no config exists', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
-      await tester.pump();
-    });
+  testWidgets(
+    'App restores session and routes to repo selection when no config exists',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
 
-    // Suppress network image errors from RepoSelectionScreen's avatar.
-    final originalOnError = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (details.toString().contains('NetworkImageLoadException')) return;
-      originalOnError?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = originalOnError);
+      // Suppress network image errors from RepoSelectionScreen's avatar.
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.toString().contains('NetworkImageLoadException')) return;
+        originalOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = originalOnError);
 
-    await tester.pumpWidget(
-      SimSyncApp(
-        authService: _FakeAuthService(
-          restoreResult: _testSession,
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: _fakeStorageFactory,
+          repoCache: RepoCache.withPath(
+            '/tmp/simsync_test_nonexistent/repos.json',
+          ),
         ),
-        storageFactory: _fakeStorageFactory,
-        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
-      ),
-    );
+      );
 
-    // Allow async _restoreSession + RepoCache.load() to complete.
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.byType(RepoSelectionScreen), findsOneWidget);
-  });
-
-  testWidgets('Login button shows loading indicator while auth is in progress', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
+      // Allow async _restoreSession + RepoCache.load() to complete.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
       await tester.pump();
-    });
+      await tester.pump(const Duration(milliseconds: 100));
 
-    // Suppress network image errors from RepoSelectionScreen's avatar.
-    final originalOnError = FlutterError.onError;
-    FlutterError.onError = (details) {
-      if (details.toString().contains('NetworkImageLoadException')) return;
-      originalOnError?.call(details);
-    };
-    addTearDown(() => FlutterError.onError = originalOnError);
+      expect(find.byType(RepoSelectionScreen), findsOneWidget);
+    },
+  );
 
-    final completer = Completer<AuthSession>();
-    final authService = _FakeAuthService(
-      restoreResult: null,
-      signInHandler: () => completer.future,
-    );
+  testWidgets(
+    'Login button shows loading indicator while auth is in progress',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
 
-    await tester.pumpWidget(
-      SimSyncApp(
-        authService: authService,
-        storageFactory: _fakeStorageFactory,
-        repoCache: RepoCache.withPath('/tmp/simsync_test_nonexistent/repos.json'),
-      ),
-    );
-    await tester.pumpAndSettle();
+      // Suppress network image errors from RepoSelectionScreen's avatar.
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.toString().contains('NetworkImageLoadException')) return;
+        originalOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = originalOnError);
 
-    await tester.tap(find.text('Continue with GitHub'));
-    await tester.pump();
+      final completer = Completer<AuthSession>();
+      final authService = _FakeAuthService(
+        restoreResult: null,
+        signInHandler: () => completer.future,
+      );
 
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: authService,
+          storageFactory: _fakeStorageFactory,
+          repoCache: RepoCache.withPath(
+            '/tmp/simsync_test_nonexistent/repos.json',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    completer.complete(_testSession);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-
-    expect(find.byType(RepoSelectionScreen), findsOneWidget);
-  });
-
-  testWidgets('App redirects to login screen when background session monitor detects invalid token', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() async {
-      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.tap(find.text('Continue with GitHub'));
       await tester.pump();
-    });
 
-    final repoCache = _InMemoryRepoCache();
-    await repoCache.add(
-      RepoEntry(
-        owner: 'octocat',
-        repo: 'notes',
-        connectedAt: DateTime.utc(2026, 3, 10, 9),
-      ),
-    );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    final authService = _FakeAuthService(
-      restoreResult: _testSession,
-      validationResults: [false],
-    );
+      completer.complete(_testSession);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
-    await tester.pumpWidget(
-      SimSyncApp(
-        authService: authService,
-        storageFactory: _fakeStorageFactory,
-        repoCache: repoCache,
-        sessionCheckInterval: const Duration(milliseconds: 20),
-      ),
-    );
+      expect(find.byType(RepoSelectionScreen), findsOneWidget);
+    },
+  );
 
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 30));
-    await tester.pump();
+  testWidgets(
+    'App redirects to login screen when background session monitor detects invalid token',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
 
-    expect(find.text('Continue with GitHub'), findsOneWidget);
-    expect(authService.validateSessionCalls, greaterThanOrEqualTo(1));
-    expect(authService.logoutCalls, 1);
-  });
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final authService = _FakeAuthService(
+        restoreResult: _testSession,
+        validationResults: [false],
+      );
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: authService,
+          storageFactory: _fakeStorageFactory,
+          repoCache: repoCache,
+          sessionCheckInterval: const Duration(milliseconds: 20),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pump();
+
+      expect(find.text('Continue with GitHub'), findsOneWidget);
+      expect(authService.validateSessionCalls, greaterThanOrEqualTo(1));
+      expect(authService.logoutCalls, 1);
+    },
+  );
 }
 
 final _testSession = AuthSession(
@@ -161,12 +175,7 @@ final _testSession = AuthSession(
   scope: 'read:user',
   issuedAt: DateTime.utc(2026, 3, 10, 9),
   expiresAt: DateTime.utc(2026, 3, 11, 9),
-  user: const AuthUser(
-    id: '1',
-    login: 'octocat',
-    name: null,
-    avatarUrl: '',
-  ),
+  user: const AuthUser(id: '1', login: 'octocat', name: null, avatarUrl: ''),
 );
 
 /// Test storage factory that returns local NoteService without disk config.
@@ -186,8 +195,8 @@ class _FakeAuthService implements AuthService {
     required this.restoreResult,
     Future<AuthSession> Function()? signInHandler,
     List<bool>? validationResults,
-  })  : _signInHandler = signInHandler,
-        _validationResults = List<bool>.from(validationResults ?? const []);
+  }) : _signInHandler = signInHandler,
+       _validationResults = List<bool>.from(validationResults ?? const []);
 
   final AuthSession? restoreResult;
   final Future<AuthSession> Function()? _signInHandler;

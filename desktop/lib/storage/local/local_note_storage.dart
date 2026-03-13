@@ -28,14 +28,33 @@ class LocalNoteStorage implements NoteStorage {
   }
 
   String _dayDirPath(DateTime date) {
-    final yearMonth =
-        '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    final yearMonth = '${date.year}-${date.month.toString().padLeft(2, '0')}';
     final day = date.day.toString().padLeft(2, '0');
     return '$basePath/notes/$yearMonth/$day';
   }
 
   String _monthDirPath(String yearMonth) {
     return '$basePath/notes/$yearMonth';
+  }
+
+  @override
+  Future<List<Note>> listAllNotes() async {
+    final rootDir = Directory('$basePath/notes');
+    if (!await rootDir.exists()) return [];
+
+    final notes = <Note>[];
+    await for (final entity in rootDir.list()) {
+      if (entity is! Directory) continue;
+
+      final yearMonth = entity.path.split(Platform.pathSeparator).last;
+      final dates = await listDates(yearMonth);
+      for (final date in dates) {
+        notes.addAll(await listNotes(date));
+      }
+    }
+
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return notes;
   }
 
   @override
