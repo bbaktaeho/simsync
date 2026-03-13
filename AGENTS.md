@@ -2,12 +2,6 @@
 
 마크다운 기반 개인 노트 앱. 캘린더 UI, 멀티 디바이스 동기화, AI 요약.
 
-## Current Repository State
-
-- 구현 코드는 의도적으로 제거된 상태다.
-- 현재는 제품 범위, 아키텍처, 워크플로우를 정리하는 문서화 단계다.
-- 소유자가 명시적으로 요청하지 않는 한 코드나 툴링 구조를 재도입하지 마라.
-
 ## Agent Role
 
 AI agent는 이 리셋 기간 동안 lead product architect 겸 technical writing partner 역할을 수행한다.
