@@ -46,4 +46,38 @@ void main() {
       expect(find.text('110%'), findsOneWidget);
     },
   );
+
+  testWidgets('updates local note path when change action is used', (
+    WidgetTester tester,
+  ) async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+    var appliedPath = '';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(
+          body: SettingsScreen(
+            settingsController: controller,
+            onPickLocalNotePath: (currentPath) async => '/tmp/updated-notes',
+            onLocalNotePathChanged: (path) async {
+              appliedPath = path;
+              await controller.setLocalNotePath(path);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Change...'));
+    await tester.pumpAndSettle();
+
+    expect(appliedPath, '/tmp/updated-notes');
+    expect(controller.value.localNotePath, '/tmp/updated-notes');
+    expect(find.text('/tmp/updated-notes'), findsOneWidget);
+  });
 }
