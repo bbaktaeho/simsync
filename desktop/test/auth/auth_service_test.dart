@@ -68,6 +68,7 @@ void main() {
             avatarUrl: 'https://example.com/avatar.png',
           ),
         ),
+        validationResult: SessionValidationResult.valid,
       ),
       store: store,
       policy: SessionPolicy(maxAge: const Duration(hours: 24)),
@@ -111,6 +112,7 @@ void main() {
             avatarUrl: 'https://example.com/avatar.png',
           ),
         ),
+        validationResult: SessionValidationResult.valid,
       ),
       store: store,
       policy: SessionPolicy(maxAge: const Duration(hours: 24)),
@@ -121,6 +123,98 @@ void main() {
 
     expect(session, isNull);
     expect(store.clearCalls, 1);
+  });
+
+  test('DefaultAuthService clears saved session when provider reports invalid token on restore', () async {
+    final store = _MemorySessionStore(
+      savedSession: AuthSession(
+        provider: 'github',
+        accessToken: 'expired-token',
+        tokenType: 'bearer',
+        scope: 'read:user',
+        issuedAt: DateTime.utc(2026, 3, 10, 9),
+        expiresAt: DateTime.utc(2026, 3, 11, 9),
+        user: const AuthUser(
+          id: '1',
+          login: 'octocat',
+          name: null,
+          avatarUrl: 'https://example.com/avatar.png',
+        ),
+      ),
+    );
+    final provider = _FakeAuthProvider(
+      result: const AuthGrant(
+        provider: 'github',
+        accessToken: 'unused',
+        tokenType: 'bearer',
+        scope: 'read:user',
+        user: AuthUser(
+          id: '1',
+          login: 'octocat',
+          name: null,
+          avatarUrl: 'https://example.com/avatar.png',
+        ),
+      ),
+      validationResult: SessionValidationResult.invalid,
+    );
+    final service = DefaultAuthService(
+      provider: provider,
+      store: store,
+      policy: SessionPolicy(maxAge: const Duration(hours: 24)),
+      nowProvider: () => DateTime.utc(2026, 3, 10, 10),
+    );
+
+    final session = await service.restoreSession();
+
+    expect(session, isNull);
+    expect(store.clearCalls, 1);
+    expect(provider.validatedAccessTokens, ['expired-token']);
+  });
+
+  test('DefaultAuthService keeps saved session when token validation is inconclusive', () async {
+    final store = _MemorySessionStore(
+      savedSession: AuthSession(
+        provider: 'github',
+        accessToken: 'token',
+        tokenType: 'bearer',
+        scope: 'read:user',
+        issuedAt: DateTime.utc(2026, 3, 10, 9),
+        expiresAt: DateTime.utc(2026, 3, 11, 9),
+        user: const AuthUser(
+          id: '1',
+          login: 'octocat',
+          name: null,
+          avatarUrl: 'https://example.com/avatar.png',
+        ),
+      ),
+    );
+    final provider = _FakeAuthProvider(
+      result: const AuthGrant(
+        provider: 'github',
+        accessToken: 'unused',
+        tokenType: 'bearer',
+        scope: 'read:user',
+        user: AuthUser(
+          id: '1',
+          login: 'octocat',
+          name: null,
+          avatarUrl: 'https://example.com/avatar.png',
+        ),
+      ),
+      validationResult: SessionValidationResult.unknown,
+    );
+    final service = DefaultAuthService(
+      provider: provider,
+      store: store,
+      policy: SessionPolicy(maxAge: const Duration(hours: 24)),
+      nowProvider: () => DateTime.utc(2026, 3, 10, 10),
+    );
+
+    final session = await service.restoreSession();
+
+    expect(session, isNotNull);
+    expect(store.clearCalls, 0);
+    expect(provider.validatedAccessTokens, ['token']);
   });
 
   test('DefaultAuthService logout clears persisted session', () async {
@@ -139,6 +233,7 @@ void main() {
             avatarUrl: 'https://example.com/avatar.png',
           ),
         ),
+        validationResult: SessionValidationResult.valid,
       ),
       store: store,
       policy: SessionPolicy(maxAge: const Duration(hours: 24)),
@@ -152,15 +247,26 @@ void main() {
 }
 
 class _FakeAuthProvider implements AuthProvider {
-  _FakeAuthProvider({required this.result});
+  _FakeAuthProvider({
+    required this.result,
+    this.validationResult = SessionValidationResult.valid,
+  });
 
   final AuthGrant result;
+  final SessionValidationResult validationResult;
   int signInCalls = 0;
+  final List<String> validatedAccessTokens = [];
 
   @override
   Future<AuthGrant> signIn() async {
     signInCalls += 1;
     return result;
+  }
+
+  @override
+  Future<SessionValidationResult> validateAccessToken(String accessToken) async {
+    validatedAccessTokens.add(accessToken);
+    return validationResult;
   }
 }
 

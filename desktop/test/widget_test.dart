@@ -14,6 +14,11 @@ void main() {
   testWidgets('App renders GitHub login screen when no session exists', (
     WidgetTester tester,
   ) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
     await tester.pumpWidget(
       SimSyncApp(
         authService: _FakeAuthService(
@@ -34,6 +39,11 @@ void main() {
   testWidgets('App restores session and routes to repo selection when no config exists', (
     WidgetTester tester,
   ) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
     // Suppress network image errors from RepoSelectionScreen's avatar.
     final originalOnError = FlutterError.onError;
     FlutterError.onError = (details) {
@@ -63,6 +73,11 @@ void main() {
   testWidgets('Login button shows loading indicator while auth is in progress', (
     WidgetTester tester,
   ) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
     // Suppress network image errors from RepoSelectionScreen's avatar.
     final originalOnError = FlutterError.onError;
     FlutterError.onError = (details) {
@@ -97,6 +112,46 @@ void main() {
 
     expect(find.byType(RepoSelectionScreen), findsOneWidget);
   });
+
+  testWidgets('App redirects to login screen when background session monitor detects invalid token', (
+    WidgetTester tester,
+  ) async {
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    final repoCache = _InMemoryRepoCache();
+    await repoCache.add(
+      RepoEntry(
+        owner: 'octocat',
+        repo: 'notes',
+        connectedAt: DateTime.utc(2026, 3, 10, 9),
+      ),
+    );
+
+    final authService = _FakeAuthService(
+      restoreResult: _testSession,
+      validationResults: [false],
+    );
+
+    await tester.pumpWidget(
+      SimSyncApp(
+        authService: authService,
+        storageFactory: _fakeStorageFactory,
+        repoCache: repoCache,
+        sessionCheckInterval: const Duration(milliseconds: 20),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+    await tester.pump();
+
+    expect(find.text('Continue with GitHub'), findsOneWidget);
+    expect(authService.validateSessionCalls, greaterThanOrEqualTo(1));
+    expect(authService.logoutCalls, 1);
+  });
 }
 
 final _testSession = AuthSession(
@@ -110,7 +165,7 @@ final _testSession = AuthSession(
     id: '1',
     login: 'octocat',
     name: null,
-    avatarUrl: 'https://example.com/avatar.png',
+    avatarUrl: '',
   ),
 );
 
@@ -130,13 +185,20 @@ class _FakeAuthService implements AuthService {
   _FakeAuthService({
     required this.restoreResult,
     Future<AuthSession> Function()? signInHandler,
-  }) : _signInHandler = signInHandler;
+    List<bool>? validationResults,
+  })  : _signInHandler = signInHandler,
+        _validationResults = List<bool>.from(validationResults ?? const []);
 
   final AuthSession? restoreResult;
   final Future<AuthSession> Function()? _signInHandler;
+  final List<bool> _validationResults;
+  int logoutCalls = 0;
+  int validateSessionCalls = 0;
 
   @override
-  Future<void> logout() async {}
+  Future<void> logout() async {
+    logoutCalls += 1;
+  }
 
   @override
   Future<AuthSession?> restoreSession() async => restoreResult;
@@ -148,5 +210,34 @@ class _FakeAuthService implements AuthService {
     }
 
     throw UnimplementedError();
+  }
+
+  @override
+  Future<bool> validateSession(AuthSession session) async {
+    validateSessionCalls += 1;
+    if (_validationResults.isEmpty) {
+      return true;
+    }
+    return _validationResults.removeAt(0);
+  }
+}
+
+class _InMemoryRepoCache extends RepoCache {
+  _InMemoryRepoCache() : super.withPath('/tmp/simsync-unused-repo-cache.json');
+
+  final List<RepoEntry> _entries = [];
+
+  @override
+  Future<void> add(RepoEntry entry) async {
+    _entries.removeWhere((e) => e.owner == entry.owner && e.repo == entry.repo);
+    _entries.insert(0, entry);
+  }
+
+  @override
+  Future<List<RepoEntry>> load() async => List<RepoEntry>.from(_entries);
+
+  @override
+  Future<void> remove(String owner, String repo) async {
+    _entries.removeWhere((e) => e.owner == owner && e.repo == repo);
   }
 }

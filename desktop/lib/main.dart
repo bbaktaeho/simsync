@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -60,6 +61,7 @@ class SimSyncApp extends StatefulWidget {
     required this.authService,
     this.storageFactory,
     this.repoCache,
+    this.sessionCheckInterval = const Duration(minutes: 1),
   });
 
   final AuthService authService;
@@ -71,6 +73,9 @@ class SimSyncApp extends StatefulWidget {
   /// Optional override for repo cache (useful for testing).
   /// When null, uses the default [RepoCache] backed by `~/.simsync/repos.json`.
   final RepoCache? repoCache;
+
+  /// Periodic interval used to validate the stored session in the background.
+  final Duration sessionCheckInterval;
 
   @override
   State<SimSyncApp> createState() => SimSyncAppState();
@@ -104,6 +109,7 @@ class SimSyncAppState extends State<SimSyncApp> {
         authService: widget.authService,
         storageFactory: widget.storageFactory ?? _defaultStorageFactory,
         repoCache: widget.repoCache ?? RepoCache(),
+        sessionCheckInterval: widget.sessionCheckInterval,
       ),
     );
   }
@@ -115,11 +121,13 @@ class _AppShell extends StatefulWidget {
     required this.authService,
     required this.storageFactory,
     required this.repoCache,
+    required this.sessionCheckInterval,
   });
 
   final AuthService authService;
   final StorageFactory storageFactory;
   final RepoCache repoCache;
+  final Duration sessionCheckInterval;
 
   @override
   State<_AppShell> createState() => _AppShellState();
@@ -133,6 +141,8 @@ class _AppShellState extends State<_AppShell> {
 
   // Storage layer (resolved after auth succeeds).
   StorageBundle? _bundle;
+  Timer? _sessionCheckTimer;
+  bool _isValidatingSession = false;
 
   /// Notifier incremented when the sync engine detects remote changes.
   /// DocumentScreen listens to this to reload notes.
@@ -146,6 +156,7 @@ class _AppShellState extends State<_AppShell> {
 
   @override
   void dispose() {
+    _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
     _refreshSignal.dispose();
     super.dispose();
@@ -155,12 +166,15 @@ class _AppShellState extends State<_AppShell> {
     final session = await widget.authService.signIn();
     if (!mounted) return;
     _session = session;
+    _startSessionMonitor();
     setState(() => _status = _AuthStatus.repoSelection);
   }
 
   Future<void> _handleLogout() async {
+    _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
     _bundle = null;
+    _session = null;
     await widget.authService.logout();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.unauthenticated);
@@ -183,6 +197,7 @@ class _AppShellState extends State<_AppShell> {
       // Use the most recently connected repo.
       final entry = entries.first;
       _session = session;
+      _startSessionMonitor();
       _bundle = await widget.storageFactory(
         session.accessToken,
         owner: entry.owner,
@@ -196,6 +211,7 @@ class _AppShellState extends State<_AppShell> {
     } else {
       // No cached repo — let user pick one.
       _session = session;
+      _startSessionMonitor();
       setState(() => _status = _AuthStatus.repoSelection);
     }
   }
@@ -215,6 +231,53 @@ class _AppShellState extends State<_AppShell> {
     _bundle?.syncEngine?.start();
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
+  }
+
+  void _startSessionMonitor() {
+    _stopSessionMonitor();
+    if (_session == null) return;
+    _scheduleNextSessionCheck();
+  }
+
+  void _stopSessionMonitor() {
+    _sessionCheckTimer?.cancel();
+    _sessionCheckTimer = null;
+  }
+
+  void _scheduleNextSessionCheck() {
+    _sessionCheckTimer = Timer(
+      widget.sessionCheckInterval,
+      () => unawaited(_runSessionCheckCycle()),
+    );
+  }
+
+  Future<void> _runSessionCheckCycle() async {
+    await _checkSessionValidity();
+    if (!mounted || _session == null || _status == _AuthStatus.unauthenticated) {
+      return;
+    }
+    _scheduleNextSessionCheck();
+  }
+
+  Future<void> _checkSessionValidity() async {
+    final session = _session;
+    if (session == null ||
+        _status == _AuthStatus.restoring ||
+        _status == _AuthStatus.unauthenticated ||
+        _isValidatingSession) {
+      return;
+    }
+
+    _isValidatingSession = true;
+    try {
+      final isValid = await widget.authService.validateSession(session);
+      if (!mounted || isValid) {
+        return;
+      }
+      await _handleLogout();
+    } finally {
+      _isValidatingSession = false;
+    }
   }
 
   Future<void> _onRemoteChanged() async {

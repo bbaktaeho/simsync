@@ -290,12 +290,17 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
   }
 
   Widget _buildHeader(AppColorsExtension c) {
+    final avatarUrl = widget.avatarUrl.trim();
+
     return Column(
       children: [
         CircleAvatar(
           radius: 28,
-          backgroundImage: NetworkImage(widget.avatarUrl),
           backgroundColor: c.surfaceLight,
+          backgroundImage: avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
+          child: avatarUrl.isEmpty
+              ? Icon(Icons.person_outline_rounded, color: c.textMuted)
+              : null,
         ),
         const SizedBox(height: AppDimensions.spacingMd),
         Text(
