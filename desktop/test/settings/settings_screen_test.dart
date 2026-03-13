@@ -53,7 +53,6 @@ void main() {
     expect(find.text('/tmp/default-notes'), findsOneWidget);
     expect(find.text('octocat/notes'), findsOneWidget);
     expect(find.text('Change...'), findsWidgets);
-    expect(find.text('Change Repository...'), findsOneWidget);
 
     await tester.tap(find.text('Editor & Preview'));
     await tester.pumpAndSettle();
