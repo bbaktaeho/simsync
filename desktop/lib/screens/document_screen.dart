@@ -31,6 +31,7 @@ class DocumentScreen extends StatefulWidget {
   final RepoEntry? activeRepo;
   final AppSettingsController settingsController;
   final GitHubSyncEngine? syncEngine;
+  final Future<void> Function(String path)? onLocalNotePathChanged;
 
   /// Optional notifier that signals when remote data has changed.
   /// Each value change triggers a full reload of notes from storage.
@@ -47,6 +48,7 @@ class DocumentScreen extends StatefulWidget {
     required this.settingsController,
     this.activeRepo,
     this.syncEngine,
+    this.onLocalNotePathChanged,
   });
 
   @override
@@ -99,6 +101,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (oldWidget.refreshSignal != widget.refreshSignal) {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+    if (oldWidget.storage != widget.storage ||
+        oldWidget.localStorage != widget.localStorage) {
+      unawaited(_loadNotes());
     }
   }
 
@@ -519,6 +525,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         return SettingsScreen(
           settingsController: widget.settingsController,
           activeRepo: widget.activeRepo,
+          onLocalNotePathChanged: widget.onLocalNotePathChanged,
           onSyncIntervalChanged: _applySyncInterval,
         );
       },

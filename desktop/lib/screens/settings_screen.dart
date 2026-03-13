@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../settings/app_settings_controller.dart';
@@ -10,14 +11,38 @@ class SettingsScreen extends StatelessWidget {
     super.key,
     required this.settingsController,
     this.activeRepo,
+    this.onLocalNotePathChanged,
+    this.onPickLocalNotePath,
     this.onSyncIntervalChanged,
   });
 
   final AppSettingsController settingsController;
   final RepoEntry? activeRepo;
+  final Future<void> Function(String path)? onLocalNotePathChanged;
+  final Future<String?> Function(String currentPath)? onPickLocalNotePath;
   final ValueChanged<int>? onSyncIntervalChanged;
 
   static const List<int> _syncIntervals = [5, 10, 15, 30, 60, 120, 300];
+
+  Future<void> _changeLocalPath(String currentPath) async {
+    final picker = onPickLocalNotePath ?? _defaultDirectoryPicker;
+    final pickedPath = await picker(currentPath);
+    if (pickedPath == null || pickedPath.isEmpty) return;
+
+    final callback = onLocalNotePathChanged;
+    if (callback != null) {
+      await callback(pickedPath);
+    } else {
+      await settingsController.setLocalNotePath(pickedPath);
+    }
+  }
+
+  Future<String?> _defaultDirectoryPicker(String currentPath) {
+    return FilePicker.platform.getDirectoryPath(
+      dialogTitle: '로컬 노트 저장 경로 선택',
+      initialDirectory: currentPath,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +78,10 @@ class SettingsScreen extends StatelessWidget {
                   _InfoRow(
                     label: 'Local note path',
                     value: settings.localNotePath,
+                    action: _ActionButton(
+                      label: 'Change...',
+                      onPressed: () => _changeLocalPath(settings.localNotePath),
+                    ),
                   ),
                   const SizedBox(height: AppDimensions.spacingSm),
                   _InfoRow(
@@ -157,16 +186,18 @@ class _SectionTitle extends StatelessWidget {
 }
 
 class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
+  const _InfoRow({required this.label, required this.value, this.action});
 
   final String label;
   final String value;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     return _SettingCard(
       label: label,
+      action: action,
       child: SelectableText(
         value,
         style: TextStyle(fontSize: 13, color: c.textPrimary, height: 1.5),
@@ -176,11 +207,17 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _SettingCard extends StatelessWidget {
-  const _SettingCard({required this.label, required this.child, this.hint});
+  const _SettingCard({
+    required this.label,
+    required this.child,
+    this.hint,
+    this.action,
+  });
 
   final String label;
   final Widget child;
   final String? hint;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -196,13 +233,24 @@ class _SettingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: c.textSecondary,
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ),
+              if (action != null) ...[
+                const SizedBox(width: AppDimensions.spacingSm),
+                action!,
+              ],
+            ],
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           child,
@@ -212,6 +260,29 @@ class _SettingCard extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.label, required this.onPressed});
+
+  final String label;
+  final Future<void> Function() onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        foregroundColor: c.accent,
+        textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+      child: Text(label),
     );
   }
 }

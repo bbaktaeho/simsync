@@ -251,6 +251,25 @@ class _AppShellState extends State<_AppShell> {
     setState(() => _status = _AuthStatus.authenticated);
   }
 
+  Future<void> _handleLocalNotePathChanged(String path) async {
+    await _settingsController.setLocalNotePath(path);
+    if (_session == null || _activeRepo == null) return;
+
+    _bundle?.syncEngine?.dispose();
+    final nextBundle = await widget.storageFactory(
+      _session!.accessToken,
+      owner: _activeRepo!.owner,
+      repo: _activeRepo!.repo,
+      branch: _activeRepo!.branch,
+      onRemoteChanged: _onRemoteChanged,
+    );
+    nextBundle.syncEngine?.start();
+    if (!mounted) return;
+
+    setState(() => _bundle = nextBundle);
+    _refreshSignal.value++;
+  }
+
   void _startSessionMonitor() {
     _stopSessionMonitor();
     if (_session == null) return;
@@ -334,6 +353,7 @@ class _AppShellState extends State<_AppShell> {
         activeRepo: _activeRepo,
         settingsController: _settingsController,
         syncEngine: _bundle!.syncEngine,
+        onLocalNotePathChanged: _handleLocalNotePathChanged,
       );
     }
     return LoginScreen(onGitHubLogin: _handleLogin);
