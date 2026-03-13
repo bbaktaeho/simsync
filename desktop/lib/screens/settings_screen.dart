@@ -356,7 +356,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Synced repository',
             description:
                 'Recent repositories stay one click away so switching sync targets feels lightweight.',
-            action: _ActionButton(label: 'Change Repository...', onTap: () {}),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
