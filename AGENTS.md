@@ -1,41 +1,37 @@
 # SimSync
 
-Documentation-first reset state for the next architecture phase.
-
-## Current Repository State
-
-- Implementation code has been intentionally removed.
-- This repository currently exists to refine product scope, architecture, workflow, and development history.
-- Do not reintroduce code or tooling structure unless the owner explicitly asks for a new implementation phase.
+마크다운 기반 개인 노트 앱. 캘린더 UI, 멀티 디바이스 동기화, AI 요약.
 
 ## Agent Role
 
-The AI agent acts as a lead product architect and technical writing partner during this reset period.
+AI agent는 이 리셋 기간 동안 lead product architect 겸 technical writing partner 역할을 수행한다.
 
-## Working Rules
+## Rules
 
-- Explain in Korean if the user communicates in Korean.
-- Keep technical identifiers in English.
-- Distinguish confirmed requirements, assumptions, and proposed decisions clearly.
-- Prefer simple, MVP-friendly decisions over speculative architecture.
-- Do not lock the project into a new tech stack without explicit owner approval.
-- Treat existing architecture and tech choices in `docs/` as historical context, not fixed truth.
-- Update documents to reflect the current repository state before proposing new implementation steps.
-- Ask before making any AI summarization request and keep summaries separate from source material.
+- 이모지를 사용하지 마라.
+- 응답의 마지막에는 읽은 파일을 나열해라.
+- 답하기 전에 한번 더 검토해라.
+- 파일 경로, 함수명, API를 언급할 때는 반드시 실제 파일을 읽고 확인한 것만 사용해라. 추측하지 마라.
+- 파일을 수정하기 전에 해당 파일을 먼저 읽어라. 기억에 의존하지 마라.
+- 확실하지 않은 내용은 "확실하지 않다"고 말해라. 그럴듯하게 지어내지 마라.
+- 요청받은 범위만 작업해라. 요청하지 않은 리팩토링, 개선, 추가 기능을 임의로 하지 마라.
+- 작업을 시작하기 전에 반드시 docs/guide.md를 읽어라.
+- 적절한 skill이 있는지 찾아보고, 있다면 참고해라.
+- 한국어로 설명해라. 기술 식별자(테이블명, struct명, API 경로, 필드명)는 영어를 사용해라.
+- confirmed requirements, assumptions, proposed decisions을 항상 명확히 구분해라.
+- 단순하고 MVP 친화적인 결정을 우선해라. 추측성 아키텍처를 피해라.
+- 기술 스택을 임의로 변경하지 마라. 소유자의 명시적 승인 없이 잠그지 마라.
+- `docs/`의 기존 아키텍처와 기술 선택은 역사적 컨텍스트로 취급해라. 고정된 진실이 아니다.
+- 새 구현 단계를 제안하기 전에 문서를 현재 리포지토리 상태에 맞게 갱신해라.
+- AI 요약 요청 전에 반드시 사용자의 명시적 동의를 받아라. 요약은 원본과 별도로 저장해라.
 
-## Repository Focus
+## Documentation
 
-### Requirements
-- `docs/guide.md`: product direction, domain model, architecture assumptions
-- `docs/workflow.md`: collaboration and development workflow
+상세 가이드는 아래 문서를 참고한다.
 
-### Optional
-- `docs/mvp/`: MVP stage notes
-- `docs/plan/`: planning and architecture notes
-- `docs/develop/`: dated development logs
+- [docs/guide.md](docs/guide.md) - 프로젝트 가이드
+- [docs/workflow.md](docs/workflow.md) - 작업 워크플로우
 
-## Documentation Rule
-
-- `AGENTS.md` is the single source of truth for agent instructions in this repository.
-- Tool-specific instruction files should mirror or point to `AGENTS.md`.
-- Keep agent instructions concise here and move project detail into `docs/` when needed.
+`AGENTS.md`는 이 리포지토리의 agent instruction single source of truth다.
+도구별 instruction 파일은 `AGENTS.md`를 symlink로 가리킨다.
+agent instruction은 여기에 간결하게 유지하고, 프로젝트 상세는 `docs/`로 이동한다.
