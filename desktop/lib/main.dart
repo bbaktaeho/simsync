@@ -222,7 +222,7 @@ class _AppShellState extends State<_AppShell> {
         branch: entry.branch,
         onRemoteChanged: _onRemoteChanged,
       );
-      _bundle?.syncEngine?.start();
+      _applySyncPreference(_bundle);
       if (!mounted) return;
       setState(() => _status = _AuthStatus.authenticated);
     } else {
@@ -248,7 +248,7 @@ class _AppShellState extends State<_AppShell> {
       branch: entry.branch,
       onRemoteChanged: _onRemoteChanged,
     );
-    _bundle?.syncEngine?.start();
+    _applySyncPreference(_bundle);
     if (!mounted) return;
     setState(() => _status = _AuthStatus.authenticated);
   }
@@ -269,11 +269,27 @@ class _AppShellState extends State<_AppShell> {
       branch: _activeRepo!.branch,
       onRemoteChanged: _onRemoteChanged,
     );
-    nextBundle.syncEngine?.start();
+    _applySyncPreference(nextBundle);
     if (!mounted) return;
 
     setState(() => _bundle = nextBundle);
     _refreshSignal.value++;
+  }
+
+  void _handleSyncEnabledChanged(bool enabled) {
+    _applySyncPreference(_bundle, enabled: enabled);
+  }
+
+  void _applySyncPreference(StorageBundle? bundle, {bool? enabled}) {
+    final syncEnabled = enabled ?? _settingsController.value.syncEnabled;
+    final engine = bundle?.syncEngine;
+    if (engine == null) return;
+
+    if (syncEnabled) {
+      engine.start();
+    } else {
+      engine.stop();
+    }
   }
 
   Future<RepoEntry> _handleCreateRepo(String name) async {
@@ -402,6 +418,7 @@ class _AppShellState extends State<_AppShell> {
         syncEngine: _bundle!.syncEngine,
         loadCachedRepos: _loadCachedRepos,
         onLocalNotePathChanged: _handleLocalNotePathChanged,
+        onSyncEnabledChanged: _handleSyncEnabledChanged,
         onRepoSelected: _handleRepoSelected,
         onCreateRepo: _handleCreateRepo,
         onConnectRepo: _handleConnectRepo,
