@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_settings.dart';
 
 class AppSettingsController extends ChangeNotifier {
+  static const Duration _contentScalePersistDelay = Duration(milliseconds: 180);
   static const String localNotePathKey = 'local_note_path';
   static const String contentScaleKey = 'content_scale';
   static const String syncIntervalSecondsKey = 'sync_interval_seconds';
@@ -18,6 +21,7 @@ class AppSettingsController extends ChangeNotifier {
 
   final String _defaultLocalNotePath;
   AppSettings _value;
+  Timer? _contentScalePersistTimer;
 
   AppSettings get value => _value;
 
@@ -44,8 +48,11 @@ class AppSettingsController extends ChangeNotifier {
     );
     _value = _value.copyWith(contentScale: clamped);
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(contentScaleKey, clamped);
+    _contentScalePersistTimer?.cancel();
+    _contentScalePersistTimer = Timer(_contentScalePersistDelay, () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(contentScaleKey, clamped);
+    });
   }
 
   Future<void> setSyncIntervalSeconds(int value) async {
@@ -73,5 +80,11 @@ class AppSettingsController extends ChangeNotifier {
 
   Future<void> decreaseContentScale() async {
     await setContentScale(_value.contentScale - 0.1);
+  }
+
+  @override
+  void dispose() {
+    _contentScalePersistTimer?.cancel();
+    super.dispose();
   }
 }

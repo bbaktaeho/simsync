@@ -31,7 +31,11 @@ class DocumentScreen extends StatefulWidget {
   final RepoEntry? activeRepo;
   final AppSettingsController settingsController;
   final GitHubSyncEngine? syncEngine;
+  final Future<List<RepoEntry>> Function()? loadCachedRepos;
   final Future<void> Function(String path)? onLocalNotePathChanged;
+  final Future<void> Function(RepoEntry entry)? onRepoSelected;
+  final Future<RepoEntry> Function(String name)? onCreateRepo;
+  final Future<RepoEntry> Function(String owner, String repo)? onConnectRepo;
 
   /// Optional notifier that signals when remote data has changed.
   /// Each value change triggers a full reload of notes from storage.
@@ -48,7 +52,11 @@ class DocumentScreen extends StatefulWidget {
     required this.settingsController,
     this.activeRepo,
     this.syncEngine,
+    this.loadCachedRepos,
     this.onLocalNotePathChanged,
+    this.onRepoSelected,
+    this.onCreateRepo,
+    this.onConnectRepo,
   });
 
   @override
@@ -86,12 +94,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
   List<Note> _searchResults = [];
   bool _isSearchLoading = false;
 
+  void _handleSettingsChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.settingsController.addListener(_handleSettingsChanged);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
@@ -101,6 +115,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (oldWidget.refreshSignal != widget.refreshSignal) {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+    if (oldWidget.settingsController != widget.settingsController) {
+      oldWidget.settingsController.removeListener(_handleSettingsChanged);
+      widget.settingsController.addListener(_handleSettingsChanged);
     }
     if (oldWidget.storage != widget.storage ||
         oldWidget.localStorage != widget.localStorage) {
@@ -113,6 +131,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _saveDebounce?.cancel();
     _searchController.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     super.dispose();
   }
@@ -525,7 +544,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
         return SettingsScreen(
           settingsController: widget.settingsController,
           activeRepo: widget.activeRepo,
+          loadCachedRepos: widget.loadCachedRepos,
           onLocalNotePathChanged: widget.onLocalNotePathChanged,
+          onRepoSelected: widget.onRepoSelected,
+          onCreateRepo: widget.onCreateRepo,
+          onConnectRepo: widget.onConnectRepo,
           onSyncIntervalChanged: _applySyncInterval,
         );
       },
@@ -867,6 +890,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   Widget _buildTitleBar(AppColorsExtension c) {
     final isDark = SimSyncApp.of(context).themeMode == ThemeMode.dark;
+    final avatarUrl = widget.avatarUrl?.trim();
+    final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
 
     return Container(
       height: 44,
@@ -932,12 +957,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
           const SizedBox(width: AppDimensions.spacingXs),
           CircleAvatar(
             radius: 16,
-            backgroundImage: widget.avatarUrl != null
-                ? NetworkImage(widget.avatarUrl!)
-                : null,
-            child: widget.avatarUrl == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+            backgroundImage: hasAvatar ? NetworkImage(avatarUrl) : null,
+            child: !hasAvatar ? const Icon(Icons.person, size: 16) : null,
           ),
         ],
       ),
