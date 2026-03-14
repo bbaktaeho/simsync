@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +10,7 @@ import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
 import 'package:simsync/models/note.dart';
 import 'package:simsync/screens/repo_selection_screen.dart';
+import 'package:simsync/settings/app_settings_controller.dart';
 import 'package:simsync/services/note_service.dart';
 import 'package:simsync/storage/github/github_sync_engine.dart';
 import 'package:simsync/storage/github/repo_cache.dart';
@@ -274,6 +276,166 @@ void main() {
       expect(syncEngine.stopCalls, 1);
     },
   );
+
+  testWidgets(
+    'App blocks creating synced notes while background sync is disabled',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final remoteStorage = _MemoryNoteStorage();
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        return StorageBundle(
+          storage: remoteStorage,
+          noteService: NoteService(),
+        );
+      }
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Done'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('동기화 노트'));
+      await tester.pumpAndSettle();
+
+      expect(remoteStorage.saveCalls, 0);
+      expect(find.text('동기화가 꺼져 있어 동기화 노트를 생성할 수 없습니다.'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'App shows only notes from the newly selected local path after changing it',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      SharedPreferences.setMockInitialValues({
+        AppSettingsController.localNotePathKey: '/notes-a',
+      });
+
+      FilePicker.platform = _FakeFilePicker('/notes-b');
+
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final today = DateTime.now();
+      final oldPathStorage = _MemoryNoteStorage(
+        notes: [
+          Note(
+            id: 'local-old',
+            noteDate: DateTime(today.year, today.month, today.day),
+            title: 'old-path-note',
+            content: '',
+            isDefault: false,
+            tags: const [],
+            createdAt: today,
+            updatedAt: today,
+            storageType: StorageType.local,
+          ),
+        ],
+        listDelay: const Duration(milliseconds: 80),
+      );
+      final newPathStorage = _MemoryNoteStorage(
+        notes: [
+          Note(
+            id: 'local-new',
+            noteDate: DateTime(today.year, today.month, today.day),
+            title: 'new-path-note',
+            content: '',
+            isDefault: false,
+            tags: const [],
+            createdAt: today,
+            updatedAt: today,
+            storageType: StorageType.local,
+          ),
+        ],
+      );
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        final prefs = await SharedPreferences.getInstance();
+        final path = prefs.getString(AppSettingsController.localNotePathKey);
+        final localStorage = path == '/notes-b'
+            ? newPathStorage
+            : oldPathStorage;
+        return StorageBundle(
+          storage: _MemoryNoteStorage(),
+          localStorage: localStorage,
+          noteService: NoteService(),
+        );
+      }
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
+
+      expect(find.text('old-path-note'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Change...').first);
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 140));
+      await tester.pumpAndSettle();
+
+      expect(find.text('new-path-note'), findsWidgets);
+      expect(find.text('old-path-note'), findsNothing);
+    },
+  );
 }
 
 final _testSession = AuthSession(
@@ -316,6 +478,98 @@ class _FakeNoteStorage implements NoteStorage {
 
   @override
   Future<void> saveNote(Note note) async {}
+}
+
+class _MemoryNoteStorage implements NoteStorage {
+  _MemoryNoteStorage({List<Note>? notes, this.listDelay = Duration.zero})
+    : _notes = List<Note>.from(notes ?? const []);
+
+  final List<Note> _notes;
+  final Duration listDelay;
+  int saveCalls = 0;
+  int deleteCalls = 0;
+
+  Future<void> _waitForListDelay() async {
+    if (listDelay > Duration.zero) {
+      await Future<void>.delayed(listDelay);
+    }
+  }
+
+  @override
+  Future<void> deleteNote(Note note) async {
+    deleteCalls += 1;
+    _notes.removeWhere((item) => item.id == note.id);
+  }
+
+  @override
+  Future<Note?> getNote(String noteId, DateTime noteDate) async {
+    return _notes.where((note) => note.id == noteId).firstOrNull;
+  }
+
+  @override
+  Future<List<Note>> listAllNotes() async {
+    await _waitForListDelay();
+    return List<Note>.from(_notes);
+  }
+
+  @override
+  Future<List<DateTime>> listDates(String yearMonth) async {
+    await _waitForListDelay();
+    final parts = yearMonth.split('-');
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    if (year == null || month == null) return const [];
+
+    return _notes
+        .where(
+          (note) => note.noteDate.year == year && note.noteDate.month == month,
+        )
+        .map(
+          (note) => DateTime(
+            note.noteDate.year,
+            note.noteDate.month,
+            note.noteDate.day,
+          ),
+        )
+        .toSet()
+        .toList()
+      ..sort();
+  }
+
+  @override
+  Future<List<Note>> listNotes(DateTime date) async {
+    await _waitForListDelay();
+    return _notes
+        .where(
+          (note) =>
+              note.noteDate.year == date.year &&
+              note.noteDate.month == date.month &&
+              note.noteDate.day == date.day,
+        )
+        .toList();
+  }
+
+  @override
+  Future<void> saveNote(Note note) async {
+    saveCalls += 1;
+    _notes.removeWhere((item) => item.id == note.id);
+    _notes.add(note);
+  }
+}
+
+class _FakeFilePicker extends FilePicker {
+  _FakeFilePicker(this.directoryPath);
+
+  final String directoryPath;
+
+  @override
+  Future<String?> getDirectoryPath({
+    String? dialogTitle,
+    bool lockParentWindow = false,
+    String? initialDirectory,
+  }) async {
+    return directoryPath;
+  }
 }
 
 class _FakeGitHubSyncEngine extends GitHubSyncEngine {

@@ -95,6 +95,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<Note> _searchResults = [];
   bool _isSearchLoading = false;
+  int _loadGeneration = 0;
 
   void _handleSettingsChanged() {
     if (!mounted) return;
@@ -157,6 +158,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Future<void> _loadNotes() async {
+    final loadGeneration = ++_loadGeneration;
+
     // Load all notes from storage (GitHub or local, depending on wiring).
     final now = DateTime.now();
     final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
@@ -195,7 +198,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
 
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
     final previousSelectedId = _selectedNote?.id;
 
     // Merge remote notes with local dirty notes to prevent overwriting
@@ -237,6 +240,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
 
     unawaited(_rebuildSearchIndex());
+  }
+
+  bool get _syncEnabled => widget.settingsController.value.syncEnabled;
+
+  bool _canMutateNote(Note note) {
+    return note.storageType == StorageType.local || _syncEnabled;
+  }
+
+  void _showSyncDisabledMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ── Derived data ──
@@ -358,6 +374,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _onNoteChanged(Note updatedNote) {
+    if (!_canMutateNote(updatedNote)) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 현재 동기화 노트는 읽기 전용입니다.');
+      return;
+    }
+
     setState(() {
       final idx = _allNotes.indexWhere((n) => n.id == updatedNote.id);
       if (idx != -1) {
@@ -386,6 +407,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   Future<void> _createNote() async {
     if (_selectedDate == null) return;
+    if (!_syncEnabled) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트를 생성할 수 없습니다.');
+      return;
+    }
     final existingNotes = _notesForSelectedDate;
     final isDefault = existingNotes.isEmpty;
     final now = DateTime.now();
@@ -452,6 +477,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Future<void> _deleteNote(Note note) async {
+    if (!_canMutateNote(note)) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트를 삭제할 수 없습니다.');
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -871,6 +901,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Widget _buildRightPanel() {
+    final selectedNoteIsReadOnly =
+        _selectedNote != null && !_canMutateNote(_selectedNote!);
+
     if (_weeklyViewActive) {
       return WeeklyViewPanel(
         weekStart: _weekStart,
@@ -884,6 +917,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       selectedDate: _selectedNote == null ? _selectedDate : null,
       onCreateNote: _createNote,
       onCreateLocalNote: widget.localStorage != null ? _createLocalNote : null,
+      isReadOnly: selectedNoteIsReadOnly,
+      readOnlyReason: selectedNoteIsReadOnly
+          ? '동기화가 꺼져 있어 현재 동기화 노트는 읽기 전용입니다.'
+          : null,
       contentScale: widget.settingsController.value.contentScale,
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,

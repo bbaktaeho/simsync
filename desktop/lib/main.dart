@@ -273,7 +273,6 @@ class _AppShellState extends State<_AppShell> {
     if (!mounted) return;
 
     setState(() => _bundle = nextBundle);
-    _refreshSignal.value++;
   }
 
   void _handleSyncEnabledChanged(bool enabled) {

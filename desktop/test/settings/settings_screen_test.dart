@@ -128,4 +128,50 @@ void main() {
     expect(controller.value.syncEnabled, false);
     expect(syncEnabledCallbackValue, false);
   });
+
+  testWidgets('shows a single selected navigation indicator at a time', (
+    WidgetTester tester,
+  ) async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(body: SettingsScreen(settingsController: controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-storage')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-editor')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-sync')),
+      findsNothing,
+    );
+
+    await tester.tap(find.text('Editor & Preview'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-storage')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-editor')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-sync')),
+      findsNothing,
+    );
+  });
 }
