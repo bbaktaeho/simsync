@@ -156,10 +156,10 @@ created: 2026-03-09
 예시:
 
 ```bash
-git checkout develop
+git switch develop
 git fetch origin
 git pull --ff-only origin develop
-git checkout -b feature/example-work
+git switch -c feature/example-work
 ```
 
 ## Commit Convention
