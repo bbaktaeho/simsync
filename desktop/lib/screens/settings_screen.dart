@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -12,6 +13,18 @@ import '../theme/app_dimensions.dart';
 
 enum _SettingsPane { storage, editor, sync }
 
+String? resolveDirectoryPickerInitialPath(String currentPath) {
+  final normalized = currentPath.trim();
+  if (normalized.isEmpty) return null;
+
+  final directory = Directory(normalized);
+  if (!directory.existsSync()) {
+    return null;
+  }
+
+  return normalized;
+}
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     super.key,
@@ -23,6 +36,7 @@ class SettingsScreen extends StatefulWidget {
     this.onCreateRepo,
     this.onConnectRepo,
     this.onPickLocalNotePath,
+    this.onSyncEnabledChanged,
     this.onSyncIntervalChanged,
   });
 
@@ -34,6 +48,7 @@ class SettingsScreen extends StatefulWidget {
   final Future<RepoEntry> Function(String name)? onCreateRepo;
   final Future<RepoEntry> Function(String owner, String repo)? onConnectRepo;
   final Future<String?> Function(String currentPath)? onPickLocalNotePath;
+  final ValueChanged<bool>? onSyncEnabledChanged;
   final ValueChanged<int>? onSyncIntervalChanged;
 
   @override
@@ -105,7 +120,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<String?> _defaultDirectoryPicker(String currentPath) {
     return FilePicker.platform.getDirectoryPath(
       dialogTitle: '로컬 노트 저장 경로 선택',
-      initialDirectory: currentPath,
+      initialDirectory: resolveDirectoryPickerInitialPath(currentPath),
     );
   }
 
@@ -340,7 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _PaneHeader(
-            title: 'Storage',
+            title: 'Workspace storage',
             description:
                 'Control where local notes live and which GitHub repository is connected.',
           ),
@@ -350,6 +365,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             description: 'The directory used for local-only markdown notes.',
             action: _ActionButton(label: 'Change...', onTap: _changeLocalPath),
             child: _PathPreview(path: settings.localNotePath),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'GitHub background sync',
+            description:
+                'Turn periodic remote polling on or off without disconnecting the repository.',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    settings.syncEnabled ? 'Enabled' : 'Disabled',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+                Switch.adaptive(
+                  value: settings.syncEnabled,
+                  onChanged: (value) async {
+                    await widget.settingsController.setSyncEnabled(value);
+                    widget.onSyncEnabledChanged?.call(value);
+                  },
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
@@ -453,7 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _PaneHeader(
-            title: 'Editor & Preview',
+            title: 'Reading & zoom',
             description:
                 'Tune reading density and make sure zoom interactions feel immediate.',
           ),
@@ -520,7 +562,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _PaneHeader(
-            title: 'Sync',
+            title: 'Background sync',
             description:
                 'Control how frequently GitHub commit state is checked while you are working.',
           ),
@@ -537,12 +579,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 return ChoiceChip(
                   label: Text('${seconds}s'),
                   selected: selected,
-                  onSelected: (_) async {
-                    await widget.settingsController.setSyncIntervalSeconds(
-                      seconds,
-                    );
-                    widget.onSyncIntervalChanged?.call(seconds);
-                  },
+                  onSelected: settings.syncEnabled
+                      ? (_) async {
+                          await widget.settingsController
+                              .setSyncIntervalSeconds(seconds);
+                          widget.onSyncIntervalChanged?.call(seconds);
+                        }
+                      : null,
                 );
               }).toList(),
             ),
@@ -743,23 +786,23 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: c.textPrimary,
+        side: BorderSide(color: c.borderSubtle),
+        backgroundColor: c.surface,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: c.borderSubtle),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.manrope(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: c.textPrimary,
-          ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.manrope(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: c.textPrimary,
         ),
       ),
     );

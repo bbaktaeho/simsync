@@ -13,7 +13,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  testWidgets('renders master-detail settings layout and switches categories', (
+  test('resolveDirectoryPickerInitialPath returns null for missing path', () {
+    expect(resolveDirectoryPickerInitialPath(''), isNull);
+    expect(
+      resolveDirectoryPickerInitialPath('/tmp/simsync-missing-directory'),
+      isNull,
+    );
+  });
+
+  testWidgets('renders distinct settings navigation and pane headings', (
     WidgetTester tester,
   ) async {
     final controller = AppSettingsController(
@@ -47,9 +55,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Settings'), findsOneWidget);
-    expect(find.text('Storage'), findsWidgets);
+    expect(find.text('Storage'), findsOneWidget);
     expect(find.text('Editor & Preview'), findsOneWidget);
     expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Workspace storage'), findsOneWidget);
     expect(find.text('/tmp/default-notes'), findsOneWidget);
     expect(find.text('octocat/notes'), findsOneWidget);
     expect(find.text('Change...'), findsWidgets);
@@ -57,12 +66,16 @@ void main() {
     await tester.tap(find.text('Editor & Preview'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Editor & Preview'), findsOneWidget);
+    expect(find.text('Reading & zoom'), findsOneWidget);
     expect(find.text('Content zoom'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
 
     await tester.tap(find.text('Sync'));
     await tester.pumpAndSettle();
 
+    expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Background sync'), findsOneWidget);
     expect(find.text('GitHub sync interval'), findsOneWidget);
     expect(find.text('5s'), findsOneWidget);
 
@@ -77,5 +90,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(selectedRepo, 'octocat/archive');
+  });
+
+  testWidgets('updates local note path and toggles background sync', (
+    WidgetTester tester,
+  ) async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+    bool? syncEnabledCallbackValue;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(
+          body: SettingsScreen(
+            settingsController: controller,
+            onPickLocalNotePath: (currentPath) async => '/tmp/updated-notes',
+            onLocalNotePathChanged: controller.setLocalNotePath,
+            onSyncEnabledChanged: (value) => syncEnabledCallbackValue = value,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Change...').first);
+    await tester.pumpAndSettle();
+
+    expect(controller.value.localNotePath, '/tmp/updated-notes');
+    expect(find.text('/tmp/updated-notes'), findsOneWidget);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.syncEnabled, false);
+    expect(syncEnabledCallbackValue, false);
   });
 }

@@ -10,6 +10,7 @@ class AppSettingsController extends ChangeNotifier {
   static const String localNotePathKey = 'local_note_path';
   static const String contentScaleKey = 'content_scale';
   static const String syncIntervalSecondsKey = 'sync_interval_seconds';
+  static const String syncEnabledKey = 'sync_enabled';
 
   AppSettingsController({required String defaultLocalNotePath})
     : _defaultLocalNotePath = defaultLocalNotePath,
@@ -17,6 +18,7 @@ class AppSettingsController extends ChangeNotifier {
         localNotePath: defaultLocalNotePath,
         contentScale: 1.0,
         syncIntervalSeconds: 5,
+        syncEnabled: true,
       );
 
   final String _defaultLocalNotePath;
@@ -37,6 +39,7 @@ class AppSettingsController extends ChangeNotifier {
         AppSettings.minSyncIntervalSeconds,
         AppSettings.maxSyncIntervalSeconds,
       ),
+      syncEnabled: prefs.getBool(syncEnabledKey) ?? true,
     );
     notifyListeners();
   }
@@ -72,6 +75,13 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(localNotePathKey, value);
+  }
+
+  Future<void> setSyncEnabled(bool value) async {
+    _value = _value.copyWith(syncEnabled: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(syncEnabledKey, value);
   }
 
   Future<void> increaseContentScale() async {

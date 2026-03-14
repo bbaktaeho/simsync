@@ -7,9 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simsync/auth/auth_models.dart';
 import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
+import 'package:simsync/models/note.dart';
 import 'package:simsync/screens/repo_selection_screen.dart';
 import 'package:simsync/services/note_service.dart';
+import 'package:simsync/storage/github/github_sync_engine.dart';
 import 'package:simsync/storage/github/repo_cache.dart';
+import 'package:simsync/storage/note_storage.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -166,6 +169,111 @@ void main() {
       expect(authService.logoutCalls, 1);
     },
   );
+
+  testWidgets(
+    'App does not start GitHub sync engine when sync is disabled in settings',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      SharedPreferences.setMockInitialValues({'sync_enabled': false});
+
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final syncEngine = _FakeGitHubSyncEngine();
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        final storage = _FakeNoteStorage();
+        return StorageBundle(
+          storage: storage,
+          noteService: NoteService(),
+          syncEngine: syncEngine,
+        );
+      }
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(syncEngine.startCalls, 0);
+      expect(find.byTooltip('Settings'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'App stops GitHub sync engine when background sync is toggled off in settings',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final syncEngine = _FakeGitHubSyncEngine();
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        final storage = _FakeNoteStorage();
+        return StorageBundle(
+          storage: storage,
+          noteService: NoteService(),
+          syncEngine: syncEngine,
+        );
+      }
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(syncEngine.startCalls, 1);
+
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(Switch));
+      await tester.pumpAndSettle();
+
+      expect(syncEngine.stopCalls, 1);
+    },
+  );
 }
 
 final _testSession = AuthSession(
@@ -188,6 +296,49 @@ Future<StorageBundle> _fakeStorageFactory(
 }) async {
   final service = NoteService();
   return StorageBundle(storage: service, noteService: service);
+}
+
+class _FakeNoteStorage implements NoteStorage {
+  @override
+  Future<void> deleteNote(Note note) async {}
+
+  @override
+  Future<Note?> getNote(String noteId, DateTime noteDate) async => null;
+
+  @override
+  Future<List<Note>> listAllNotes() async => const [];
+
+  @override
+  Future<List<DateTime>> listDates(String yearMonth) async => const [];
+
+  @override
+  Future<List<Note>> listNotes(DateTime date) async => const [];
+
+  @override
+  Future<void> saveNote(Note note) async {}
+}
+
+class _FakeGitHubSyncEngine extends GitHubSyncEngine {
+  _FakeGitHubSyncEngine() : super(token: 'token', owner: 'owner', repo: 'repo');
+
+  int startCalls = 0;
+  int stopCalls = 0;
+
+  @override
+  void start() {
+    startCalls += 1;
+  }
+
+  @override
+  void stop() {
+    stopCalls += 1;
+  }
+
+  @override
+  Future<void> syncNow() async {}
+
+  @override
+  void dispose() {}
 }
 
 class _FakeAuthService implements AuthService {

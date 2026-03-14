@@ -33,6 +33,7 @@ class DocumentScreen extends StatefulWidget {
   final GitHubSyncEngine? syncEngine;
   final Future<List<RepoEntry>> Function()? loadCachedRepos;
   final Future<void> Function(String path)? onLocalNotePathChanged;
+  final ValueChanged<bool>? onSyncEnabledChanged;
   final Future<void> Function(RepoEntry entry)? onRepoSelected;
   final Future<RepoEntry> Function(String name)? onCreateRepo;
   final Future<RepoEntry> Function(String owner, String repo)? onConnectRepo;
@@ -54,6 +55,7 @@ class DocumentScreen extends StatefulWidget {
     this.syncEngine,
     this.loadCachedRepos,
     this.onLocalNotePathChanged,
+    this.onSyncEnabledChanged,
     this.onRepoSelected,
     this.onCreateRepo,
     this.onConnectRepo,
@@ -546,6 +548,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           activeRepo: widget.activeRepo,
           loadCachedRepos: widget.loadCachedRepos,
           onLocalNotePathChanged: widget.onLocalNotePathChanged,
+          onSyncEnabledChanged: widget.onSyncEnabledChanged,
           onRepoSelected: widget.onRepoSelected,
           onCreateRepo: widget.onCreateRepo,
           onConnectRepo: widget.onConnectRepo,
