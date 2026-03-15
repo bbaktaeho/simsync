@@ -143,25 +143,6 @@ created: 2026-03-09
 | feature/* | 기능 개발 |
 | fix/* | 버그 수정 |
 
-### Branch Start Rule
-
-모든 개발 작업은 항상 최신 `develop` 브랜치에서 시작한다.
-
-1. `develop` 브랜치로 이동한다.
-2. 원격 최신 상태를 가져온다.
-3. `develop` 브랜치를 `origin/develop` 기준으로 최신화한다.
-4. 그 상태에서 작업 목적에 맞는 `feature/*` 또는 `fix/*` 브랜치를 생성한다.
-5. 작업 완료 후 PR은 항상 `develop` 브랜치를 대상으로 생성한다.
-
-예시:
-
-```bash
-git switch develop
-git fetch origin
-git pull --ff-only origin develop
-git switch -c feature/example-work
-```
-
 ## Commit Convention
 
 형식: `type: subject`

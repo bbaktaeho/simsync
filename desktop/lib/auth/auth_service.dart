@@ -7,7 +7,6 @@ abstract class AuthService {
   Future<AuthSession?> restoreSession();
   Future<AuthSession> signIn();
   Future<void> logout();
-  Future<bool> validateSession(AuthSession session);
 }
 
 class DefaultAuthService implements AuthService {
@@ -38,8 +37,8 @@ class DefaultAuthService implements AuthService {
       return null;
     }
 
-    final isValid = await validateSession(session);
-    if (!isValid) {
+    if (_policy.isExpired(expiresAt: session.expiresAt, now: _nowProvider())) {
+      await _store.clear();
       return null;
     }
 
@@ -61,21 +60,5 @@ class DefaultAuthService implements AuthService {
     );
     await _store.write(session);
     return session;
-  }
-
-  @override
-  Future<bool> validateSession(AuthSession session) async {
-    if (_policy.isExpired(expiresAt: session.expiresAt, now: _nowProvider())) {
-      await _store.clear();
-      return false;
-    }
-
-    final result = await _provider.validateAccessToken(session.accessToken);
-    if (result == SessionValidationResult.invalid) {
-      await _store.clear();
-      return false;
-    }
-
-    return true;
   }
 }
