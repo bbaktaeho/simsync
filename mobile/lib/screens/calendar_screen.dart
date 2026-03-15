@@ -118,8 +118,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       final dayNotes = await widget.storage.listNotes(_selectedDate);
       notes.addAll(dayNotes);
       if (widget.localStorage != null) {
-        final localDayNotes =
-            await widget.localStorage!.listNotes(_selectedDate);
+        final localDayNotes = await widget.localStorage!.listNotes(
+          _selectedDate,
+        );
         notes.addAll(localDayNotes);
       }
       notes.sort((a, b) {
@@ -199,9 +200,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
       _loadDatesWithNotes();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
       }
     }
   }
@@ -257,6 +258,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           note: note,
           storage: _storageFor(note),
           settingsController: widget.settingsController,
+          refreshSignal: widget.refreshSignal,
           onNoteChanged: (updated) {
             setState(() {
               final idx = _notes.indexWhere((n) => n.id == updated.id);
@@ -382,8 +384,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               vertical: AppDimensions.spacingXs,
             ),
             decoration: BoxDecoration(
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
               border: Border.all(color: c.border),
             ),
             child: Text(
@@ -412,15 +413,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     switch (_syncStatus) {
       case SyncStatus.syncing:
         return Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingSm,
+          ),
           child: SizedBox(
             width: 16,
             height: 16,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: c.accent,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
           ),
         );
       case SyncStatus.error:
@@ -443,7 +442,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_calendarExpanded) _buildCalendarGrid(c) else _buildCollapsedBadge(c),
+          if (_calendarExpanded)
+            _buildCalendarGrid(c)
+          else
+            _buildCollapsedBadge(c),
           _buildCalendarToggle(c),
         ],
       ),
@@ -538,31 +540,42 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 height: AppDimensions.calendarCellSize + 8,
                 decoration: BoxDecoration(
                   color: isSelected ? c.calendarSelected : Colors.transparent,
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  borderRadius: BorderRadius.circular(
+                    AppDimensions.borderRadiusSm,
+                  ),
                 ),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: AppDimensions.calendarCellSize,
-                      height: AppDimensions.calendarCellSize,
+                      constraints: const BoxConstraints.tightFor(
+                        width: AppDimensions.calendarCellSize,
+                        height: AppDimensions.calendarCellSize,
+                      ),
                       decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isToday ? c.calendarToday : Colors.transparent,
+                        color: isToday ? c.accentSubtle : Colors.transparent,
+                        borderRadius: BorderRadius.circular(
+                          AppDimensions.borderRadius,
+                        ),
+                        border: isToday
+                            ? Border.all(
+                                color: c.calendarToday.withValues(alpha: 0.55),
+                              )
+                            : null,
                       ),
                       alignment: Alignment.center,
                       child: Text(
                         '$day',
                         style: GoogleFonts.manrope(
                           fontSize: 13,
-                          fontWeight:
-                              isToday ? FontWeight.w700 : FontWeight.w500,
+                          fontWeight: isToday
+                              ? FontWeight.w700
+                              : FontWeight.w500,
                           color: isToday
-                              ? c.textOnAccent
+                              ? c.calendarToday
                               : isSelected
-                                  ? c.accent
-                                  : c.textPrimary,
+                              ? c.accent
+                              : c.textPrimary,
                         ),
                       ),
                     ),
@@ -611,8 +624,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             decoration: BoxDecoration(
               color: c.calendarSelected,
-              borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -723,8 +735,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 vertical: AppDimensions.spacingSm,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius:
-                    BorderRadius.circular(AppDimensions.borderRadius),
+                borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
                 side: BorderSide(color: c.accent.withValues(alpha: 0.3)),
               ),
             ),
@@ -744,10 +755,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const SizedBox(height: AppDimensions.spacingMd),
             Text(
               '이 날짜에 노트가 없습니다',
-              style: GoogleFonts.manrope(
-                fontSize: 14,
-                color: c.textMuted,
-              ),
+              style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
             ),
           ],
         ),
@@ -783,8 +791,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         padding: const EdgeInsets.only(right: AppDimensions.spacingLg),
         decoration: BoxDecoration(
           color: c.error.withValues(alpha: 0.15),
-          borderRadius:
-              BorderRadius.circular(AppDimensions.cardBorderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
         ),
         child: Icon(Icons.delete_outline_rounded, color: c.error),
       ),
@@ -795,8 +802,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           padding: const EdgeInsets.all(AppDimensions.spacingMd),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius:
-                BorderRadius.circular(AppDimensions.cardBorderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
             border: Border.all(color: c.borderSubtle),
           ),
           child: Column(

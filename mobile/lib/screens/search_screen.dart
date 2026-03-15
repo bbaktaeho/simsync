@@ -18,12 +18,14 @@ class SearchScreen extends StatefulWidget {
   final NoteStorage storage;
   final NoteStorage? localStorage;
   final AppSettingsController settingsController;
+  final ValueNotifier<int>? refreshSignal;
 
   const SearchScreen({
     super.key,
     required this.storage,
     this.localStorage,
     required this.settingsController,
+    this.refreshSignal,
   });
 
   @override
@@ -46,22 +48,33 @@ class _SearchScreenState extends State<SearchScreen> {
   void initState() {
     super.initState();
     _buildIndex();
+    widget.refreshSignal?.addListener(_onRefresh);
   }
 
   @override
   void didUpdateWidget(covariant SearchScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_onRefresh);
+      widget.refreshSignal?.addListener(_onRefresh);
+    }
     if (oldWidget.storage != widget.storage ||
-        oldWidget.localStorage != widget.localStorage) {
+        oldWidget.localStorage != widget.localStorage ||
+        oldWidget.refreshSignal != widget.refreshSignal) {
       _buildIndex();
     }
   }
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_onRefresh);
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _onRefresh() {
+    unawaited(_buildIndex());
   }
 
   Future<void> _buildIndex() async {
@@ -157,6 +170,7 @@ class _SearchScreenState extends State<SearchScreen> {
           note: result.note,
           storage: _storageFor(result.note),
           settingsController: widget.settingsController,
+          refreshSignal: widget.refreshSignal,
           onNoteChanged: (_) {},
           onNoteDeleted: (_) {},
         ),
@@ -202,10 +216,7 @@ class _SearchScreenState extends State<SearchScreen> {
               controller: _searchController,
               focusNode: _searchFocusNode,
               onChanged: _onSearchTextChanged,
-              style: GoogleFonts.manrope(
-                fontSize: 15,
-                color: c.textPrimary,
-              ),
+              style: GoogleFonts.manrope(fontSize: 15, color: c.textPrimary),
               decoration: InputDecoration(
                 hintText: '노트 검색...',
                 hintStyle: TextStyle(color: c.textMuted, fontSize: 15),
@@ -227,18 +238,21 @@ class _SearchScreenState extends State<SearchScreen> {
                 filled: true,
                 fillColor: c.surfaceLight,
                 border: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.borderRadius),
+                  borderRadius: BorderRadius.circular(
+                    AppDimensions.borderRadius,
+                  ),
                   borderSide: BorderSide(color: c.border),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.borderRadius),
+                  borderRadius: BorderRadius.circular(
+                    AppDimensions.borderRadius,
+                  ),
                   borderSide: BorderSide(color: c.border),
                 ),
                 focusedBorder: OutlineInputBorder(
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.borderRadius),
+                  borderRadius: BorderRadius.circular(
+                    AppDimensions.borderRadius,
+                  ),
                   borderSide: BorderSide(color: c.accent, width: 1.5),
                 ),
                 contentPadding: const EdgeInsets.symmetric(
@@ -259,10 +273,13 @@ class _SearchScreenState extends State<SearchScreen> {
                   size: 22,
                 ),
                 style: IconButton.styleFrom(
-                  backgroundColor: _hasFilters ? c.accentSubtle : c.surfaceLight,
+                  backgroundColor: _hasFilters
+                      ? c.accentSubtle
+                      : c.surfaceLight,
                   shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(AppDimensions.borderRadius),
+                    borderRadius: BorderRadius.circular(
+                      AppDimensions.borderRadius,
+                    ),
                     side: BorderSide(color: c.border),
                   ),
                 ),
@@ -289,9 +306,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildActiveFilters(AppColorsExtension c) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.spacingLg,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingLg),
       child: Wrap(
         spacing: AppDimensions.spacingSm,
         runSpacing: AppDimensions.spacingXs,
@@ -393,10 +408,7 @@ class _SearchScreenState extends State<SearchScreen> {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '검색어를 입력하세요',
-            style: GoogleFonts.manrope(
-              fontSize: 14,
-              color: c.textMuted,
-            ),
+            style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
           ),
         ],
       ),
@@ -421,9 +433,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.spacingLg,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingLg),
       itemCount: _results.length,
       itemBuilder: (context, index) {
         final result = _results[index];
@@ -443,8 +453,7 @@ class _SearchScreenState extends State<SearchScreen> {
         padding: const EdgeInsets.all(AppDimensions.spacingMd),
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius:
-              BorderRadius.circular(AppDimensions.cardBorderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
           border: Border.all(color: c.borderSubtle),
         ),
         child: Column(
@@ -505,8 +514,10 @@ class _SearchScreenState extends State<SearchScreen> {
                 runSpacing: AppDimensions.spacingXs,
                 children: note.tags.map((tag) {
                   return Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: c.accentSubtle,
                       borderRadius: BorderRadius.circular(
@@ -536,54 +547,69 @@ class _SearchScreenState extends State<SearchScreen> {
 
     // Context before
     for (final line in result.contextBefore) {
-      lines.add(TextSpan(
-        text: '$line\n',
-        style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
-      ));
+      lines.add(
+        TextSpan(
+          text: '$line\n',
+          style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
+        ),
+      );
     }
 
     // Matched line with highlight
     final match = result.match;
     if (match.matchStart < match.matchEnd && match.line.isNotEmpty) {
       final before = match.line.substring(0, match.matchStart);
-      final matched =
-          match.line.substring(match.matchStart, match.matchEnd);
+      final matched = match.line.substring(match.matchStart, match.matchEnd);
       final after = match.line.substring(match.matchEnd);
-      lines.add(TextSpan(
-        children: [
-          TextSpan(
-            text: before,
-            style: TextStyle(color: c.textSecondary, fontSize: 12, height: 1.5),
-          ),
-          TextSpan(
-            text: matched,
-            style: TextStyle(
-              color: c.accent,
-              fontSize: 12,
-              height: 1.5,
-              fontWeight: FontWeight.w700,
-              backgroundColor: c.accentSubtle,
+      lines.add(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: before,
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: 12,
+                height: 1.5,
+              ),
             ),
-          ),
-          TextSpan(
-            text: '$after\n',
-            style: TextStyle(color: c.textSecondary, fontSize: 12, height: 1.5),
-          ),
-        ],
-      ));
+            TextSpan(
+              text: matched,
+              style: TextStyle(
+                color: c.accent,
+                fontSize: 12,
+                height: 1.5,
+                fontWeight: FontWeight.w700,
+                backgroundColor: c.accentSubtle,
+              ),
+            ),
+            TextSpan(
+              text: '$after\n',
+              style: TextStyle(
+                color: c.textSecondary,
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      );
     } else {
-      lines.add(TextSpan(
-        text: '${match.line}\n',
-        style: TextStyle(color: c.textSecondary, fontSize: 12, height: 1.5),
-      ));
+      lines.add(
+        TextSpan(
+          text: '${match.line}\n',
+          style: TextStyle(color: c.textSecondary, fontSize: 12, height: 1.5),
+        ),
+      );
     }
 
     // Context after
     for (final line in result.contextAfter) {
-      lines.add(TextSpan(
-        text: '$line\n',
-        style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
-      ));
+      lines.add(
+        TextSpan(
+          text: '$line\n',
+          style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
+        ),
+      );
     }
 
     return RichText(
@@ -689,19 +715,19 @@ class _FilterSheetState extends State<_FilterSheet> {
   }
 
   void _clearFilters() {
-    widget.onApply(widget.initialQuery.copyWith(
-      tag: '',
-      startDate: null,
-      endDate: null,
-    ));
+    widget.onApply(
+      widget.initialQuery.copyWith(tag: '', startDate: null, endDate: null),
+    );
   }
 
   void _applyFilters() {
-    widget.onApply(widget.initialQuery.copyWith(
-      tag: _tagController.text.trim(),
-      startDate: _startDate,
-      endDate: _endDate,
-    ));
+    widget.onApply(
+      widget.initialQuery.copyWith(
+        tag: _tagController.text.trim(),
+        startDate: _startDate,
+        endDate: _endDate,
+      ),
+    );
   }
 
   @override
@@ -709,204 +735,219 @@ class _FilterSheetState extends State<_FilterSheet> {
     final c = widget.colors;
     final dateFmt = DateFormat('yyyy-MM-dd');
 
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(AppDimensions.spacingXl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: c.borderSubtle,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingLg),
-            Text(
-              '필터',
-              style: GoogleFonts.manrope(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: c.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingLg),
-
-            // Tag input
-            Text(
-              '태그',
-              style: GoogleFonts.manrope(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingSm),
-            TextField(
-              controller: _tagController,
-              style: GoogleFonts.manrope(fontSize: 14, color: c.textPrimary),
-              decoration: InputDecoration(
-                hintText: '태그를 입력하세요',
-                hintStyle: TextStyle(color: c.textMuted),
-                prefixIcon: Icon(Icons.tag_rounded, size: 18, color: c.textMuted),
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingLg),
-
-            // Date range
-            Text(
-              '날짜 범위',
-              style: GoogleFonts.manrope(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.spacingSm),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickStartDate,
-                    icon: Icon(Icons.calendar_today_rounded, size: 14, color: c.textSecondary),
-                    label: Text(
-                      _startDate != null
-                          ? dateFmt.format(_startDate!)
-                          : '시작일',
-                      style: TextStyle(color: c.textSecondary, fontSize: 13),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: c.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.spacingMd,
-                      ),
-                    ),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(AppDimensions.spacingXl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: c.borderSubtle,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppDimensions.spacingSm,
-                  ),
-                  child: Text('~', style: TextStyle(color: c.textMuted)),
+              ),
+              const SizedBox(height: AppDimensions.spacingLg),
+              Text(
+                '필터',
+                style: GoogleFonts.manrope(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
                 ),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickEndDate,
-                    icon: Icon(Icons.calendar_today_rounded, size: 14, color: c.textSecondary),
-                    label: Text(
-                      _endDate != null ? dateFmt.format(_endDate!) : '종료일',
-                      style: TextStyle(color: c.textSecondary, fontSize: 13),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: c.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.spacingMd,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
+              ),
+              const SizedBox(height: AppDimensions.spacingLg),
 
-            // Quick select
-            Wrap(
-              spacing: AppDimensions.spacingSm,
-              children: [
-                _QuickDateButton(
-                  label: '오늘',
-                  onTap: _quickSelectToday,
-                  colors: c,
+              // Tag input
+              Text(
+                '태그',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.textSecondary,
                 ),
-                _QuickDateButton(
-                  label: '이번 주',
-                  onTap: _quickSelectThisWeek,
-                  colors: c,
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+              TextField(
+                controller: _tagController,
+                style: GoogleFonts.manrope(fontSize: 14, color: c.textPrimary),
+                decoration: InputDecoration(
+                  hintText: '태그를 입력하세요',
+                  hintStyle: TextStyle(color: c.textMuted),
+                  prefixIcon: Icon(
+                    Icons.tag_rounded,
+                    size: 18,
+                    color: c.textMuted,
+                  ),
                 ),
-                _QuickDateButton(
-                  label: '이번 달',
-                  onTap: _quickSelectThisMonth,
-                  colors: c,
-                ),
-              ],
-            ),
-            const SizedBox(height: AppDimensions.spacingXl),
+              ),
+              const SizedBox(height: AppDimensions.spacingLg),
 
-            // Actions
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _clearFilters,
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: c.border),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.spacingMd,
-                      ),
-                    ),
-                    child: Text(
-                      '초기화',
-                      style: GoogleFonts.manrope(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+              // Date range
+              Text(
+                '날짜 범위',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.textSecondary,
+                ),
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickStartDate,
+                      icon: Icon(
+                        Icons.calendar_today_rounded,
+                        size: 14,
                         color: c.textSecondary,
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: AppDimensions.spacingMd),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _applyFilters,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: c.accent,
-                      foregroundColor: c.textOnAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
+                      label: Text(
+                        _startDate != null
+                            ? dateFmt.format(_startDate!)
+                            : '시작일',
+                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: c.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.borderRadius,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingMd,
                         ),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: AppDimensions.spacingMd,
-                      ),
                     ),
-                    child: Text(
-                      '적용',
-                      style: GoogleFonts.manrope(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.spacingSm,
+                    ),
+                    child: Text('~', style: TextStyle(color: c.textMuted)),
+                  ),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _pickEndDate,
+                      icon: Icon(
+                        Icons.calendar_today_rounded,
+                        size: 14,
+                        color: c.textSecondary,
+                      ),
+                      label: Text(
+                        _endDate != null ? dateFmt.format(_endDate!) : '종료일',
+                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: c.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.borderRadius,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingMd,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppDimensions.spacingSm),
-          ],
+                ],
+              ),
+              const SizedBox(height: AppDimensions.spacingMd),
+
+              // Quick select
+              Wrap(
+                spacing: AppDimensions.spacingSm,
+                children: [
+                  _QuickDateButton(
+                    label: '오늘',
+                    onTap: _quickSelectToday,
+                    colors: c,
+                  ),
+                  _QuickDateButton(
+                    label: '이번 주',
+                    onTap: _quickSelectThisWeek,
+                    colors: c,
+                  ),
+                  _QuickDateButton(
+                    label: '이번 달',
+                    onTap: _quickSelectThisMonth,
+                    colors: c,
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppDimensions.spacingXl),
+
+              // Actions
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _clearFilters,
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: c.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.borderRadius,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingMd,
+                        ),
+                      ),
+                      child: Text(
+                        '초기화',
+                        style: GoogleFonts.manrope(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: c.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppDimensions.spacingMd),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _applyFilters,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: c.accent,
+                        foregroundColor: c.textOnAccent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.borderRadius,
+                          ),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingMd,
+                        ),
+                      ),
+                      child: Text(
+                        '적용',
+                        style: GoogleFonts.manrope(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+            ],
+          ),
         ),
       ),
     );
