@@ -3,15 +3,17 @@ import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
+import '../settings/shortcut_binding.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 
-enum _SettingsPane { storage, editor, sync }
+enum _SettingsPane { storage, editor, sync, shortcuts }
 
 String? resolveDirectoryPickerInitialPath(String currentPath) {
   final normalized = currentPath.trim();
@@ -284,34 +286,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: c.textSecondary,
             ),
           ),
-          const SizedBox(height: AppDimensions.spacingXl),
-          _NavigationItem(
-            selectionKey: 'storage',
-            label: 'Storage',
-            description: 'Paths and repositories',
-            icon: Icons.storage_rounded,
-            isSelected: _selectedPane == _SettingsPane.storage,
-            onTap: () => setState(() => _selectedPane = _SettingsPane.storage),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: AppDimensions.spacingXl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _NavigationItem(
+                    selectionKey: 'storage',
+                    label: 'Storage',
+                    description: 'Paths and repositories',
+                    icon: Icons.storage_rounded,
+                    isSelected: _selectedPane == _SettingsPane.storage,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.storage),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'editor',
+                    label: 'Editor & Preview',
+                    description: 'Zoom and reading comfort',
+                    icon: Icons.text_fields_rounded,
+                    isSelected: _selectedPane == _SettingsPane.editor,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.editor),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'sync',
+                    label: 'Sync',
+                    description: 'Polling and cadence',
+                    icon: Icons.sync_rounded,
+                    isSelected: _selectedPane == _SettingsPane.sync,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.sync),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'shortcuts',
+                    label: 'Shortcuts',
+                    description: 'Keyboard bindings',
+                    icon: Icons.keyboard_rounded,
+                    isSelected: _selectedPane == _SettingsPane.shortcuts,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.shortcuts),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(height: AppDimensions.spacingSm),
-          _NavigationItem(
-            selectionKey: 'editor',
-            label: 'Editor & Preview',
-            description: 'Zoom and reading comfort',
-            icon: Icons.text_fields_rounded,
-            isSelected: _selectedPane == _SettingsPane.editor,
-            onTap: () => setState(() => _selectedPane = _SettingsPane.editor),
-          ),
-          const SizedBox(height: AppDimensions.spacingSm),
-          _NavigationItem(
-            selectionKey: 'sync',
-            label: 'Sync',
-            description: 'Polling and cadence',
-            icon: Icons.sync_rounded,
-            isSelected: _selectedPane == _SettingsPane.sync,
-            onTap: () => setState(() => _selectedPane = _SettingsPane.sync),
-          ),
-          const Spacer(),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
@@ -343,6 +366,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildEditorPane(c, settings);
       case _SettingsPane.sync:
         return _buildSyncPane(c, settings);
+      case _SettingsPane.shortcuts:
+        return _buildShortcutsPane(c);
     }
   }
 
@@ -552,6 +577,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Search context lines',
+            description:
+                'Number of lines shown above and below each search match.',
+            child: Row(
+              children: [
+                _IconStepButton(
+                  icon: Icons.remove_rounded,
+                  onTap: () => widget.settingsController.setSearchContextLines(
+                    settings.searchContextLines - 1,
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spacingMd),
+                Text(
+                  '${settings.searchContextLines}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spacingMd),
+                _IconStepButton(
+                  icon: Icons.add_rounded,
+                  onTap: () => widget.settingsController.setSearchContextLines(
+                    settings.searchContextLines + 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -596,6 +653,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildShortcutsPane(AppColorsExtension c) {
+    final bindings = widget.settingsController.bindings;
+
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.shortcuts),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Keyboard shortcuts',
+            description:
+                'View and customise the key combinations used across the app.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          ...bindings.map((binding) => Padding(
+                padding: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
+                child: _ShortcutCard(
+                  binding: binding,
+                  onEdit: binding.isFixed
+                      ? null
+                      : () => _showShortcutCaptureDialog(binding),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showShortcutCaptureDialog(ShortcutBinding binding) async {
+    final c = context.colors;
+    ShortcutBinding? captured;
+
+    final result = await showDialog<ShortcutBinding>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: c.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: c.border),
+              ),
+              title: Text(
+                '${binding.action.label} 단축키 변경',
+                style: GoogleFonts.manrope(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '새 키 조합을 입력하세요',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingLg),
+                    Focus(
+                      autofocus: true,
+                      onKeyEvent: (node, event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        // Ignore bare modifier keys.
+                        if (event.logicalKey == LogicalKeyboardKey.metaLeft ||
+                            event.logicalKey == LogicalKeyboardKey.metaRight ||
+                            event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+                            event.logicalKey == LogicalKeyboardKey.shiftRight) {
+                          return KeyEventResult.handled;
+                        }
+                        final hw = HardwareKeyboard.instance;
+                        setDialogState(() {
+                          captured = binding.copyWith(
+                            key: event.logicalKey,
+                            shift: hw.isShiftPressed,
+                          );
+                        });
+                        return KeyEventResult.handled;
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingLg,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: c.accent),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          captured?.displayLabel ?? binding.displayLabel,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    '취소',
+                    style: TextStyle(color: c.textMuted),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: captured == null
+                      ? null
+                      : () => Navigator.of(ctx).pop(captured),
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      await widget.settingsController.setShortcutBinding(result);
+    }
   }
 }
 
@@ -999,6 +1193,76 @@ class _IconStepButton extends StatelessWidget {
           border: Border.all(color: c.border),
         ),
         child: Icon(icon, size: 16, color: c.textSecondary),
+      ),
+    );
+  }
+}
+
+class _ShortcutCard extends StatelessWidget {
+  const _ShortcutCard({required this.binding, required this.onEdit});
+
+  final ShortcutBinding binding;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  binding.action.label,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: c.borderSubtle),
+                  ),
+                  child: Text(
+                    binding.displayLabel,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 12,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (binding.isFixed)
+            Text(
+              'Fixed',
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: c.textMuted,
+              ),
+            )
+          else
+            _ActionButton(
+              label: 'Edit',
+              onTap: onEdit,
+            ),
+        ],
       ),
     );
   }

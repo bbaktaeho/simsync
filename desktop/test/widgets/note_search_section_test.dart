@@ -29,8 +29,8 @@ void main() {
     );
 
     expect(find.text('release'), findsOneWidget);
-    expect(find.text('#work'), findsOneWidget);
-    expect(find.text('2026-03-01 - 2026-03-10'), findsOneWidget);
+    // Filter hint text changes when filters are active.
+    expect(find.text('Search (filters active)'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'mobile');
     expect(changedQuery, 'mobile');

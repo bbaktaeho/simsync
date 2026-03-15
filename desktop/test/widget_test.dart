@@ -436,6 +436,168 @@ void main() {
       expect(find.text('old-path-note'), findsNothing);
     },
   );
+  testWidgets(
+    'Changing local path immediately clears old local notes before new ones load',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      SharedPreferences.setMockInitialValues({
+        AppSettingsController.localNotePathKey: '/notes-a',
+      });
+
+      FilePicker.platform = _FakeFilePicker('/notes-b');
+
+      final repoCache = _InMemoryRepoCache();
+      await repoCache.add(
+        RepoEntry(
+          owner: 'octocat',
+          repo: 'notes',
+          connectedAt: DateTime.utc(2026, 3, 10, 9),
+        ),
+      );
+
+      final today = DateTime.now();
+      final oldPathStorage = _MemoryNoteStorage(
+        notes: [
+          Note(
+            id: 'local-old',
+            noteDate: DateTime(today.year, today.month, today.day),
+            title: 'old-local-note',
+            content: '',
+            isDefault: false,
+            tags: const [],
+            createdAt: today,
+            updatedAt: today,
+            storageType: StorageType.local,
+          ),
+        ],
+      );
+      final newPathStorage = _MemoryNoteStorage(
+        notes: [
+          Note(
+            id: 'local-new',
+            noteDate: DateTime(today.year, today.month, today.day),
+            title: 'new-local-note',
+            content: '',
+            isDefault: false,
+            tags: const [],
+            createdAt: today,
+            updatedAt: today,
+            storageType: StorageType.local,
+          ),
+        ],
+        // Add delay so we can observe the intermediate state.
+        listDelay: const Duration(milliseconds: 200),
+      );
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        final prefs = await SharedPreferences.getInstance();
+        final path = prefs.getString(AppSettingsController.localNotePathKey);
+        final localStorage =
+            path == '/notes-b' ? newPathStorage : oldPathStorage;
+        return StorageBundle(
+          storage: _MemoryNoteStorage(),
+          localStorage: localStorage,
+          noteService: NoteService(),
+        );
+      }
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
+
+      // Old local note should be visible.
+      expect(find.text('old-local-note'), findsWidgets);
+
+      // Open settings and change path.
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Change...').first);
+      await tester.pump();
+      await tester.tap(find.text('Done'));
+      // Pump just enough for didUpdateWidget to fire, but NOT enough for
+      // the delayed new storage to finish loading.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      // Old local notes should be gone immediately, even before new ones load.
+      expect(find.text('old-local-note'), findsNothing);
+
+      // Drain pending storage timers (listDates + listAllNotes from search
+      // index rebuild) so the test tears down cleanly.
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets(
+    'RepoSelectionScreen path change updates AppSettingsController',
+    (WidgetTester tester) async {
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+
+      SharedPreferences.setMockInitialValues({
+        AppSettingsController.localNotePathKey: '/notes-initial',
+      });
+
+      FilePicker.platform = _FakeFilePicker('/notes-from-repo-screen');
+
+      // Suppress network image errors from RepoSelectionScreen's avatar.
+      final originalOnError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        if (details.toString().contains('NetworkImageLoadException')) return;
+        originalOnError?.call(details);
+      };
+      addTearDown(() => FlutterError.onError = originalOnError);
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(restoreResult: _testSession),
+          storageFactory: _fakeStorageFactory,
+          repoCache: RepoCache.withPath(
+            '/tmp/simsync_test_nonexistent/repos.json',
+          ),
+        ),
+      );
+
+      // Allow async _restoreSession + AppSettingsController.load() to complete.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.byType(RepoSelectionScreen), findsOneWidget);
+      // Initial path from settings controller should be displayed.
+      expect(find.text('/notes-initial'), findsOneWidget);
+
+      // Tap "변경" button to change path via FilePicker.
+      await tester.tap(find.text('변경'));
+      await tester.pump();
+
+      // After picking, the controller should be updated and the new path shown.
+      expect(find.text('/notes-from-repo-screen'), findsOneWidget);
+      expect(find.text('/notes-initial'), findsNothing);
+    },
+  );
 }
 
 final _testSession = AuthSession(

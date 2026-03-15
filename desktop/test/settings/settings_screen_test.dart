@@ -58,6 +58,7 @@ void main() {
     expect(find.text('Storage'), findsOneWidget);
     expect(find.text('Editor & Preview'), findsOneWidget);
     expect(find.text('Sync'), findsOneWidget);
+    expect(find.text('Shortcuts'), findsOneWidget);
     expect(find.text('Workspace storage'), findsOneWidget);
     expect(find.text('/tmp/default-notes'), findsOneWidget);
     expect(find.text('octocat/notes'), findsOneWidget);
@@ -157,6 +158,10 @@ void main() {
       find.byKey(const ValueKey('settings-nav-selected-sync')),
       findsNothing,
     );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-shortcuts')),
+      findsNothing,
+    );
 
     await tester.tap(find.text('Editor & Preview'));
     await tester.pumpAndSettle();
@@ -171,6 +176,10 @@ void main() {
     );
     expect(
       find.byKey(const ValueKey('settings-nav-selected-sync')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('settings-nav-selected-shortcuts')),
       findsNothing,
     );
   });
