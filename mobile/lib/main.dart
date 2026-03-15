@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -57,6 +58,7 @@ typedef StorageFactory =
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('ko');
   final dir = await getApplicationSupportDirectory();
   final repoCache = RepoCache.withPath('${dir.path}/repos.json');
   runApp(SimSyncApp(
