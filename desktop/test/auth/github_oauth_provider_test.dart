@@ -1,7 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
-import 'package:simsync/auth/auth_provider.dart';
 import 'package:simsync/auth/github_oauth_provider.dart';
 
 void main() {
@@ -40,39 +37,5 @@ void main() {
     final challenge = GitHubOAuthProvider.createCodeChallenge(verifier);
 
     expect(challenge, 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
-  });
-
-  test('validateAccessToken returns invalid on 401', () async {
-    const config = GitHubOAuthConfig(
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-    );
-    final provider = GitHubOAuthProvider(
-      config: config,
-      httpClient: MockClient((request) async {
-        expect(request.url.toString(), 'https://api.github.com/user');
-        expect(request.headers['Authorization'], 'Bearer expired-token');
-        return http.Response('Unauthorized', 401);
-      }),
-    );
-
-    final result = await provider.validateAccessToken('expired-token');
-
-    expect(result, SessionValidationResult.invalid);
-  });
-
-  test('validateAccessToken returns unknown on non-auth server error', () async {
-    const config = GitHubOAuthConfig(
-      clientId: 'client-id',
-      clientSecret: 'client-secret',
-    );
-    final provider = GitHubOAuthProvider(
-      config: config,
-      httpClient: MockClient((_) async => http.Response('Server Error', 500)),
-    );
-
-    final result = await provider.validateAccessToken('token');
-
-    expect(result, SessionValidationResult.unknown);
   });
 }

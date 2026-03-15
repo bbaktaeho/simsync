@@ -13,7 +13,7 @@ class GitHubSyncEngine implements SyncEngine {
   final String _owner;
   final String _repo;
   final String _branch;
-  Duration _interval;
+  final Duration _interval;
   final http.Client _httpClient;
   final Future<void> Function()? _onRemoteChanged;
 
@@ -32,25 +32,18 @@ class GitHubSyncEngine implements SyncEngine {
     Duration interval = const Duration(seconds: 5),
     http.Client? httpClient,
     Future<void> Function()? onRemoteChanged,
-  }) : _token = token,
-       _owner = owner,
-       _repo = repo,
-       _branch = branch,
-       _interval = interval,
-       _httpClient = httpClient ?? http.Client(),
-       _onRemoteChanged = onRemoteChanged;
+  })  : _token = token,
+        _owner = owner,
+        _repo = repo,
+        _branch = branch,
+        _interval = interval,
+        _httpClient = httpClient ?? http.Client(),
+        _onRemoteChanged = onRemoteChanged;
 
   Duration get _currentInterval {
     if (_consecutiveErrors == 0) return _interval;
     final backoff = _interval * (1 << _consecutiveErrors.clamp(0, 10));
     return backoff > _maxBackoff ? _maxBackoff : backoff;
-  }
-
-  void updateInterval(Duration interval) {
-    _interval = interval;
-    if (_timer != null) {
-      _restartTimer();
-    }
   }
 
   void _restartTimer() {
@@ -105,14 +98,11 @@ class GitHubSyncEngine implements SyncEngine {
     final uri = Uri.parse(
       '$_baseUrl/repos/$_owner/$_repo/commits?sha=$_branch&per_page=1',
     );
-    final response = await _httpClient.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $_token',
-        'Accept': 'application/vnd.github.v3+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    );
+    final response = await _httpClient.get(uri, headers: {
+      'Authorization': 'Bearer $_token',
+      'Accept': 'application/vnd.github.v3+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    });
 
     // Check rate limit header and throw if exhausted.
     final remaining = response.headers['x-ratelimit-remaining'];

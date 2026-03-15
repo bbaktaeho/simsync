@@ -1,8 +1,10 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import '../settings/app_settings_controller.dart';
 import '../storage/github/github_api_client.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
@@ -14,7 +16,6 @@ class RepoSelectionScreen extends StatefulWidget {
   final String avatarUrl;
   final Future<void> Function(RepoEntry entry) onRepoSelected;
   final RepoCache repoCache;
-  final AppSettingsController settingsController;
 
   const RepoSelectionScreen({
     super.key,
@@ -23,7 +24,6 @@ class RepoSelectionScreen extends StatefulWidget {
     required this.avatarUrl,
     required this.onRepoSelected,
     required this.repoCache,
-    required this.settingsController,
   });
 
   @override
@@ -35,6 +35,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
   List<RepoEntry> _cachedRepos = [];
   bool _isLoading = false;
   String? _errorMessage;
+  String _localNotePath = '';
 
   bool _showCreateForm = false;
   bool _showConnectForm = false;
@@ -66,6 +67,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
     ));
     _fadeController.forward();
     _loadCache();
+    _loadLocalNotePath();
   }
 
   Future<void> _loadCache() async {
@@ -75,13 +77,28 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
     }
   }
 
+  Future<void> _loadLocalNotePath() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('local_note_path');
+    if (saved != null && saved.isNotEmpty) {
+      setState(() => _localNotePath = saved);
+    } else {
+      final home = Platform.environment['HOME'] ??
+          Platform.environment['USERPROFILE'] ??
+          '';
+      setState(() => _localNotePath = '$home/Documents/SimSync');
+    }
+  }
+
   Future<void> _pickLocalPath() async {
     final result = await FilePicker.platform.getDirectoryPath(
       dialogTitle: '로컬 노트 저장 경로 선택',
-      initialDirectory: widget.settingsController.value.localNotePath,
+      initialDirectory: _localNotePath,
     );
     if (result != null) {
-      await widget.settingsController.setLocalNotePath(result);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('local_note_path', result);
+      setState(() => _localNotePath = result);
     }
   }
 
@@ -265,10 +282,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
             ],
             _buildActionsSection(c),
             const SizedBox(height: AppDimensions.spacingXl),
-            ListenableBuilder(
-              listenable: widget.settingsController,
-              builder: (context, _) => _buildLocalPathSection(c),
-            ),
+            _buildLocalPathSection(c),
           ],
         ),
       ),
@@ -276,17 +290,12 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
   }
 
   Widget _buildHeader(AppColorsExtension c) {
-    final avatarUrl = widget.avatarUrl.trim();
-
     return Column(
       children: [
         CircleAvatar(
           radius: 28,
+          backgroundImage: NetworkImage(widget.avatarUrl),
           backgroundColor: c.surfaceLight,
-          backgroundImage: avatarUrl.isEmpty ? null : NetworkImage(avatarUrl),
-          child: avatarUrl.isEmpty
-              ? Icon(Icons.person_outline_rounded, color: c.textMuted)
-              : null,
         ),
         const SizedBox(height: AppDimensions.spacingMd),
         Text(
@@ -676,7 +685,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               const SizedBox(width: AppDimensions.spacingSm),
               Expanded(
                 child: Text(
-                  widget.settingsController.value.localNotePath,
+                  _localNotePath,
                   style: TextStyle(color: c.textSecondary, fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),

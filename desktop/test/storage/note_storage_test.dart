@@ -7,21 +7,12 @@ class FakeNoteStorage implements NoteStorage {
   final Map<String, Note> _notes = {};
 
   @override
-  Future<List<Note>> listAllNotes() async {
-    final notes = _notes.values.toList();
-    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return notes;
-  }
-
-  @override
   Future<List<Note>> listNotes(DateTime date) async {
     return _notes.values
-        .where(
-          (n) =>
-              n.noteDate.year == date.year &&
-              n.noteDate.month == date.month &&
-              n.noteDate.day == date.day,
-        )
+        .where((n) =>
+            n.noteDate.year == date.year &&
+            n.noteDate.month == date.month &&
+            n.noteDate.day == date.day)
         .toList();
   }
 
@@ -138,18 +129,14 @@ void main() {
 
   test('listDates returns dates with notes for the given month', () async {
     await storage.saveNote(
-      _createNote(id: 'n1', noteDate: DateTime(2026, 3, 5)),
-    );
+        _createNote(id: 'n1', noteDate: DateTime(2026, 3, 5)));
     await storage.saveNote(
-      _createNote(id: 'n2', noteDate: DateTime(2026, 3, 10)),
-    );
+        _createNote(id: 'n2', noteDate: DateTime(2026, 3, 10)));
     await storage.saveNote(
-      _createNote(id: 'n3', noteDate: DateTime(2026, 3, 10)),
-    );
+        _createNote(id: 'n3', noteDate: DateTime(2026, 3, 10)));
     // Different month — should not appear.
     await storage.saveNote(
-      _createNote(id: 'n4', noteDate: DateTime(2026, 4, 1)),
-    );
+        _createNote(id: 'n4', noteDate: DateTime(2026, 4, 1)));
 
     final dates = await storage.listDates('2026-03');
     expect(dates.length, 2);

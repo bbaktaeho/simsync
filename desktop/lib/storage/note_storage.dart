@@ -3,9 +3,6 @@ import '../models/note.dart';
 /// 노트 저장소 추상 인터페이스.
 /// 구현체에 따라 로컬 파일, GitHub, S3 등 다양한 백엔드를 지원한다.
 abstract class NoteStorage {
-  /// 저장소의 전체 노트 목록 조회.
-  Future<List<Note>> listAllNotes();
-
   /// 특정 날짜의 노트 목록 조회.
   Future<List<Note>> listNotes(DateTime date);
 

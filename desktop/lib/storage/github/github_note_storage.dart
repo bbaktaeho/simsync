@@ -41,7 +41,8 @@ class GitHubNoteStorage implements NoteStorage {
 
   /// Builds the directory path for a specific date.
   static String _dayDirPath(DateTime date) {
-    final yearMonth = '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    final yearMonth =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}';
     final day = date.day.toString().padLeft(2, '0');
     return 'notes/$yearMonth/$day';
   }
@@ -60,10 +61,10 @@ class GitHubNoteStorage implements NoteStorage {
     buf.writeln('id: "${note.id}"');
     buf.writeln('title: "${note.title}"');
     buf.writeln(
-      'note_date: ${note.noteDate.year}-${note.noteDate.month.toString().padLeft(2, '0')}-${note.noteDate.day.toString().padLeft(2, '0')}',
-    );
+        'note_date: ${note.noteDate.year}-${note.noteDate.month.toString().padLeft(2, '0')}-${note.noteDate.day.toString().padLeft(2, '0')}');
     buf.writeln('is_default: ${note.isDefault}');
-    buf.writeln('tags: [${note.tags.map((t) => '"$t"').join(', ')}]');
+    buf.writeln(
+        'tags: [${note.tags.map((t) => '"$t"').join(', ')}]');
     buf.writeln('created_at: ${_formatDateTime(note.createdAt)}');
     buf.writeln('updated_at: ${_formatDateTime(note.updatedAt)}');
     buf.writeln('---');
@@ -82,7 +83,8 @@ class GitHubNoteStorage implements NoteStorage {
     final offset = dt.timeZoneOffset;
     final sign = offset.isNegative ? '-' : '+';
     final offHours = offset.inHours.abs().toString().padLeft(2, '0');
-    final offMinutes = (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
+    final offMinutes =
+        (offset.inMinutes.abs() % 60).toString().padLeft(2, '0');
 
     return '$y-$m-${d}T$h:$min:$s$sign$offHours$offMinutes';
   }
@@ -97,9 +99,8 @@ class GitHubNoteStorage implements NoteStorage {
     final yamlStr = markdown.substring(3, endIndex).trim();
     final content = markdown.substring(endIndex + 3);
     // Remove leading single newline after closing ---
-    final noteContent = content.startsWith('\n')
-        ? content.substring(1)
-        : content;
+    final noteContent =
+        content.startsWith('\n') ? content.substring(1) : content;
 
     final yaml = loadYaml(yamlStr);
     if (yaml is! YamlMap) return null;
@@ -119,8 +120,10 @@ class GitHubNoteStorage implements NoteStorage {
     }
 
     final noteDate = _parseDate(yaml['note_date']?.toString() ?? '');
-    final createdAt = _parseDateTime(yaml['created_at']?.toString() ?? '');
-    final updatedAt = _parseDateTime(yaml['updated_at']?.toString() ?? '');
+    final createdAt =
+        _parseDateTime(yaml['created_at']?.toString() ?? '');
+    final updatedAt =
+        _parseDateTime(yaml['updated_at']?.toString() ?? '');
 
     if (noteDate == null || createdAt == null || updatedAt == null) {
       return null;
@@ -163,25 +166,6 @@ class GitHubNoteStorage implements NoteStorage {
   }
 
   // --- NoteStorage implementation ---
-
-  @override
-  Future<List<Note>> listAllNotes() async {
-    final monthEntries = await _client.listDirectory('notes');
-    final notes = <Note>[];
-
-    for (final entry in monthEntries) {
-      if (entry.type != 'dir') continue;
-      if (!RegExp(r'^\d{4}-\d{2}$').hasMatch(entry.name)) continue;
-
-      final dates = await listDates(entry.name);
-      for (final date in dates) {
-        notes.addAll(await listNotes(date));
-      }
-    }
-
-    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return notes;
-  }
 
   @override
   Future<List<Note>> listNotes(DateTime date) async {
