@@ -8,7 +8,9 @@ import '../main.dart';
 import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
+import '../search/search_result.dart';
 import '../settings/app_settings_controller.dart';
+import '../settings/shortcut_binding.dart';
 import '../services/note_service.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
@@ -19,6 +21,7 @@ import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
+import '../widgets/search_results_panel.dart';
 import '../widgets/weekly_view_panel.dart';
 import 'settings_screen.dart';
 
@@ -91,10 +94,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
   late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
-  List<Note> _searchResults = [];
-  bool _isSearchLoading = false;
+  List<SearchResult> _searchResults = [];
   int _loadGeneration = 0;
 
   void _handleSettingsChanged() {
@@ -125,6 +128,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
     if (oldWidget.storage != widget.storage ||
         oldWidget.localStorage != widget.localStorage) {
+      // Immediately remove stale local notes before async reload so the UI
+      // never shows notes from the previous local path.
+      if (oldWidget.localStorage != widget.localStorage) {
+        setState(() {
+          _allNotes = _allNotes
+              .where((n) => n.storageType != StorageType.local)
+              .toList();
+          if (_selectedNote?.storageType == StorageType.local) {
+            _selectedNote = null;
+          }
+        });
+      }
       unawaited(_loadNotes());
     }
   }
@@ -133,6 +148,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void dispose() {
     _saveDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
@@ -279,7 +295,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   List<Note> get _visibleNotes {
-    if (_isSearchActive) return _searchResults;
+    if (_isSearchActive) return _searchResults.map((r) => r.note).toList();
     return _notesForSelectedDate;
   }
 
@@ -607,8 +623,6 @@ class _DocumentScreenState extends State<DocumentScreen> {
   Future<void> _rebuildSearchIndex() async {
     if (!mounted) return;
 
-    setState(() => _isSearchLoading = true);
-
     final notes = <Note>[
       ...await _storage.listAllNotes(),
       if (widget.localStorage != null)
@@ -621,12 +635,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
 
     if (!mounted) return;
-    setState(() => _isSearchLoading = false);
     _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   void _applySearchQuery(NoteSearchQuery query, {bool resetPage = true}) {
-    final results = query.isEmpty ? <Note>[] : _searchIndex.search(query);
+    final contextLines =
+        widget.settingsController.value.searchContextLines;
+    final results = query.isEmpty
+        ? <SearchResult>[]
+        : _searchIndex.searchWithContext(query, contextLines: contextLines);
 
     setState(() {
       _searchQuery = query;
@@ -647,10 +664,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
       }
 
       if (_isSearchActive) {
-        final selected = results.where((n) => n.id == _selectedNote?.id);
+        final selected =
+            results.where((r) => r.note.id == _selectedNote?.id);
         _selectedNote = selected.isNotEmpty
-            ? selected.first
-            : results.firstOrNull;
+            ? selected.first.note
+            : results.firstOrNull?.note;
         if (_selectedNote != null) {
           _selectedDate = DateTime(
             _selectedNote!.noteDate.year,
@@ -669,6 +687,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _clearSearch() {
     _searchController.clear();
     _applySearchQuery(const NoteSearchQuery());
+  }
+
+  void _activateSearch() {
+    _searchFocusNode.requestFocus();
+  }
+
+  void _onSearchResultTap(SearchResult result) {
+    setState(() {
+      _selectedNote = result.note;
+      _selectedDate = DateTime(
+        result.note.noteDate.year,
+        result.note.noteDate.month,
+        result.note.noteDate.day,
+      );
+    });
   }
 
   Future<void> _openSearchFilters() async {
@@ -820,26 +853,43 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   bool _handleHardwareKeyEvent(KeyEvent event) {
-    if (event is! KeyDownEvent || !HardwareKeyboard.instance.isMetaPressed) {
-      return false;
+    if (event is! KeyDownEvent) return false;
+
+    final hw = HardwareKeyboard.instance;
+    final isMetaPressed = hw.isMetaPressed;
+    final isShiftPressed = hw.isShiftPressed;
+
+    for (final binding in widget.settingsController.bindings) {
+      if (binding.matches(
+        event,
+        isMetaPressed: isMetaPressed,
+        isShiftPressed: isShiftPressed,
+      )) {
+        switch (binding.action) {
+          case ShortcutAction.openSettings:
+            unawaited(_openSettings());
+          case ShortcutAction.zoomIn:
+            unawaited(_increaseContentScale());
+          case ShortcutAction.zoomOut:
+            unawaited(_decreaseContentScale());
+          case ShortcutAction.search:
+            _activateSearch();
+        }
+        return true;
+      }
     }
 
-    final key = event.logicalKey;
-    if (key == LogicalKeyboardKey.comma) {
-      unawaited(_openSettings());
-      return true;
-    }
-
-    if (key == LogicalKeyboardKey.equal ||
-        key == LogicalKeyboardKey.numpadAdd) {
-      unawaited(_increaseContentScale());
-      return true;
-    }
-
-    if (key == LogicalKeyboardKey.minus ||
-        key == LogicalKeyboardKey.numpadSubtract) {
-      unawaited(_decreaseContentScale());
-      return true;
+    // Also handle numpad variants for zoom (not configurable).
+    if (isMetaPressed) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.numpadAdd) {
+        unawaited(_increaseContentScale());
+        return true;
+      }
+      if (key == LogicalKeyboardKey.numpadSubtract) {
+        unawaited(_decreaseContentScale());
+        return true;
+      }
     }
 
     return false;
@@ -911,7 +961,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
         onNoteTap: _onWeeklyNoteTap,
       );
     }
-    return EditorPanel(
+
+    final editor = EditorPanel(
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,
@@ -925,6 +976,24 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,
       onSetContentScale: _setContentScale,
+    );
+
+    if (!_isSearchActive) return editor;
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 320,
+          child: SearchResultsPanel(
+            results: _searchResults,
+            query: _searchQuery.text,
+            selectedNoteId: _selectedNote?.id,
+            onResultTap: _onSearchResultTap,
+          ),
+        ),
+        VerticalDivider(width: 1, thickness: 1, color: context.colors.border),
+        Expanded(child: editor),
+      ],
     );
   }
 
@@ -957,6 +1026,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
               letterSpacing: -0.3,
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: 320,
+            child: NoteSearchSection(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              query: _searchQuery.text,
+              tag: _searchQuery.tag,
+              startDate: _searchQuery.startDate,
+              endDate: _searchQuery.endDate,
+              onQueryChanged: _onSearchTextChanged,
+              onClear: _clearSearch,
+              onOpenFilters: () => unawaited(_openSearchFilters()),
             ),
           ),
           const Spacer(),
@@ -1024,17 +1108,6 @@ class _DocumentScreenState extends State<DocumentScreen> {
           _WeeklyViewButton(
             isActive: _weeklyViewActive,
             onTap: _toggleWeeklyView,
-          ),
-          NoteSearchSection(
-            controller: _searchController,
-            query: _searchQuery.text,
-            tag: _searchQuery.tag,
-            startDate: _searchQuery.startDate,
-            endDate: _searchQuery.endDate,
-            isLoading: _isSearchLoading,
-            onQueryChanged: _onSearchTextChanged,
-            onClear: _clearSearch,
-            onOpenFilters: () => unawaited(_openSearchFilters()),
           ),
           Divider(height: 1, color: c.border),
           Expanded(

@@ -91,6 +91,81 @@ void main() {
       expect(results, [marchFifth, marchFirst]);
     });
 
+    test('searchWithContext returns match with surrounding context lines', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Multi-line note',
+        content: 'line0\nline1\nline2\ntarget keyword here\nline4\nline5\nline6',
+      );
+
+      index.replaceAll([note]);
+
+      final results = index.searchWithContext(
+        const NoteSearchQuery(text: 'keyword'),
+        contextLines: 2,
+      );
+
+      expect(results, hasLength(1));
+      final result = results.first;
+      expect(result.note.id, '1');
+      expect(result.match.lineNumber, 3);
+      expect(result.match.line, 'target keyword here');
+      expect(result.match.matchStart, 7);
+      expect(result.match.matchEnd, 14);
+      expect(result.contextBefore, ['line1', 'line2']);
+      expect(result.contextAfter, ['line4', 'line5']);
+    });
+
+    test('searchWithContext clips context at first and last lines', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Short note',
+        content: 'match here\nsecond line',
+      );
+
+      index.replaceAll([note]);
+
+      final results = index.searchWithContext(
+        const NoteSearchQuery(text: 'match'),
+        contextLines: 5,
+      );
+
+      expect(results, hasLength(1));
+      final result = results.first;
+      expect(result.match.lineNumber, 0);
+      expect(result.contextBefore, isEmpty);
+      expect(result.contextAfter, ['second line']);
+    });
+
+    test('searchWithContext uses first line when only tag filter is used', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Tagged note',
+        content: 'first line\nsecond line\nthird line',
+        tags: ['work'],
+      );
+
+      index.replaceAll([note]);
+
+      final results = index.searchWithContext(
+        const NoteSearchQuery(tag: 'work'),
+        contextLines: 2,
+      );
+
+      expect(results, hasLength(1));
+      final result = results.first;
+      expect(result.match.lineNumber, 0);
+      expect(result.match.line, 'first line');
+      expect(result.contextBefore, isEmpty);
+      expect(result.contextAfter, ['second line', 'third line']);
+    });
+
     test('upsert and remove keep search results in sync', () {
       final index = NoteSearchIndex();
       final note = buildNote(

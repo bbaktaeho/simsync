@@ -401,6 +401,7 @@ class _AppShellState extends State<_AppShell> {
         avatarUrl: _session!.user.avatarUrl,
         onRepoSelected: _handleRepoSelected,
         repoCache: widget.repoCache,
+        settingsController: _settingsController,
       );
     }
 
