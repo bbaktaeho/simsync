@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
@@ -10,11 +9,13 @@ import '../settings/app_settings_controller.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../widgets/markdown_preview.dart';
 
 class EditorScreen extends StatefulWidget {
   final Note note;
   final NoteStorage storage;
   final AppSettingsController settingsController;
+  final ValueNotifier<int>? refreshSignal;
   final void Function(Note updatedNote) onNoteChanged;
   final void Function(Note deletedNote) onNoteDeleted;
 
@@ -23,6 +24,7 @@ class EditorScreen extends StatefulWidget {
     required this.note,
     required this.storage,
     required this.settingsController,
+    this.refreshSignal,
     required this.onNoteChanged,
     required this.onNoteDeleted,
   });
@@ -54,10 +56,21 @@ class _EditorScreenState extends State<EditorScreen>
     _contentController = TextEditingController(text: _note.content);
     _tagsController = TextEditingController(text: _note.tags.join(', '));
     _previewScale = widget.settingsController.value.contentScale;
+    widget.refreshSignal?.addListener(_handleRefreshSignal);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_handleRefreshSignal);
+      widget.refreshSignal?.addListener(_handleRefreshSignal);
+    }
   }
 
   @override
   void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefreshSignal);
     _saveDebounce?.cancel();
     _tabController.dispose();
     _titleController.dispose();
@@ -68,6 +81,28 @@ class _EditorScreenState extends State<EditorScreen>
       _saveImmediately();
     }
     super.dispose();
+  }
+
+  Future<void> _handleRefreshSignal() async {
+    if (_isDirty || _isSaving) return;
+
+    final latestNotes = await widget.storage.listNotes(_note.noteDate);
+    final matches = latestNotes.where((note) => note.id == _note.id);
+    if (matches.isEmpty || !mounted) return;
+
+    final latest = matches.first;
+    if (latest.title == _note.title &&
+        latest.content == _note.content &&
+        latest.tags.join(',') == _note.tags.join(',')) {
+      return;
+    }
+
+    setState(() {
+      _note = latest;
+      _titleController.text = latest.title;
+      _contentController.text = latest.content;
+      _tagsController.text = latest.tags.join(', ');
+    });
   }
 
   void _onTitleChanged(String value) {
@@ -161,9 +196,9 @@ class _EditorScreenState extends State<EditorScreen>
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
       }
     }
   }
@@ -177,11 +212,7 @@ class _EditorScreenState extends State<EditorScreen>
     final end = selection.extentOffset.clamp(0, text.length);
     final selectedText = text.substring(start, end);
 
-    final newText = text.replaceRange(
-      start,
-      end,
-      '$before$selectedText$after',
-    );
+    final newText = text.replaceRange(start, end, '$before$selectedText$after');
     _contentController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(
@@ -193,7 +224,10 @@ class _EditorScreenState extends State<EditorScreen>
 
   void _insertAtLineStart(String prefix) {
     final text = _contentController.text;
-    final cursorPos = _contentController.selection.baseOffset.clamp(0, text.length);
+    final cursorPos = _contentController.selection.baseOffset.clamp(
+      0,
+      text.length,
+    );
     // Find the start of the current line.
     var lineStart = cursorPos;
     while (lineStart > 0 && text[lineStart - 1] != '\n') {
@@ -202,9 +236,7 @@ class _EditorScreenState extends State<EditorScreen>
     final newText = text.replaceRange(lineStart, lineStart, prefix);
     _contentController.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(
-        offset: cursorPos + prefix.length,
-      ),
+      selection: TextSelection.collapsed(offset: cursorPos + prefix.length),
     );
     _onContentChanged(newText);
   }
@@ -287,10 +319,7 @@ class _EditorScreenState extends State<EditorScreen>
                   )
                 : Text(
                     _isDirty ? '' : '저장됨',
-                    style: GoogleFonts.manrope(
-                      fontSize: 12,
-                      color: c.success,
-                    ),
+                    style: GoogleFonts.manrope(fontSize: 12, color: c.success),
                   ),
           ),
         ),
@@ -299,8 +328,7 @@ class _EditorScreenState extends State<EditorScreen>
           icon: Icon(Icons.more_vert_rounded, color: c.textSecondary),
           color: c.surface,
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             side: BorderSide(color: c.border),
           ),
           onSelected: (value) {
@@ -317,10 +345,7 @@ class _EditorScreenState extends State<EditorScreen>
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     '삭제',
-                    style: GoogleFonts.manrope(
-                      fontSize: 14,
-                      color: c.error,
-                    ),
+                    style: GoogleFonts.manrope(fontSize: 14, color: c.error),
                   ),
                 ],
               ),
@@ -404,10 +429,7 @@ class _EditorScreenState extends State<EditorScreen>
                   ),
                   decoration: InputDecoration(
                     hintText: '마크다운으로 작성하세요...',
-                    hintStyle: TextStyle(
-                      color: c.textMuted,
-                      fontSize: 14,
-                    ),
+                    hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -508,71 +530,15 @@ class _EditorScreenState extends State<EditorScreen>
           _previewScale = (_previewScale * details.scale).clamp(0.8, 2.0);
         });
       },
-      child: InteractiveViewer(
-        minScale: 0.8,
-        maxScale: 2.0,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(AppDimensions.spacingLg),
-          child: Transform.scale(
-            scale: scale,
-            alignment: Alignment.topLeft,
-            child: Markdown(
-              data: _note.content.isEmpty
-                  ? '_미리보기할 내용이 없습니다_'
-                  : _note.content,
-              selectable: true,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              styleSheet: MarkdownStyleSheet(
-                h1: GoogleFonts.manrope(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
-                h2: GoogleFonts.manrope(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
-                h3: GoogleFonts.manrope(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: c.textPrimary,
-                ),
-                p: TextStyle(
-                  fontSize: 14,
-                  color: c.textPrimary,
-                  height: 1.6,
-                ),
-                code: GoogleFonts.jetBrainsMono(
-                  fontSize: 13,
-                  color: c.accent,
-                  backgroundColor: c.surfaceLight,
-                ),
-                codeblockDecoration: BoxDecoration(
-                  color: c.surfaceLight,
-                  borderRadius:
-                      BorderRadius.circular(AppDimensions.borderRadius),
-                  border: Border.all(color: c.border),
-                ),
-                blockquoteDecoration: BoxDecoration(
-                  border: Border(
-                    left: BorderSide(color: c.accent, width: 3),
-                  ),
-                ),
-                blockquotePadding: const EdgeInsets.only(
-                  left: AppDimensions.spacingMd,
-                ),
-                listBullet: TextStyle(color: c.textSecondary),
-                horizontalRuleDecoration: BoxDecoration(
-                  border: Border(
-                    top: BorderSide(color: c.border, width: 1),
-                  ),
-                ),
-              ),
-            ),
-          ),
+      child: Container(
+        width: double.infinity,
+        color: c.scaffold,
+        child: MarkdownPreview(
+          title: _titleController.text.trim(),
+          content: _contentController.text.isEmpty
+              ? '_미리보기할 내용이 없습니다_'
+              : _contentController.text,
+          contentScale: scale,
         ),
       ),
     );
@@ -601,15 +567,11 @@ class _EditorScreenState extends State<EditorScreen>
           TextField(
             controller: _tagsController,
             onChanged: _onTagsChanged,
-            style: GoogleFonts.manrope(
-              fontSize: 14,
-              color: c.textPrimary,
-            ),
+            style: GoogleFonts.manrope(fontSize: 14, color: c.textPrimary),
             decoration: InputDecoration(
               hintText: 'work, daily, idea',
               hintStyle: TextStyle(color: c.textMuted),
-              prefixIcon:
-                  Icon(Icons.tag_rounded, size: 18, color: c.textMuted),
+              prefixIcon: Icon(Icons.tag_rounded, size: 18, color: c.textMuted),
             ),
           ),
           const SizedBox(height: AppDimensions.spacingLg),
@@ -628,8 +590,7 @@ class _EditorScreenState extends State<EditorScreen>
                     borderRadius: BorderRadius.circular(
                       AppDimensions.borderRadius,
                     ),
-                    border:
-                        Border.all(color: c.accent.withValues(alpha: 0.3)),
+                    border: Border.all(color: c.accent.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     '#$tag',
@@ -677,8 +638,7 @@ class _ToolbarButton extends StatelessWidget {
         alignment: Alignment.center,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          borderRadius:
-              BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
         ),
         child: icon != null
             ? Icon(icon, size: 18, color: colors.textSecondary)

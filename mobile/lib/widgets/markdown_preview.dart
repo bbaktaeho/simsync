@@ -26,8 +26,10 @@ class MarkdownPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final hasTitle = title.trim().isNotEmpty;
+    final hasContent = content.trim().isNotEmpty;
 
-    if (content.trim().isEmpty) {
+    if (!hasTitle && !hasContent) {
       return Center(
         child: Text(
           'Nothing to preview',
@@ -39,35 +41,38 @@ class MarkdownPreview extends StatelessWidget {
       );
     }
 
-    return Transform.scale(
-      scale: contentScale,
-      alignment: Alignment.topLeft,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (title.isNotEmpty) ...[
-              Text(
-                title,
-                style: GoogleFonts.manrope(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppDimensions.spacingLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasTitle) ...[
+            Text(
+              title.trim(),
+              style: GoogleFonts.manrope(
+                fontSize: 24 * contentScale,
+                fontWeight: FontWeight.w700,
+                color: c.textPrimary,
               ),
-              const SizedBox(height: AppDimensions.spacingLg),
-            ],
+            ),
+            const SizedBox(height: AppDimensions.spacingLg),
+          ],
+          if (hasContent)
             MarkdownBody(
               data: content,
               selectable: true,
               styleSheet: _buildStyleSheet(c),
-              builders: {
-                'pre': _CodeBlockBuilder(contentScale: contentScale),
-              },
+              builders: {'pre': _CodeBlockBuilder(contentScale: contentScale)},
+            )
+          else
+            Text(
+              'Nothing to preview',
+              style: GoogleFonts.manrope(
+                fontSize: 14 * contentScale,
+                color: c.textMuted,
+              ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -156,10 +161,7 @@ class MarkdownPreview extends StatelessWidget {
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.border)),
       ),
-      checkbox: GoogleFonts.manrope(
-        fontSize: scaled(14),
-        color: c.accent,
-      ),
+      checkbox: GoogleFonts.manrope(fontSize: scaled(14), color: c.accent),
       tableHead: GoogleFonts.manrope(
         fontSize: scaled(13),
         fontWeight: FontWeight.w600,
@@ -202,9 +204,8 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
 
     // Make HighlightView background transparent so the Container handles it.
     final transparentTheme = Map<String, TextStyle>.from(highlightTheme);
-    transparentTheme['root'] =
-        (transparentTheme['root'] ?? const TextStyle())
-            .copyWith(backgroundColor: Colors.transparent);
+    transparentTheme['root'] = (transparentTheme['root'] ?? const TextStyle())
+        .copyWith(backgroundColor: Colors.transparent);
 
     final c = context.colors;
 

@@ -56,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
             localStorage: widget.localStorage,
             noteService: widget.noteService,
             refreshSignal: widget.refreshSignal,
+            avatarUrl: widget.avatarUrl,
             settingsController: widget.settingsController,
             syncEngine: widget.syncEngine,
           ),
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
             storage: widget.storage,
             localStorage: widget.localStorage,
             settingsController: widget.settingsController,
+            refreshSignal: widget.refreshSignal,
           ),
           SettingsScreen(
             onLogout: widget.onLogout,
@@ -84,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_month_outlined),
             activeIcon: Icon(Icons.calendar_month),
-            label: '캘린더',
+            label: '노트',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.search_outlined),
