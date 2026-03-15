@@ -117,6 +117,25 @@ class GitHubOAuthProvider implements AuthProvider {
     }
   }
 
+  @override
+  Future<SessionValidationResult> validateAccessToken(String accessToken) async {
+    try {
+      final response = await _getUserProfileResponse(accessToken);
+      if (response.statusCode == HttpStatus.ok) {
+        return SessionValidationResult.valid;
+      }
+      if (response.statusCode == HttpStatus.unauthorized ||
+          response.statusCode == HttpStatus.forbidden) {
+        return SessionValidationResult.invalid;
+      }
+      return SessionValidationResult.unknown;
+    } on http.ClientException {
+      return SessionValidationResult.unknown;
+    } on SocketException {
+      return SessionValidationResult.unknown;
+    }
+  }
+
   Uri buildAuthorizationUri({
     required Uri redirectUri,
     required String state,
@@ -180,14 +199,7 @@ class GitHubOAuthProvider implements AuthProvider {
   }
 
   Future<AuthUser> _fetchUser(_GitHubTokenResponse token) async {
-    final response = await _httpClient.get(
-      Uri.https('api.github.com', '/user'),
-      headers: {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': 'Bearer ${token.accessToken}',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    );
+    final response = await _getUserProfileResponse(token.accessToken);
 
     if (response.statusCode != HttpStatus.ok) {
       throw AuthException(
@@ -201,6 +213,17 @@ class GitHubOAuthProvider implements AuthProvider {
       login: json['login'] as String,
       name: json['name'] as String?,
       avatarUrl: json['avatar_url'] as String,
+    );
+  }
+
+  Future<http.Response> _getUserProfileResponse(String accessToken) {
+    return _httpClient.get(
+      Uri.https('api.github.com', '/user'),
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'Bearer $accessToken',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
     );
   }
 

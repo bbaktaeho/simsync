@@ -1,0 +1,1324 @@
+import 'dart:io';
+import 'dart:math' as math;
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../settings/app_settings.dart';
+import '../settings/app_settings_controller.dart';
+import '../settings/shortcut_binding.dart';
+import '../storage/github/repo_cache.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
+
+enum _SettingsPane { storage, editor, sync, shortcuts }
+
+String? resolveDirectoryPickerInitialPath(String currentPath) {
+  final normalized = currentPath.trim();
+  if (normalized.isEmpty) return null;
+
+  final directory = Directory(normalized);
+  if (!directory.existsSync()) {
+    return null;
+  }
+
+  return normalized;
+}
+
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({
+    super.key,
+    required this.settingsController,
+    this.activeRepo,
+    this.loadCachedRepos,
+    this.onLocalNotePathChanged,
+    this.onRepoSelected,
+    this.onCreateRepo,
+    this.onConnectRepo,
+    this.onPickLocalNotePath,
+    this.onSyncEnabledChanged,
+    this.onSyncIntervalChanged,
+  });
+
+  final AppSettingsController settingsController;
+  final RepoEntry? activeRepo;
+  final Future<List<RepoEntry>> Function()? loadCachedRepos;
+  final Future<void> Function(String path)? onLocalNotePathChanged;
+  final Future<void> Function(RepoEntry entry)? onRepoSelected;
+  final Future<RepoEntry> Function(String name)? onCreateRepo;
+  final Future<RepoEntry> Function(String owner, String repo)? onConnectRepo;
+  final Future<String?> Function(String currentPath)? onPickLocalNotePath;
+  final ValueChanged<bool>? onSyncEnabledChanged;
+  final ValueChanged<int>? onSyncIntervalChanged;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  static const List<int> _syncIntervals = [5, 10, 15, 30, 60, 120, 300];
+
+  final TextEditingController _connectController = TextEditingController();
+  final TextEditingController _createController = TextEditingController();
+
+  _SettingsPane _selectedPane = _SettingsPane.storage;
+  List<RepoEntry> _cachedRepos = [];
+  bool _isRepoLoading = false;
+  bool _isRepoMutating = false;
+  String? _repoError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCachedRepos();
+  }
+
+  @override
+  void dispose() {
+    _connectController.dispose();
+    _createController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCachedRepos() async {
+    final loader = widget.loadCachedRepos;
+    if (loader == null) return;
+
+    setState(() {
+      _isRepoLoading = true;
+      _repoError = null;
+    });
+
+    try {
+      final repos = await loader();
+      if (!mounted) return;
+      setState(() => _cachedRepos = repos);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _repoError = '최근 저장소 목록을 불러오지 못했습니다.');
+    } finally {
+      if (mounted) {
+        setState(() => _isRepoLoading = false);
+      }
+    }
+  }
+
+  Future<void> _changeLocalPath() async {
+    final currentPath = widget.settingsController.value.localNotePath;
+    final picker = widget.onPickLocalNotePath ?? _defaultDirectoryPicker;
+    final pickedPath = await picker(currentPath);
+    if (pickedPath == null || pickedPath.isEmpty) return;
+
+    final callback = widget.onLocalNotePathChanged;
+    if (callback != null) {
+      await callback(pickedPath);
+    } else {
+      await widget.settingsController.setLocalNotePath(pickedPath);
+    }
+  }
+
+  Future<String?> _defaultDirectoryPicker(String currentPath) {
+    return FilePicker.platform.getDirectoryPath(
+      dialogTitle: '로컬 노트 저장 경로 선택',
+      initialDirectory: resolveDirectoryPickerInitialPath(currentPath),
+    );
+  }
+
+  Future<void> _selectRepo(RepoEntry entry) async {
+    final callback = widget.onRepoSelected;
+    if (callback == null) return;
+
+    setState(() {
+      _isRepoMutating = true;
+      _repoError = null;
+    });
+    try {
+      await callback(entry);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _repoError = '저장소 전환 중 오류가 발생했습니다.');
+    } finally {
+      if (mounted) {
+        setState(() => _isRepoMutating = false);
+      }
+    }
+  }
+
+  Future<void> _createRepo() async {
+    final name = _createController.text.trim();
+    if (name.isEmpty || widget.onCreateRepo == null) return;
+
+    setState(() {
+      _isRepoMutating = true;
+      _repoError = null;
+    });
+    try {
+      final entry = await widget.onCreateRepo!(name);
+      _createController.clear();
+      await _selectRepo(entry);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() => _repoError = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isRepoMutating = false);
+      }
+    }
+  }
+
+  Future<void> _connectRepo() async {
+    final input = _connectController.text.trim();
+    final parts = input.split('/');
+    if (parts.length != 2 ||
+        parts[0].trim().isEmpty ||
+        parts[1].trim().isEmpty ||
+        widget.onConnectRepo == null) {
+      setState(() => _repoError = 'owner/repo 형식으로 입력하세요.');
+      return;
+    }
+
+    setState(() {
+      _isRepoMutating = true;
+      _repoError = null;
+    });
+    try {
+      final entry = await widget.onConnectRepo!(
+        parts[0].trim(),
+        parts[1].trim(),
+      );
+      await _selectRepo(entry);
+    } on Exception catch (error) {
+      if (!mounted) return;
+      setState(() => _repoError = error.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isRepoMutating = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final viewport = MediaQuery.sizeOf(context);
+    final dialogWidth = viewport.width < 760
+        ? viewport.width - 16
+        : math.min(980.0, viewport.width - 32);
+    final dialogHeight = viewport.height < 560
+        ? viewport.height - 16
+        : math.min(640.0, viewport.height - 32);
+    final recentRepos = _cachedRepos
+        .where((entry) => entry.fullName != widget.activeRepo?.fullName)
+        .toList();
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        width: dialogWidth,
+        height: dialogHeight,
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: c.borderSubtle),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 32,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: Row(
+            children: [
+              _buildNavigationRail(c),
+              VerticalDivider(width: 1, thickness: 1, color: c.border),
+              Expanded(
+                child: AnimatedBuilder(
+                  animation: widget.settingsController,
+                  builder: (context, _) {
+                    final settings = widget.settingsController.value;
+                    return AnimatedSwitcher(
+                      duration: AppDimensions.animFast,
+                      child: _buildPane(c, settings, recentRepos),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavigationRail(AppColorsExtension c) {
+    return Container(
+      width: 236,
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        border: Border(right: BorderSide(color: c.border)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Settings',
+            style: GoogleFonts.manrope(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
+          Text(
+            'Workspace and editor preferences',
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              height: 1.5,
+              color: c.textSecondary,
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(top: AppDimensions.spacingXl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _NavigationItem(
+                    selectionKey: 'storage',
+                    label: 'Storage',
+                    description: 'Paths and repositories',
+                    icon: Icons.storage_rounded,
+                    isSelected: _selectedPane == _SettingsPane.storage,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.storage),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'editor',
+                    label: 'Editor & Preview',
+                    description: 'Zoom and reading comfort',
+                    icon: Icons.text_fields_rounded,
+                    isSelected: _selectedPane == _SettingsPane.editor,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.editor),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'sync',
+                    label: 'Sync',
+                    description: 'Polling and cadence',
+                    icon: Icons.sync_rounded,
+                    isSelected: _selectedPane == _SettingsPane.sync,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.sync),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
+                    selectionKey: 'shortcuts',
+                    label: 'Shortcuts',
+                    description: 'Keyboard bindings',
+                    icon: Icons.keyboard_rounded,
+                    isSelected: _selectedPane == _SettingsPane.shortcuts,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.shortcuts),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(
+              foregroundColor: c.textSecondary,
+              padding: EdgeInsets.zero,
+            ),
+            child: Text(
+              'Done',
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPane(
+    AppColorsExtension c,
+    AppSettings settings,
+    List<RepoEntry> recentRepos,
+  ) {
+    switch (_selectedPane) {
+      case _SettingsPane.storage:
+        return _buildStoragePane(c, settings, recentRepos);
+      case _SettingsPane.editor:
+        return _buildEditorPane(c, settings);
+      case _SettingsPane.sync:
+        return _buildSyncPane(c, settings);
+      case _SettingsPane.shortcuts:
+        return _buildShortcutsPane(c);
+    }
+  }
+
+  Widget _buildStoragePane(
+    AppColorsExtension c,
+    AppSettings settings,
+    List<RepoEntry> recentRepos,
+  ) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.storage),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PaneHeader(
+            title: 'Workspace storage',
+            description:
+                'Control where local notes live and which GitHub repository is connected.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Local note path',
+            description: 'The directory used for local-only markdown notes.',
+            action: _ActionButton(label: 'Change...', onTap: _changeLocalPath),
+            child: _PathPreview(path: settings.localNotePath),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'GitHub background sync',
+            description:
+                'Turn periodic remote polling on or off without disconnecting the repository.',
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    settings.syncEnabled ? 'Enabled' : 'Disabled',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+                Switch.adaptive(
+                  value: settings.syncEnabled,
+                  onChanged: (value) async {
+                    await widget.settingsController.setSyncEnabled(value);
+                    widget.onSyncEnabledChanged?.call(value);
+                  },
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Synced repository',
+            description:
+                'Recent repositories stay one click away so switching sync targets feels lightweight.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _CurrentRepoCard(activeRepo: widget.activeRepo),
+                const SizedBox(height: AppDimensions.spacingLg),
+                _SectionLabel(label: 'Recent repositories'),
+                const SizedBox(height: AppDimensions.spacingSm),
+                if (_isRepoLoading)
+                  const LinearProgressIndicator(minHeight: 2)
+                else if (recentRepos.isEmpty)
+                  Text(
+                    'No recent repositories',
+                    style: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: c.textMuted,
+                    ),
+                  )
+                else
+                  Wrap(
+                    spacing: AppDimensions.spacingSm,
+                    runSpacing: AppDimensions.spacingSm,
+                    children: recentRepos
+                        .map(
+                          (entry) => _RepoChip(
+                            label: entry.fullName,
+                            isActive:
+                                entry.fullName == widget.activeRepo?.fullName,
+                            onTap: _isRepoMutating
+                                ? null
+                                : () => _selectRepo(entry),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                const SizedBox(height: AppDimensions.spacingLg),
+                _SectionLabel(label: 'Connect existing repository'),
+                const SizedBox(height: AppDimensions.spacingSm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _connectController,
+                        decoration: const InputDecoration(
+                          hintText: 'owner/repo',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppDimensions.spacingSm),
+                    _ActionButton(
+                      label: 'Connect',
+                      onTap: _isRepoMutating ? null : _connectRepo,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppDimensions.spacingLg),
+                _SectionLabel(label: 'Create new repository'),
+                const SizedBox(height: AppDimensions.spacingSm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _createController,
+                        decoration: const InputDecoration(
+                          hintText: 'notes-archive',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppDimensions.spacingSm),
+                    _ActionButton(
+                      label: 'Create',
+                      onTap: _isRepoMutating ? null : _createRepo,
+                    ),
+                  ],
+                ),
+                if (_repoError != null) ...[
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  Text(
+                    _repoError!,
+                    style: GoogleFonts.manrope(fontSize: 12, color: c.error),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditorPane(AppColorsExtension c, AppSettings settings) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.editor),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Reading & zoom',
+            description:
+                'Tune reading density and make sure zoom interactions feel immediate.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Content zoom',
+            description:
+                'Applies only to the markdown editor and preview surfaces.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    _IconStepButton(
+                      icon: Icons.remove_rounded,
+                      onTap: widget.settingsController.decreaseContentScale,
+                    ),
+                    const SizedBox(width: AppDimensions.spacingMd),
+                    Text(
+                      '${(settings.contentScale * 100).round()}%',
+                      style: GoogleFonts.manrope(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(width: AppDimensions.spacingMd),
+                    _IconStepButton(
+                      icon: Icons.add_rounded,
+                      onTap: widget.settingsController.increaseContentScale,
+                    ),
+                  ],
+                ),
+                Slider(
+                  min: AppSettings.minContentScale,
+                  max: AppSettings.maxContentScale,
+                  value: settings.contentScale,
+                  onChanged: (value) {
+                    widget.settingsController.setContentScale(value);
+                  },
+                ),
+                Text(
+                  'Shortcuts: cmd + +, cmd + -, cmd + wheel, trackpad pinch',
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    color: c.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.spacingLg),
+                _ZoomPreviewCard(contentScale: settings.contentScale),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Search context lines',
+            description:
+                'Number of lines shown above and below each search match.',
+            child: Row(
+              children: [
+                _IconStepButton(
+                  icon: Icons.remove_rounded,
+                  onTap: () => widget.settingsController.setSearchContextLines(
+                    settings.searchContextLines - 1,
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spacingMd),
+                Text(
+                  '${settings.searchContextLines}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: AppDimensions.spacingMd),
+                _IconStepButton(
+                  icon: Icons.add_rounded,
+                  onTap: () => widget.settingsController.setSearchContextLines(
+                    settings.searchContextLines + 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSyncPane(AppColorsExtension c, AppSettings settings) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.sync),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Background sync',
+            description:
+                'Control how frequently GitHub commit state is checked while you are working.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'GitHub sync interval',
+            description:
+                'A shorter cadence feels snappier. A longer cadence is quieter.',
+            child: Wrap(
+              spacing: AppDimensions.spacingSm,
+              runSpacing: AppDimensions.spacingSm,
+              children: _syncIntervals.map((seconds) {
+                final selected = settings.syncIntervalSeconds == seconds;
+                return ChoiceChip(
+                  label: Text('${seconds}s'),
+                  selected: selected,
+                  onSelected: settings.syncEnabled
+                      ? (_) async {
+                          await widget.settingsController
+                              .setSyncIntervalSeconds(seconds);
+                          widget.onSyncIntervalChanged?.call(seconds);
+                        }
+                      : null,
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShortcutsPane(AppColorsExtension c) {
+    final bindings = widget.settingsController.bindings;
+
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.shortcuts),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Keyboard shortcuts',
+            description:
+                'View and customise the key combinations used across the app.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          ...bindings.map((binding) => Padding(
+                padding: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
+                child: _ShortcutCard(
+                  binding: binding,
+                  onEdit: binding.isFixed
+                      ? null
+                      : () => _showShortcutCaptureDialog(binding),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showShortcutCaptureDialog(ShortcutBinding binding) async {
+    final c = context.colors;
+    ShortcutBinding? captured;
+
+    final result = await showDialog<ShortcutBinding>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              backgroundColor: c.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: c.border),
+              ),
+              title: Text(
+                '${binding.action.label} 단축키 변경',
+                style: GoogleFonts.manrope(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
+              ),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '새 키 조합을 입력하세요',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingLg),
+                    Focus(
+                      autofocus: true,
+                      onKeyEvent: (node, event) {
+                        if (event is! KeyDownEvent) {
+                          return KeyEventResult.ignored;
+                        }
+                        // Ignore bare modifier keys.
+                        if (event.logicalKey == LogicalKeyboardKey.metaLeft ||
+                            event.logicalKey == LogicalKeyboardKey.metaRight ||
+                            event.logicalKey == LogicalKeyboardKey.shiftLeft ||
+                            event.logicalKey == LogicalKeyboardKey.shiftRight) {
+                          return KeyEventResult.handled;
+                        }
+                        final hw = HardwareKeyboard.instance;
+                        setDialogState(() {
+                          captured = binding.copyWith(
+                            key: event.logicalKey,
+                            shift: hw.isShiftPressed,
+                          );
+                        });
+                        return KeyEventResult.handled;
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: AppDimensions.spacingLg,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.surfaceLight,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: c.accent),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          captured?.displayLabel ?? binding.displayLabel,
+                          style: GoogleFonts.jetBrainsMono(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    '취소',
+                    style: TextStyle(color: c.textMuted),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: captured == null
+                      ? null
+                      : () => Navigator.of(ctx).pop(captured),
+                  child: const Text('저장'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      await widget.settingsController.setShortcutBinding(result);
+    }
+  }
+}
+
+class _NavigationItem extends StatelessWidget {
+  const _NavigationItem({
+    required this.selectionKey,
+    required this.label,
+    required this.description,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  final String selectionKey;
+  final String label;
+  final String description;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: AppDimensions.animFast,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingMd,
+          vertical: AppDimensions.spacingMd,
+        ),
+        decoration: BoxDecoration(
+          color: isSelected ? c.accentSubtle : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? c.accent.withValues(alpha: 0.16)
+                : Colors.transparent,
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (isSelected)
+              Container(
+                key: ValueKey('settings-nav-selected-$selectionKey'),
+                width: 3,
+                height: 32,
+                margin: const EdgeInsets.only(
+                  right: AppDimensions.spacingMd,
+                  top: 1,
+                ),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              )
+            else
+              const SizedBox(width: 3 + AppDimensions.spacingMd),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSelected
+                      ? c.accent.withValues(alpha: 0.18)
+                      : c.border,
+                ),
+              ),
+              child: Icon(
+                icon,
+                size: 16,
+                color: isSelected ? c.accent : c.textSecondary,
+              ),
+            ),
+            const SizedBox(width: AppDimensions.spacingMd),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? c.textPrimary : c.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    description,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      height: 1.4,
+                      color: c.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaneHeader extends StatelessWidget {
+  const _PaneHeader({required this.title, required this.description});
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: GoogleFonts.manrope(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            color: c.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppDimensions.spacingSm),
+        Text(
+          description,
+          style: GoogleFonts.manrope(
+            fontSize: 13,
+            height: 1.6,
+            color: c.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailCard extends StatelessWidget {
+  const _DetailCard({
+    required this.title,
+    required this.description,
+    required this.child,
+    this.action,
+  });
+
+  final String title;
+  final String description;
+  final Widget child;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.manrope(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: c.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingXs),
+                    Text(
+                      description,
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        height: 1.6,
+                        color: c.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (action != null) ...[
+                const SizedBox(width: AppDimensions.spacingMd),
+                action!,
+              ],
+            ],
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: c.textPrimary,
+        side: BorderSide(color: c.borderSubtle),
+        backgroundColor: c.surface,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: GoogleFonts.manrope(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: c.textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _PathPreview extends StatelessWidget {
+  const _PathPreview({required this.path});
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.border),
+      ),
+      child: SelectableText(
+        path,
+        style: GoogleFonts.jetBrainsMono(
+          fontSize: 12,
+          color: c.textPrimary,
+          height: 1.6,
+        ),
+      ),
+    );
+  }
+}
+
+class _CurrentRepoCard extends StatelessWidget {
+  const _CurrentRepoCard({required this.activeRepo});
+
+  final RepoEntry? activeRepo;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Current source',
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              color: c.textMuted,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
+          Text(
+            activeRepo?.fullName ?? 'Not connected',
+            style: GoogleFonts.manrope(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
+          if (activeRepo != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Branch ${activeRepo!.branch}',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: c.textSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Text(
+      label,
+      style: GoogleFonts.manrope(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+        color: c.textMuted,
+      ),
+    );
+  }
+}
+
+class _RepoChip extends StatelessWidget {
+  const _RepoChip({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool isActive;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: AppDimensions.animFast,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive ? c.accentSubtle : c.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: isActive ? c.accent : c.border),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.jetBrainsMono(
+            fontSize: 12,
+            color: isActive ? c.accent : c.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _IconStepButton extends StatelessWidget {
+  const _IconStepButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: c.border),
+        ),
+        child: Icon(icon, size: 16, color: c.textSecondary),
+      ),
+    );
+  }
+}
+
+class _ShortcutCard extends StatelessWidget {
+  const _ShortcutCard({required this.binding, required this.onEdit});
+
+  final ShortcutBinding binding;
+  final VoidCallback? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  binding.action.label,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: c.borderSubtle),
+                  ),
+                  child: Text(
+                    binding.displayLabel,
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 12,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (binding.isFixed)
+            Text(
+              'Fixed',
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: c.textMuted,
+              ),
+            )
+          else
+            _ActionButton(
+              label: 'Edit',
+              onTap: onEdit,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ZoomPreviewCard extends StatelessWidget {
+  const _ZoomPreviewCard({required this.contentScale});
+
+  final double contentScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppDimensions.spacingLg),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [c.surface, c.surfaceHover],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Preview',
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: c.textMuted,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingMd),
+          Text(
+            'Daily Note',
+            style: GoogleFonts.manrope(
+              fontSize: 22 * contentScale,
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingSm),
+          Text(
+            'A compact preview makes zoom changes feel immediate even before you close settings.',
+            style: GoogleFonts.manrope(
+              fontSize: 13 * contentScale,
+              height: 1.6,
+              color: c.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

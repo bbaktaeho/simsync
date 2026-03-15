@@ -16,10 +16,12 @@ SimSync (Simple Sync)는 마크다운 기반 개인 노트 앱이다.
 
 | Component | Technology | Caveat |
 |-----------|-----------|--------|
-| Backend Language | Go 1.26.1 | - |
-| Backend Framework | Go `net/http` + standard library | WebSocket은 `nhooyr.io/websocket` 사용 |
-| Database | PostgreSQL 18+ | 드라이버로 `github.com/jackc/pgx/v5` 사용 |
-| Client (Desktop + Mobile) | Flutter (Dart) | 단일 코드베이스로 데스크톱/모바일 모두 지원 |
+| Client (Desktop) | Flutter (Dart) | `desktop/` - macOS/Windows/Linux |
+| Client (Mobile) | Flutter (Dart) | `mobile/` - Android/iOS |
+| Auth (Desktop) | GitHub OAuth App | loopback callback + local session restore |
+| Auth (Mobile) | GitHub OAuth App | Custom URL Scheme (`simsync://callback`) + app_links |
+| Synced Storage | GitHub Contents API | 로컬 git clone 없이 API로 markdown 파일 CRUD |
+| Local Storage | Local filesystem | 사용자가 고른 디렉토리 아래 markdown 파일 저장 |
 
 ## Project Structure
 
@@ -28,19 +30,34 @@ SimSync (Simple Sync)는 마크다운 기반 개인 노트 앱이다.
 ```
 simsync/
 ├── AGENTS.md          # Agent instruction (single source of truth)
-├── app/               # Flutter app (desktop + mobile)
+├── desktop/           # Flutter client (macOS/Windows/Linux)
 │   ├── lib/
+│   │   ├── auth/      # GitHub OAuth, session 관리
 │   │   ├── models/    # Domain models
-│   │   ├── services/  # Business logic
 │   │   ├── screens/   # UI screens
+│   │   ├── search/    # Full-text search
+│   │   ├── services/  # Business logic
+│   │   ├── settings/  # App settings, shortcuts
+│   │   ├── storage/   # GitHub/local storage abstraction
+│   │   ├── theme/     # Theme and design tokens
 │   │   └── widgets/   # Shared widgets
 │   └── test/
-├── backend/           # Go API server
+├── mobile/            # Flutter client (Android/iOS)
+│   ├── lib/
+│   │   ├── auth/      # GitHub OAuth (Custom URL Scheme)
+│   │   ├── models/    # Domain models (desktop과 동일)
+│   │   ├── screens/   # Mobile UI (Bottom Navigation)
+│   │   ├── search/    # Full-text search (desktop과 동일)
+│   │   ├── services/  # Business logic (desktop과 동일)
+│   │   ├── settings/  # App settings (shortcuts 제외)
+│   │   ├── storage/   # GitHub/local storage (desktop과 동일)
+│   │   ├── theme/     # Theme (mobile dimensions)
+│   │   └── widgets/   # Mobile widgets
+│   └── test/
 └── docs/
     ├── guide.md       # 이 문서
     ├── workflow.md    # 작업 워크플로우
     ├── plan/          # 기획 및 설계 문서
-    ├── mvp/           # MVP 단계 노트
     └── develop/       # 개발 일지
 ```
 
@@ -59,17 +76,17 @@ simsync/
 ## Architecture
 
 ```
-[Flutter App (Desktop/Mobile)] ──> [Go Backend API] ──> [PostgreSQL]
-                                         │
-                                         ├──> [WebSocket] (실시간 푸시)
-                                         └──> [AI Provider] (요약 생성)
+[Flutter App] ──> [GitHub OAuth + Contents API]
+      │
+      └──> [Local Filesystem]
 ```
 
-- Client: Flutter 단일 코드베이스 (데스크톱 + 모바일)
-- Backend: Go standard library HTTP server + WebSocket
-- Database: PostgreSQL 18+
-- Sync: 클라이언트 -> REST API로 변경 전송, 서버 -> WebSocket으로 변경 푸시
-- AI: provider-agnostic, 사용자 동의 후에만 호출
+- Client: `desktop/` (데스크톱)과 `mobile/` (모바일) 두 Flutter 프로젝트로 분리. 비즈니스 로직은 동일, UI는 플랫폼별 최적화
+- Auth: GitHub OAuth로 access token 발급 및 로컬 session 저장
+- Synced storage: GitHub Contents API로 `notes/.../*.md` 파일 CRUD
+- Local storage: 사용자가 선택한 로컬 경로에 markdown 파일 저장
+- Sync: branch 최신 commit SHA polling 기반 변경 감지
+- AI/전용 backend: 현재 저장소에는 아직 구현되지 않음
 
 ## Key Design Decisions
 
@@ -77,22 +94,12 @@ simsync/
 - **Date-oriented**: 캘린더는 날짜별 노트 탐색 도구 (스케줄링 도구 아님)
 - **Default daily note**: 날짜당 첫 노트 생성 시 기본 일일 노트 1개 필수 생성, 추가 노트는 선택
 - **Single-user experience, multi-user architecture**: 개인 앱이지만 계정 기반 데이터 격리
-- **Flutter unified client**: 데스크톱과 모바일을 Flutter 단일 코드베이스로 구현
-- **Go backend**: 서버는 Go 표준 라이브러리 중심으로 구현
-- **Last-Write-Wins (MVP)**: 동기화 충돌 시 최신 `updated_at` 기준으로 병합. 향후 CRDT/OT로 확장 가능
+- **Flutter dual project**: 데스크톱(`desktop/`)과 모바일(`mobile/`)을 별도 Flutter 프로젝트로 분리. 비즈니스 로직(models, storage, services, search)은 복제, UI는 플랫폼별 작성
+- **GitHub-backed PoC**: 현재 PoC는 별도 backend 없이 GitHub repo를 synced storage로 사용
+- **Local + synced split**: 로컬 노트와 synced 노트를 같은 UI에서 다루되 저장소는 분리
+- **Last-Write-Wins (current behavior)**: 동기화 충돌 시 최신 remote state 기준으로 다시 로드하고 dirty note는 로컬에서 보호
 
 ## Dependency Policy
-
-### Backend (Go)
-
-Go 표준 라이브러리를 최우선으로 사용한다. 외부 의존성이 불가피한 경우:
-1. 요구사항을 유지한다
-2. caveat을 명시한다
-3. 최소한의 의존성만 추가한다
-
-현재 승인된 외부 의존성:
-- `github.com/jackc/pgx/v5` - PostgreSQL 드라이버
-- `nhooyr.io/websocket` - WebSocket 지원
 
 ### Client (Flutter/Dart)
 
@@ -101,28 +108,27 @@ Flutter 생태계의 안정적이고 널리 사용되는 패키지를 선택한�
 
 ## Build & Run
 
-### Flutter App (Desktop + Mobile)
+### Flutter App
 
 ```bash
-cd app
+# Desktop
+cd desktop
 flutter run -d macos          # macOS desktop
 flutter run -d windows        # Windows desktop
 flutter run -d linux          # Linux desktop
-flutter run                   # connected mobile device
-flutter build apk             # Android release
-flutter build ios             # iOS release
 flutter build macos           # macOS release
 flutter test                  # run tests
 flutter analyze               # static analysis
-```
 
-### Backend
-
-```bash
-cd backend
-go run .               # run server
-go test ./...          # run tests
-go vet ./...           # static analysis
+# Mobile
+cd mobile
+flutter run                   # connected mobile device
+flutter build apk --debug \   # Android debug APK (OAuth 자격증명 필요)
+  --dart-define=SIMSYNC_GITHUB_CLIENT_ID=<id> \
+  --dart-define=SIMSYNC_GITHUB_CLIENT_SECRET=<secret>
+flutter build ios             # iOS release
+flutter test                  # run tests
+flutter analyze               # static analysis
 ```
 
 ## Development Log
@@ -140,7 +146,6 @@ go vet ./...           # static analysis
 ## Additional Docs
 
 - [docs/plan/](plan/) - 기획 및 설계 문서
-- [docs/mvp/](mvp/) - MVP 단계 노트
 - [docs/develop/](develop/) - 개발 일지
 
 특정 토픽의 문서가 여러 개가 되면 디렉토리로 분리한다:
