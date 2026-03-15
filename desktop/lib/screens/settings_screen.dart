@@ -286,6 +286,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: AppDimensions.spacingXl),
           _NavigationItem(
+            selectionKey: 'storage',
             label: 'Storage',
             description: 'Paths and repositories',
             icon: Icons.storage_rounded,
@@ -294,6 +295,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           _NavigationItem(
+            selectionKey: 'editor',
             label: 'Editor & Preview',
             description: 'Zoom and reading comfort',
             icon: Icons.text_fields_rounded,
@@ -302,6 +304,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           _NavigationItem(
+            selectionKey: 'sync',
             label: 'Sync',
             description: 'Polling and cadence',
             icon: Icons.sync_rounded,
@@ -598,6 +601,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _NavigationItem extends StatelessWidget {
   const _NavigationItem({
+    required this.selectionKey,
     required this.label,
     required this.description,
     required this.icon,
@@ -605,6 +609,7 @@ class _NavigationItem extends StatelessWidget {
     required this.onTap,
   });
 
+  final String selectionKey;
   final String label;
   final String description;
   final IconData icon;
@@ -619,23 +624,49 @@ class _NavigationItem extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: AppDimensions.animFast,
-        padding: const EdgeInsets.all(AppDimensions.spacingMd),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingMd,
+          vertical: AppDimensions.spacingMd,
+        ),
         decoration: BoxDecoration(
-          color: isSelected ? c.surface : Colors.transparent,
+          color: isSelected ? c.accentSubtle : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? c.borderSubtle : Colors.transparent,
+            color: isSelected
+                ? c.accent.withValues(alpha: 0.16)
+                : Colors.transparent,
           ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (isSelected)
+              Container(
+                key: ValueKey('settings-nav-selected-$selectionKey'),
+                width: 3,
+                height: 32,
+                margin: const EdgeInsets.only(
+                  right: AppDimensions.spacingMd,
+                  top: 1,
+                ),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              )
+            else
+              const SizedBox(width: 3 + AppDimensions.spacingMd),
             Container(
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: isSelected ? c.accentSubtle : c.surface,
+                color: c.surface,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: isSelected
+                      ? c.accent.withValues(alpha: 0.18)
+                      : c.border,
+                ),
               ),
               child: Icon(
                 icon,
