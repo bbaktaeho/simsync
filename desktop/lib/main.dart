@@ -457,7 +457,9 @@ Future<StorageBundle> _defaultStorageFactory(
     repo: repo,
     token: accessToken,
   );
-  unawaited(gitService.cloneIfNeeded());
+  // First launch: await clone so notes are available when UI loads.
+  // Subsequent launches: isCloned() is true, returns almost immediately.
+  await gitService.cloneIfNeeded();
 
   return StorageBundle(
     storage: GitRepoNoteStorage(gitService: gitService, apiClient: apiClient),

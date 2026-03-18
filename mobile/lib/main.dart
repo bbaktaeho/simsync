@@ -454,7 +454,9 @@ Future<StorageBundle> _defaultStorageFactory(
     mirrorService: mirrorService,
   );
 
-  unawaited(mirrorService.mirrorIfNeeded());
+  // First launch: await mirror so notes are available when UI loads.
+  // Subsequent launches: isMirrored() is true, returns almost immediately.
+  await mirrorService.mirrorIfNeeded();
 
   return StorageBundle(
     storage: MirrorNoteStorage(apiClient: apiClient, mirrorService: mirrorService),
