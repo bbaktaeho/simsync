@@ -18,7 +18,8 @@ import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
-import 'storage/github/github_note_storage.dart';
+import 'storage/github/git_repo_note_storage.dart';
+import 'storage/github/git_service.dart';
 import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
 import 'storage/local/local_note_storage.dart';
@@ -443,7 +444,7 @@ Future<StorageBundle> _defaultStorageFactory(
     repo: repo,
   );
 
-  // Load local note path from SharedPreferences.
+  // Reuse already-loaded SharedPreferences (loaded by AppSettingsController).
   final prefs = await SharedPreferences.getInstance();
   final localPath =
       prefs.getString(AppSettingsController.localNotePathKey) ??
@@ -451,8 +452,15 @@ Future<StorageBundle> _defaultStorageFactory(
   final syncIntervalSeconds =
       prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
+  final gitService = GitService.fromRepo(
+    owner: owner,
+    repo: repo,
+    token: accessToken,
+  );
+  unawaited(gitService.cloneIfNeeded());
+
   return StorageBundle(
-    storage: GitHubNoteStorage(apiClient),
+    storage: GitRepoNoteStorage(gitService: gitService, apiClient: apiClient),
     localStorage: LocalNoteStorage(basePath: localPath),
     noteService: localService,
     syncEngine: GitHubSyncEngine(
@@ -467,6 +475,7 @@ Future<StorageBundle> _defaultStorageFactory(
         ),
       ),
       onRemoteChanged: onRemoteChanged,
+      gitService: gitService,
     ),
   );
 }

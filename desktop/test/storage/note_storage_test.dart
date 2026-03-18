@@ -7,6 +7,11 @@ class FakeNoteStorage implements NoteStorage {
   final Map<String, Note> _notes = {};
 
   @override
+  Future<List<Note>> listMemoNotes() async {
+    return _notes.values.where((n) => n.isMemo).toList();
+  }
+
+  @override
   Future<List<Note>> listAllNotes() async {
     final notes = _notes.values.toList();
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));

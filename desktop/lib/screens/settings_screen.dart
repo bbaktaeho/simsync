@@ -1108,6 +1108,14 @@ class _CurrentRepoCard extends StatelessWidget {
                 color: c.textSecondary,
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Git 경로: ~/.simsync/git/${activeRepo!.owner}/${activeRepo!.repo}/',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 11,
+                color: c.textMuted,
+              ),
+            ),
           ],
         ],
       ),

@@ -21,4 +21,7 @@ abstract class NoteStorage {
 
   /// 노트 삭제.
   Future<void> deleteNote(Note note);
+
+  /// 메모 노트 목록 조회 (isMemo == true).
+  Future<List<Note>> listMemoNotes();
 }

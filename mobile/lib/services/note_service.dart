@@ -135,6 +135,12 @@ class NoteService implements NoteStorage {
   Future<List<Note>> listAllNotes() => loadAllNotes();
 
   @override
+  Future<List<Note>> listMemoNotes() async {
+    final all = await loadAllNotes();
+    return all.where((n) => n.isMemo).toList();
+  }
+
+  @override
   Future<List<Note>> listNotes(DateTime date) => loadNotesByDate(date);
 
   @override
@@ -201,6 +207,7 @@ class NoteService implements NoteStorage {
         title: (fm['title'] ?? '').toString(),
         content: content,
         isDefault: fm['is_default'] == true,
+        isMemo: fm['is_memo'] == true,
         tags: tags,
         createdAt: _parseDateTime(fm['created_at']),
         updatedAt: _parseDateTime(fm['updated_at']),
@@ -229,6 +236,7 @@ class NoteService implements NoteStorage {
 title: "${_escapeYaml(note.title)}"
 note_date: ${_dirDateFmt.format(note.noteDate)}
 is_default: ${note.isDefault}
+is_memo: ${note.isMemo}
 tags: $tagsLine
 created_at: ${_isoFmt.format(note.createdAt)}
 updated_at: ${_isoFmt.format(note.updatedAt)}

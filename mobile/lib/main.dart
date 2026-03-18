@@ -20,7 +20,8 @@ import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
-import 'storage/github/github_note_storage.dart';
+import 'storage/github/git_mirror_service.dart';
+import 'storage/github/mirror_note_storage.dart';
 import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
 import 'storage/local/local_note_storage.dart';
@@ -33,12 +34,14 @@ class StorageBundle {
   final NoteStorage? localStorage; // Local file system
   final NoteService noteService;
   final GitHubSyncEngine? syncEngine;
+  final GitMirrorService? mirrorService;
 
   const StorageBundle({
     required this.storage,
     required this.noteService,
     this.localStorage,
     this.syncEngine,
+    this.mirrorService,
   });
 }
 
@@ -397,6 +400,7 @@ class _AppShellState extends State<_AppShell> {
         settingsController: _settingsController,
         syncEngine: _bundle!.syncEngine,
         onSyncEnabledChanged: _handleSyncEnabledChanged,
+        mirrorPath: _bundle!.mirrorService?.mirrorPath,
       );
     }
     return LoginScreen(onGitHubLogin: _handleLogin);
@@ -426,23 +430,38 @@ Future<StorageBundle> _defaultStorageFactory(
   final syncIntervalSeconds =
       prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
+  final mirrorService = GitMirrorService(
+    apiClient: apiClient,
+    token: accessToken,
+    owner: owner,
+    repo: repo,
+    branch: branch,
+  );
+  await mirrorService.resolvePath();
+
+  final syncEngine = GitHubSyncEngine(
+    token: accessToken,
+    owner: owner,
+    repo: repo,
+    branch: branch,
+    interval: Duration(
+      seconds: syncIntervalSeconds.clamp(
+        AppSettings.minSyncIntervalSeconds,
+        AppSettings.maxSyncIntervalSeconds,
+      ),
+    ),
+    onRemoteChanged: onRemoteChanged,
+    mirrorService: mirrorService,
+  );
+
+  unawaited(mirrorService.mirrorIfNeeded());
+
   return StorageBundle(
-    storage: GitHubNoteStorage(apiClient),
+    storage: MirrorNoteStorage(apiClient: apiClient, mirrorService: mirrorService),
     localStorage: LocalNoteStorage(basePath: localPath),
     noteService: localService,
-    syncEngine: GitHubSyncEngine(
-      token: accessToken,
-      owner: owner,
-      repo: repo,
-      branch: branch,
-      interval: Duration(
-        seconds: syncIntervalSeconds.clamp(
-          AppSettings.minSyncIntervalSeconds,
-          AppSettings.maxSyncIntervalSeconds,
-        ),
-      ),
-      onRemoteChanged: onRemoteChanged,
-    ),
+    syncEngine: syncEngine,
+    mirrorService: mirrorService,
   );
 }
 

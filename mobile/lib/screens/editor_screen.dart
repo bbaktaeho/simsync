@@ -203,6 +203,23 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  Future<void> _toggleMemo() async {
+    setState(() {
+      _note.isMemo = !_note.isMemo;
+      _note.updatedAt = DateTime.now();
+      _isDirty = true;
+    });
+    await _saveImmediately();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_note.isMemo ? '메모로 이동했습니다' : 'daily로 이동했습니다'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+  }
+
   // ── Markdown toolbar actions ──
 
   void _insertMarkdown(String before, [String after = '']) {
@@ -334,9 +351,33 @@ class _EditorScreenState extends State<EditorScreen>
           onSelected: (value) {
             if (value == 'delete') {
               _deleteNote();
+            } else if (value == 'toggle_memo') {
+              _toggleMemo();
             }
           },
           itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'toggle_memo',
+              child: Row(
+                children: [
+                  Icon(
+                    _note.isMemo
+                        ? Icons.calendar_today_outlined
+                        : Icons.note_outlined,
+                    size: 18,
+                    color: c.textPrimary,
+                  ),
+                  const SizedBox(width: AppDimensions.spacingSm),
+                  Text(
+                    _note.isMemo ? 'daily로 이동' : '메모로 이동',
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             PopupMenuItem(
               value: 'delete',
               child: Row(

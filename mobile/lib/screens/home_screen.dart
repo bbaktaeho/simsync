@@ -21,6 +21,7 @@ class HomeScreen extends StatefulWidget {
   final AppSettingsController settingsController;
   final GitHubSyncEngine? syncEngine;
   final void Function(bool enabled) onSyncEnabledChanged;
+  final String? mirrorPath;
 
   const HomeScreen({
     super.key,
@@ -34,6 +35,7 @@ class HomeScreen extends StatefulWidget {
     required this.settingsController,
     this.syncEngine,
     required this.onSyncEnabledChanged,
+    this.mirrorPath,
   });
 
   @override
@@ -73,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
             settingsController: widget.settingsController,
             syncEngine: widget.syncEngine,
             onSyncEnabledChanged: widget.onSyncEnabledChanged,
+            mirrorPath: widget.mirrorPath,
           ),
         ],
       ),

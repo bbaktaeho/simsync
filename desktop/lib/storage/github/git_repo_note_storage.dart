@@ -1,18 +1,27 @@
+import 'dart:async';
 import 'dart:io';
 
 import '../../models/note.dart';
 import '../note_storage.dart';
-import '../github/github_note_storage.dart'; // reuse parseNote, serializeNote
+import 'git_service.dart';
+import 'github_api_client.dart';
+import 'github_note_storage.dart';
 
-/// NoteStorage implementation backed by the local file system.
-/// Notes stored as markdown with YAML frontmatter at:
-///   {basePath}/notes/{YYYY-MM}/{DD}/{title}.md
-class LocalNoteStorage implements NoteStorage {
-  final String basePath;
+class GitRepoNoteStorage implements NoteStorage {
+  final GitService gitService;
+  final GitHubApiClient apiClient;
+
   final Map<String, Note> _noteCache = {};
   final Map<String, String> _idToPath = {};
 
-  LocalNoteStorage({required this.basePath});
+  GitRepoNoteStorage({required this.gitService, required this.apiClient});
+
+  void clearCache() {
+    _noteCache.clear();
+    _idToPath.clear();
+  }
+
+  String get _notesDir => '${gitService.localPath}/notes';
 
   String _sanitizeTitle(String title) {
     return title.replaceAll(RegExp(r'[/\\:*?"<>|]'), '');
@@ -24,17 +33,26 @@ class LocalNoteStorage implements NoteStorage {
     final day = note.noteDate.day.toString().padLeft(2, '0');
     final sanitized = _sanitizeTitle(note.title);
     final filename = sanitized.isEmpty ? note.id : sanitized;
-    return '$basePath/notes/$yearMonth/$day/$filename.md';
+    return '${gitService.localPath}/notes/$yearMonth/$day/$filename.md';
+  }
+
+  String _buildRelativePath(Note note) {
+    final yearMonth =
+        '${note.noteDate.year}-${note.noteDate.month.toString().padLeft(2, '0')}';
+    final day = note.noteDate.day.toString().padLeft(2, '0');
+    final sanitized = _sanitizeTitle(note.title);
+    final filename = sanitized.isEmpty ? note.id : sanitized;
+    return 'notes/$yearMonth/$day/$filename.md';
   }
 
   String _dayDirPath(DateTime date) {
     final yearMonth = '${date.year}-${date.month.toString().padLeft(2, '0')}';
     final day = date.day.toString().padLeft(2, '0');
-    return '$basePath/notes/$yearMonth/$day';
+    return '$_notesDir/$yearMonth/$day';
   }
 
   String _monthDirPath(String yearMonth) {
-    return '$basePath/notes/$yearMonth';
+    return '$_notesDir/$yearMonth';
   }
 
   @override
@@ -45,14 +63,16 @@ class LocalNoteStorage implements NoteStorage {
 
   @override
   Future<List<Note>> listAllNotes() async {
-    final rootDir = Directory('$basePath/notes');
+    final rootDir = Directory(_notesDir);
     if (!await rootDir.exists()) return [];
 
     final notes = <Note>[];
+    final yearMonthPattern = RegExp(r'^\d{4}-\d{2}$');
     await for (final entity in rootDir.list()) {
       if (entity is! Directory) continue;
 
       final yearMonth = entity.path.split(Platform.pathSeparator).last;
+      if (!yearMonthPattern.hasMatch(yearMonth)) continue;
       final dates = await listDates(yearMonth);
       for (final date in dates) {
         notes.addAll(await listNotes(date));
@@ -81,21 +101,9 @@ class LocalNoteStorage implements NoteStorage {
       final content = await entity.readAsString();
       final note = GitHubNoteStorage.parseNote(content);
       if (note != null) {
-        final localNote = Note(
-          id: note.id,
-          noteDate: note.noteDate,
-          title: note.title,
-          content: note.content,
-          isDefault: note.isDefault,
-          isMemo: note.isMemo,
-          tags: note.tags,
-          createdAt: note.createdAt,
-          updatedAt: note.updatedAt,
-          storageType: StorageType.local,
-        );
-        notes.add(localNote);
-        _noteCache[entity.path] = localNote;
-        _idToPath[localNote.id] = entity.path;
+        notes.add(note);
+        _noteCache[entity.path] = note;
+        _idToPath[note.id] = entity.path;
       }
     }
     return notes;
@@ -138,6 +146,11 @@ class LocalNoteStorage implements NoteStorage {
 
   @override
   Future<void> saveNote(Note note) async {
+    if (!gitService.isCloned()) {
+      await _saveNoteViaApi(note);
+      return;
+    }
+
     final path = _buildPath(note);
     final oldPath = _idToPath[note.id];
     if (oldPath != null && oldPath != path) {
@@ -152,14 +165,71 @@ class LocalNoteStorage implements NoteStorage {
     await file.writeAsString(GitHubNoteStorage.serializeNote(note));
     _noteCache[path] = note;
     _idToPath[note.id] = path;
+
+    await gitService.addAll();
+    await gitService.commit('Save note: ${note.title}');
+    unawaited(gitService.push());
   }
 
   @override
   Future<void> deleteNote(Note note) async {
+    if (!gitService.isCloned()) {
+      await _deleteNoteViaApi(note);
+      return;
+    }
+
     final path = _buildPath(note);
     final file = File(path);
     if (await file.exists()) await file.delete();
     _noteCache.remove(path);
     _idToPath.remove(note.id);
+
+    await gitService.addAll();
+    await gitService.commit('Delete note: ${note.title}');
+    unawaited(gitService.push());
+  }
+
+  Future<void> _saveNoteViaApi(Note note) async {
+    final relativePath = _buildRelativePath(note);
+    final markdown = GitHubNoteStorage.serializeNote(note);
+
+    String? existingSha;
+    try {
+      final existing = await apiClient.getFile(relativePath);
+      existingSha = existing.sha;
+    } on GitHubNotFoundException {
+      // New file
+    }
+
+    try {
+      await apiClient.putFile(
+        path: relativePath,
+        content: markdown,
+        message: 'Save note: ${note.title}',
+        sha: existingSha,
+      );
+    } on GitHubConflictException {
+      final latest = await apiClient.getFile(relativePath);
+      await apiClient.putFile(
+        path: relativePath,
+        content: markdown,
+        message: 'Save note: ${note.title}',
+        sha: latest.sha,
+      );
+    }
+  }
+
+  Future<void> _deleteNoteViaApi(Note note) async {
+    final relativePath = _buildRelativePath(note);
+    try {
+      final file = await apiClient.getFile(relativePath);
+      await apiClient.deleteFile(
+        path: relativePath,
+        sha: file.sha,
+        message: 'Delete note: ${note.title}',
+      );
+    } on GitHubNotFoundException {
+      // Already gone
+    }
   }
 }

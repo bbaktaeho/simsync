@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../sync_engine.dart';
+import 'git_service.dart';
 
 /// Polling-based sync engine that detects remote changes by comparing commit SHAs.
 class GitHubSyncEngine implements SyncEngine {
@@ -16,6 +17,7 @@ class GitHubSyncEngine implements SyncEngine {
   Duration _interval;
   final http.Client _httpClient;
   final Future<void> Function()? _onRemoteChanged;
+  final GitService? _gitService;
 
   Timer? _timer;
   String? _lastCommitSha;
@@ -32,13 +34,15 @@ class GitHubSyncEngine implements SyncEngine {
     Duration interval = const Duration(seconds: 5),
     http.Client? httpClient,
     Future<void> Function()? onRemoteChanged,
+    GitService? gitService,
   }) : _token = token,
        _owner = owner,
        _repo = repo,
        _branch = branch,
        _interval = interval,
        _httpClient = httpClient ?? http.Client(),
-       _onRemoteChanged = onRemoteChanged;
+       _onRemoteChanged = onRemoteChanged,
+       _gitService = gitService;
 
   Duration get _currentInterval {
     if (_consecutiveErrors == 0) return _interval;
@@ -77,6 +81,7 @@ class GitHubSyncEngine implements SyncEngine {
       final sha = await _fetchLatestCommitSha();
       if (sha != null && sha != _lastCommitSha) {
         _lastCommitSha = sha;
+        await _gitService?.pull();
         await _onRemoteChanged?.call();
       }
       _statusController.add(SyncStatus.idle);

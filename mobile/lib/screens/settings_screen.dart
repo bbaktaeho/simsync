@@ -15,6 +15,7 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback? onLogout;
   final SyncEngine? syncEngine;
   final ValueChanged<bool>? onSyncEnabledChanged;
+  final String? mirrorPath;
 
   const SettingsScreen({
     super.key,
@@ -24,6 +25,7 @@ class SettingsScreen extends StatelessWidget {
     this.onLogout,
     this.syncEngine,
     this.onSyncEnabledChanged,
+    this.mirrorPath,
   });
 
   @override
@@ -77,6 +79,15 @@ class SettingsScreen extends StatelessWidget {
                         ? '${activeRepo!.owner}/${activeRepo!.repo}'
                         : '연결되지 않음',
                   ),
+                  if (mirrorPath != null && mirrorPath!.isNotEmpty) ...[
+                    _buildDivider(c),
+                    _buildInfoTile(
+                      c,
+                      icon: Icons.content_copy_outlined,
+                      title: '미러 경로',
+                      subtitle: mirrorPath!,
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: AppDimensions.spacingLg),

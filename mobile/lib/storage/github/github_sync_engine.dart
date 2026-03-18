@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../sync_engine.dart';
+import 'git_mirror_service.dart';
 
 /// Polling-based sync engine that detects remote changes by comparing commit SHAs.
 class GitHubSyncEngine implements SyncEngine {
@@ -16,6 +17,7 @@ class GitHubSyncEngine implements SyncEngine {
   Duration _interval;
   final http.Client _httpClient;
   final Future<void> Function()? _onRemoteChanged;
+  GitMirrorService? mirrorService;
 
   Timer? _timer;
   String? _lastCommitSha;
@@ -32,6 +34,7 @@ class GitHubSyncEngine implements SyncEngine {
     Duration interval = const Duration(seconds: 5),
     http.Client? httpClient,
     Future<void> Function()? onRemoteChanged,
+    this.mirrorService,
   }) : _token = token,
        _owner = owner,
        _repo = repo,
@@ -77,6 +80,7 @@ class GitHubSyncEngine implements SyncEngine {
       final sha = await _fetchLatestCommitSha();
       if (sha != null && sha != _lastCommitSha) {
         _lastCommitSha = sha;
+        await mirrorService?.pull();
         await _onRemoteChanged?.call();
       }
       _statusController.add(SyncStatus.idle);

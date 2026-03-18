@@ -23,6 +23,10 @@ class _FakeNoteStorage implements NoteStorage {
   }
 
   @override
+  Future<List<Note>> listMemoNotes() async =>
+      notes.where((n) => n.isMemo).toList();
+
+  @override
   Future<List<Note>> listAllNotes() async => List<Note>.from(notes);
 
   @override

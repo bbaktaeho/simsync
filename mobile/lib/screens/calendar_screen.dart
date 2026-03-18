@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/note.dart';
 import '../services/note_service.dart';
 import '../settings/app_settings_controller.dart';
+import '../storage/github/mirror_note_storage.dart';
 import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
 import '../storage/sync_engine.dart';
@@ -40,7 +41,8 @@ class CalendarScreen extends StatefulWidget {
   State<CalendarScreen> createState() => _CalendarScreenState();
 }
 
-class _CalendarScreenState extends State<CalendarScreen> {
+class _CalendarScreenState extends State<CalendarScreen>
+    with SingleTickerProviderStateMixin {
   DateTime _displayedMonth = DateTime.now();
   DateTime _selectedDate = DateTime(
     DateTime.now().year,
@@ -49,10 +51,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   );
   bool _calendarExpanded = true;
   List<Note> _notes = [];
+  List<Note> _memoNotes = [];
   Set<DateTime> _datesWithNotes = {};
   bool _isLoading = true;
   StreamSubscription<SyncStatus>? _syncSub;
   SyncStatus _syncStatus = SyncStatus.idle;
+  late TabController _viewTabController;
+  int _activeTabIndex = 0;
 
   static final DateFormat _monthFmt = DateFormat('yyyy년 M월');
   static final DateFormat _dayHeaderFmt = DateFormat('M월 d일 EEEE', 'ko');
@@ -70,6 +75,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
   @override
   void initState() {
     super.initState();
+    _viewTabController = TabController(length: 2, vsync: this);
+    _viewTabController.addListener(() {
+      if (_viewTabController.indexIsChanging) return;
+      setState(() => _activeTabIndex = _viewTabController.index);
+      if (_viewTabController.index == 1) {
+        _loadMemoNotes();
+      }
+    });
     _loadNotes();
     _loadDatesWithNotes();
     widget.refreshSignal.addListener(_onRefresh);
@@ -104,12 +117,17 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void dispose() {
     widget.refreshSignal.removeListener(_onRefresh);
     _syncSub?.cancel();
+    _viewTabController.dispose();
     super.dispose();
   }
 
   void _onRefresh() {
+    if (widget.storage is MirrorNoteStorage) {
+      (widget.storage as MirrorNoteStorage).clearCache();
+    }
     _loadNotes();
     _loadDatesWithNotes();
+    if (_activeTabIndex == 1) _loadMemoNotes();
   }
 
   Future<void> _loadNotes() async {
@@ -123,6 +141,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
         notes.addAll(localDayNotes);
       }
+      notes.removeWhere((n) => n.isMemo);
       notes.sort((a, b) {
         if (a.isDefault && !b.isDefault) return -1;
         if (!a.isDefault && b.isDefault) return 1;
@@ -162,6 +181,143 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _loadMemoNotes() async {
+    try {
+      final memos = <Note>[];
+      final syncedMemos = await widget.storage.listMemoNotes();
+      memos.addAll(syncedMemos);
+      if (widget.localStorage != null) {
+        final localMemos = await widget.localStorage!.listMemoNotes();
+        memos.addAll(localMemos);
+      }
+      memos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (!mounted) return;
+      setState(() => _memoNotes = memos);
+    } catch (e) {
+      debugPrint('_loadMemoNotes error: $e');
+    }
+  }
+
+  Future<void> _moveToMemo(Note note) async {
+    note.isMemo = true;
+    note.updatedAt = DateTime.now();
+    final storage = _storageFor(note);
+    try {
+      await storage.saveNote(note);
+      if (!mounted) return;
+      _loadNotes();
+      _loadMemoNotes();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이동 실패: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _moveToDailyNote(Note note) async {
+    note.isMemo = false;
+    note.updatedAt = DateTime.now();
+    final storage = _storageFor(note);
+    try {
+      await storage.saveNote(note);
+      if (!mounted) return;
+      _loadNotes();
+      _loadMemoNotes();
+      _loadDatesWithNotes();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이동 실패: $e')),
+        );
+      }
+    }
+  }
+
+  void _showNoteContextMenu(Note note) {
+    final c = context.colors;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.borderRadiusLg),
+        ),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: AppDimensions.spacingSm),
+              Container(
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: c.textMuted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: AppDimensions.spacingMd),
+              if (!note.isMemo)
+                ListTile(
+                  leading: Icon(Icons.note_outlined, color: c.textPrimary),
+                  title: Text(
+                    '메모로 이동',
+                    style: GoogleFonts.manrope(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _moveToMemo(note);
+                  },
+                ),
+              if (note.isMemo)
+                ListTile(
+                  leading: Icon(
+                    Icons.calendar_today_outlined,
+                    color: c.textPrimary,
+                  ),
+                  title: Text(
+                    'daily로 이동',
+                    style: GoogleFonts.manrope(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: c.textPrimary,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _moveToDailyNote(note);
+                  },
+                ),
+              ListTile(
+                leading: Icon(Icons.delete_outline_rounded, color: c.error),
+                title: Text(
+                  '삭제',
+                  style: GoogleFonts.manrope(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: c.error,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _deleteNote(note);
+                },
+              ),
+              const SizedBox(height: AppDimensions.spacingSm),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _createNote() async {
     final now = DateTime.now();
     final existingNotes = _notes;
@@ -196,6 +352,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       if (!mounted) return;
       setState(() {
         _notes.removeWhere((n) => n.id == note.id);
+        _memoNotes.removeWhere((n) => n.id == note.id);
       });
       _loadDatesWithNotes();
     } catch (e) {
@@ -332,10 +489,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ? Center(child: CircularProgressIndicator(color: c.accent))
           : Column(
               children: [
-                _buildCalendarSection(c),
-                Divider(height: 1, color: c.border),
-                _buildDateHeader(c),
-                Expanded(child: _buildNoteList(c)),
+                if (_activeTabIndex == 0) _buildCalendarSection(c),
+                if (_activeTabIndex == 0) Divider(height: 1, color: c.border),
+                _buildViewTabBar(c),
+                if (_activeTabIndex == 0) _buildDateHeader(c),
+                Expanded(
+                  child: _activeTabIndex == 0
+                      ? _buildNoteList(c)
+                      : _buildMemoList(c),
+                ),
               ],
             ),
     );
@@ -432,6 +594,61 @@ class _CalendarScreenState extends State<CalendarScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm),
       child: Icon(icon, size: 18, color: color),
+    );
+  }
+
+  Widget _buildViewTabBar(AppColorsExtension c) {
+    return Container(
+      color: c.surface,
+      child: TabBar(
+        controller: _viewTabController,
+        labelColor: c.accent,
+        unselectedLabelColor: c.textMuted,
+        indicatorColor: c.accent,
+        indicatorWeight: 2,
+        labelStyle: GoogleFonts.manrope(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: GoogleFonts.manrope(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+        tabs: const [
+          Tab(text: 'daily'),
+          Tab(text: 'memo'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMemoList(AppColorsExtension c) {
+    if (_memoNotes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.note_alt_outlined, size: 48, color: c.textMuted),
+            const SizedBox(height: AppDimensions.spacingMd),
+            Text(
+              '메모가 없습니다',
+              style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingLg,
+        vertical: AppDimensions.spacingSm,
+      ),
+      itemCount: _memoNotes.length,
+      itemBuilder: (context, index) {
+        final note = _memoNotes[index];
+        return _buildNoteCard(c, note);
+      },
     );
   }
 
@@ -797,6 +1014,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: GestureDetector(
         onTap: () => _openEditor(note),
+        onLongPress: () => _showNoteContextMenu(note),
         child: Container(
           margin: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
           padding: const EdgeInsets.all(AppDimensions.spacingMd),

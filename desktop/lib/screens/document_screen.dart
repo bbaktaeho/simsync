@@ -12,6 +12,7 @@ import '../search/search_result.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
 import '../services/note_service.dart';
+import '../storage/github/git_repo_note_storage.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
@@ -99,6 +100,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
   int _loadGeneration = 0;
+  bool _memoTabActive = false;
+  List<Note> _memoNotes = [];
 
   void _handleSettingsChanged() {
     if (!mounted) return;
@@ -159,6 +162,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (_isSyncing) return;
     _isSyncing = true;
     try {
+      if (_storage is GitRepoNoteStorage) {
+        (_storage as GitRepoNoteStorage).clearCache();
+      }
       await _loadNotes();
     } finally {
       _isSyncing = false;
@@ -277,6 +283,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   Set<DateTime> get _datesWithNotes {
     return _allNotes
+        .where((n) => !n.isMemo)
         .map((n) => DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day))
         .toSet();
   }
@@ -284,7 +291,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   List<Note> get _notesForSelectedDate {
     if (_selectedDate == null) return [];
     return _allNotes.where((n) {
-      return n.noteDate.year == _selectedDate!.year &&
+      return !n.isMemo &&
+          n.noteDate.year == _selectedDate!.year &&
           n.noteDate.month == _selectedDate!.month &&
           n.noteDate.day == _selectedDate!.day;
     }).toList()..sort((a, b) {
@@ -296,6 +304,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   List<Note> get _visibleNotes {
     if (_isSearchActive) return _searchResults.map((r) => r.note).toList();
+    if (_memoTabActive) return _memoNotes;
     return _notesForSelectedDate;
   }
 
@@ -369,6 +378,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
+      if (_memoTabActive) {
+        _memoTabActive = false;
+        _currentPage = 0;
+      }
       if (!_weeklyViewActive && !_isSearchActive) {
         _currentPage = 0;
         final notes = _notesForSelectedDate;
@@ -579,6 +592,61 @@ class _DocumentScreenState extends State<DocumentScreen> {
         ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
       }
     }
+  }
+
+  Future<void> _loadMemoNotes() async {
+    final memos = <Note>[];
+    memos.addAll(await _storage.listMemoNotes());
+    if (widget.localStorage != null) {
+      memos.addAll(await widget.localStorage!.listMemoNotes());
+    }
+    memos.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (!mounted) return;
+    setState(() {
+      _memoNotes = memos;
+    });
+  }
+
+  void _onMemoTabChanged(bool isMemo) {
+    setState(() {
+      _memoTabActive = isMemo;
+      _currentPage = 0;
+    });
+    if (isMemo) {
+      unawaited(_loadMemoNotes());
+    }
+  }
+
+  Future<void> _moveToMemo(Note note) async {
+    final updated = note.copyWith(isMemo: true, updatedAt: DateTime.now());
+    await _storageFor(note).saveNote(updated);
+    setState(() {
+      final idx = _allNotes.indexWhere((n) => n.id == note.id);
+      if (idx != -1) {
+        _allNotes[idx] = updated;
+      }
+      if (_selectedNote?.id == note.id) {
+        _selectedNote = null;
+      }
+    });
+    if (_memoTabActive) {
+      unawaited(_loadMemoNotes());
+    }
+  }
+
+  Future<void> _moveToDailyNote(Note note) async {
+    final updated = note.copyWith(isMemo: false, updatedAt: DateTime.now());
+    await _storageFor(note).saveNote(updated);
+    setState(() {
+      final idx = _allNotes.indexWhere((n) => n.id == note.id);
+      if (idx != -1) {
+        _allNotes[idx] = updated;
+      }
+      _memoNotes.removeWhere((n) => n.id == note.id);
+      if (_selectedNote?.id == note.id) {
+        _selectedNote = updated;
+      }
+    });
   }
 
   void _toggleWeeklyView() {
@@ -1124,6 +1192,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
               onDeleteNote: _deleteNote,
+              memoTabActive: _memoTabActive,
+              onMemoTabChanged: _onMemoTabChanged,
+              onMoveToMemo: _moveToMemo,
+              onMoveToDailyNote: _moveToDailyNote,
             ),
           ),
         ],

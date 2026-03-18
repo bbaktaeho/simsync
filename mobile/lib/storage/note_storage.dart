@@ -6,6 +6,9 @@ abstract class NoteStorage {
   /// 저장소의 전체 노트 목록 조회.
   Future<List<Note>> listAllNotes();
 
+  /// 메모 노트 목록 조회 (isMemo == true).
+  Future<List<Note>> listMemoNotes();
+
   /// 특정 날짜의 노트 목록 조회.
   Future<List<Note>> listNotes(DateTime date);
 

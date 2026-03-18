@@ -38,6 +38,12 @@ class LocalNoteStorage implements NoteStorage {
   }
 
   @override
+  Future<List<Note>> listMemoNotes() async {
+    final all = await listAllNotes();
+    return all.where((n) => n.isMemo).toList();
+  }
+
+  @override
   Future<List<Note>> listAllNotes() async {
     final rootDir = Directory('$basePath/notes');
     if (!await rootDir.exists()) return [];
@@ -81,6 +87,7 @@ class LocalNoteStorage implements NoteStorage {
           title: note.title,
           content: note.content,
           isDefault: note.isDefault,
+          isMemo: note.isMemo,
           tags: note.tags,
           createdAt: note.createdAt,
           updatedAt: note.updatedAt,

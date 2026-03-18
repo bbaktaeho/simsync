@@ -8,6 +8,7 @@ class Note {
   String title;
   String content;
   final bool isDefault;
+  bool isMemo;
   List<String> tags;
   final DateTime createdAt;
   DateTime updatedAt;
@@ -25,6 +26,7 @@ class Note {
     required this.title,
     required this.content,
     required this.isDefault,
+    this.isMemo = false,
     required this.tags,
     required this.createdAt,
     required this.updatedAt,
@@ -35,6 +37,7 @@ class Note {
   Note copyWith({
     String? title,
     String? content,
+    bool? isMemo,
     List<String>? tags,
     DateTime? updatedAt,
     bool? isDirty,
@@ -45,6 +48,7 @@ class Note {
       title: title ?? this.title,
       content: content ?? this.content,
       isDefault: isDefault,
+      isMemo: isMemo ?? this.isMemo,
       tags: tags ?? List.from(this.tags),
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

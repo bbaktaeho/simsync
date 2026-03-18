@@ -17,6 +17,10 @@ class NoteListSection extends StatelessWidget {
   final VoidCallback? onCreateLocalNote;
   final ValueChanged<int> onPageChanged;
   final Future<void> Function(Note note)? onDeleteNote;
+  final bool memoTabActive;
+  final ValueChanged<bool> onMemoTabChanged;
+  final Future<void> Function(Note note)? onMoveToMemo;
+  final Future<void> Function(Note note)? onMoveToDailyNote;
 
   const NoteListSection({
     super.key,
@@ -30,6 +34,10 @@ class NoteListSection extends StatelessWidget {
     this.onCreateLocalNote,
     required this.onPageChanged,
     this.onDeleteNote,
+    this.memoTabActive = false,
+    required this.onMemoTabChanged,
+    this.onMoveToMemo,
+    this.onMoveToDailyNote,
   });
 
   @override
@@ -38,6 +46,7 @@ class NoteListSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildHeader(context),
+        _buildTabBar(context),
         Divider(height: 1, color: context.colors.border),
         Expanded(
           child: notes.isEmpty ? _buildEmptyState(context) : _buildList(),
@@ -92,6 +101,29 @@ class NoteListSection extends StatelessWidget {
     );
   }
 
+  Widget _buildTabBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingMd,
+      ),
+      child: Row(
+        children: [
+          _TabItem(
+            label: 'daily',
+            isActive: !memoTabActive,
+            onTap: () => onMemoTabChanged(false),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _TabItem(
+            label: 'memo',
+            isActive: memoTabActive,
+            onTap: () => onMemoTabChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState(BuildContext context) {
     final c = context.colors;
 
@@ -127,6 +159,8 @@ class NoteListSection extends StatelessWidget {
           isSelected: isSelected,
           onTap: () => onNoteSelected(note),
           onDelete: onDeleteNote != null ? () => onDeleteNote!(note) : null,
+          onMoveToMemo: onMoveToMemo != null ? () => onMoveToMemo!(note) : null,
+          onMoveToDailyNote: onMoveToDailyNote != null ? () => onMoveToDailyNote!(note) : null,
         );
       },
     );
@@ -167,12 +201,16 @@ class _NoteListItem extends StatefulWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onMoveToMemo;
+  final VoidCallback? onMoveToDailyNote;
 
   const _NoteListItem({
     required this.note,
     required this.isSelected,
     required this.onTap,
     this.onDelete,
+    this.onMoveToMemo,
+    this.onMoveToDailyNote,
   });
 
   @override
@@ -278,6 +316,54 @@ class _NoteListItemState extends State<_NoteListItem> {
 
   void _showContextMenu(BuildContext context, Offset position) {
     final c = context.colors;
+    final items = <PopupMenuEntry<String>>[];
+
+    if (!widget.note.isMemo && widget.onMoveToMemo != null) {
+      items.add(PopupMenuItem(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        value: 'move_to_memo',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.note_alt_outlined, size: 14, color: c.textSecondary),
+            const SizedBox(width: 6),
+            Text('메모로 이동', style: TextStyle(color: c.textPrimary, fontSize: 12)),
+          ],
+        ),
+      ));
+    }
+
+    if (widget.note.isMemo && widget.onMoveToDailyNote != null) {
+      items.add(PopupMenuItem(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        value: 'move_to_daily',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today_outlined, size: 14, color: c.textSecondary),
+            const SizedBox(width: 6),
+            Text('daily로 이동', style: TextStyle(color: c.textPrimary, fontSize: 12)),
+          ],
+        ),
+      ));
+    }
+
+    items.add(PopupMenuItem(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      value: 'delete',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
+          const SizedBox(width: 6),
+          Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
+        ],
+      ),
+    ));
+
     showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
@@ -288,24 +374,12 @@ class _NoteListItemState extends State<_NoteListItem> {
       ),
       color: c.surface,
       menuPadding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 100),
-      items: [
-        PopupMenuItem(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          value: 'delete',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
-              const SizedBox(width: 6),
-              Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
-            ],
-          ),
-        ),
-      ],
+      constraints: const BoxConstraints(minWidth: 120),
+      items: items,
     ).then((value) {
       if (value == 'delete') widget.onDelete?.call();
+      if (value == 'move_to_memo') widget.onMoveToMemo?.call();
+      if (value == 'move_to_daily') widget.onMoveToDailyNote?.call();
     });
   }
 
@@ -465,6 +539,60 @@ class _PaginationButton extends StatelessWidget {
           icon,
           size: 16,
           color: enabled ? c.textSecondary : c.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _TabItem({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  State<_TabItem> createState() => _TabItemState();
+}
+
+class _TabItemState extends State<_TabItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingSm,
+            vertical: AppDimensions.spacingXs,
+          ),
+          decoration: BoxDecoration(
+            color: widget.isActive
+                ? c.accentSubtle
+                : _isHovered
+                    ? c.surfaceHover
+                    : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          ),
+          child: Text(
+            widget.label,
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: widget.isActive ? c.accent : c.textMuted,
+            ),
+          ),
         ),
       ),
     );

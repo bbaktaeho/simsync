@@ -277,6 +277,11 @@ class InMemoryNoteStorage implements NoteStorage {
   }
 
   @override
+  Future<List<Note>> listMemoNotes() async {
+    return _notes.where((n) => n.isMemo).toList();
+  }
+
+  @override
   Future<List<DateTime>> listDates(String yearMonth) async {
     final parts = yearMonth.split('-');
     final year = int.parse(parts[0]);

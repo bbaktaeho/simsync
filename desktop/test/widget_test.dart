@@ -630,6 +630,9 @@ class _FakeNoteStorage implements NoteStorage {
   Future<Note?> getNote(String noteId, DateTime noteDate) async => null;
 
   @override
+  Future<List<Note>> listMemoNotes() async => const [];
+
+  @override
   Future<List<Note>> listAllNotes() async => const [];
 
   @override
@@ -666,6 +669,12 @@ class _MemoryNoteStorage implements NoteStorage {
   @override
   Future<Note?> getNote(String noteId, DateTime noteDate) async {
     return _notes.where((note) => note.id == noteId).firstOrNull;
+  }
+
+  @override
+  Future<List<Note>> listMemoNotes() async {
+    await _waitForListDelay();
+    return _notes.where((n) => n.isMemo).toList();
   }
 
   @override
