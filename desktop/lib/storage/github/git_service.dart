@@ -5,17 +5,23 @@ class GitService {
   final String repoUrl;
   final String localPath;
   final String token;
+  final String? userName;
+  final String? userEmail;
 
   GitService({
     required this.repoUrl,
     required this.localPath,
     required this.token,
+    this.userName,
+    this.userEmail,
   });
 
   factory GitService.fromRepo({
     required String owner,
     required String repo,
     required String token,
+    String? userName,
+    String? userEmail,
   }) {
     final home =
         Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
@@ -23,6 +29,8 @@ class GitService {
       repoUrl: 'https://github.com/$owner/$repo.git',
       localPath: '$home/.simsync/git/$owner/$repo',
       token: token,
+      userName: userName,
+      userEmail: userEmail,
     );
   }
 
@@ -193,6 +201,16 @@ class GitService {
       await Process.run('git', [
         '-C', localPath, 'remote', 'set-url', 'origin', repoUrl,
       ]);
+      if (userName != null && userName!.isNotEmpty) {
+        await Process.run('git', [
+          '-C', localPath, 'config', 'user.name', userName!,
+        ]);
+      }
+      if (userEmail != null && userEmail!.isNotEmpty) {
+        await Process.run('git', [
+          '-C', localPath, 'config', 'user.email', userEmail!,
+        ]);
+      }
     } catch (_) {}
   }
 

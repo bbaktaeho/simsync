@@ -52,6 +52,8 @@ typedef StorageFactory =
       required String owner,
       required String repo,
       required String branch,
+      String? userLogin,
+      String? userName,
       Future<void> Function()? onRemoteChanged,
     });
 
@@ -221,6 +223,8 @@ class _AppShellState extends State<_AppShell> {
         owner: entry.owner,
         repo: entry.repo,
         branch: entry.branch,
+        userLogin: session.user.login,
+        userName: session.user.name,
         onRemoteChanged: _onRemoteChanged,
       );
       _applySyncPreference(_bundle);
@@ -247,6 +251,8 @@ class _AppShellState extends State<_AppShell> {
       owner: entry.owner,
       repo: entry.repo,
       branch: entry.branch,
+      userLogin: _session!.user.login,
+      userName: _session!.user.name,
       onRemoteChanged: _onRemoteChanged,
     );
     _applySyncPreference(_bundle);
@@ -268,6 +274,8 @@ class _AppShellState extends State<_AppShell> {
       owner: _activeRepo!.owner,
       repo: _activeRepo!.repo,
       branch: _activeRepo!.branch,
+      userLogin: _session!.user.login,
+      userName: _session!.user.name,
       onRemoteChanged: _onRemoteChanged,
     );
     _applySyncPreference(nextBundle);
@@ -435,6 +443,8 @@ Future<StorageBundle> _defaultStorageFactory(
   required String owner,
   required String repo,
   required String branch,
+  String? userLogin,
+  String? userName,
   Future<void> Function()? onRemoteChanged,
 }) async {
   final localService = NoteService();
@@ -456,6 +466,8 @@ Future<StorageBundle> _defaultStorageFactory(
     owner: owner,
     repo: repo,
     token: accessToken,
+    userName: userName ?? userLogin,
+    userEmail: userLogin != null ? '$userLogin@users.noreply.github.com' : null,
   );
   // First launch: await clone so notes are available when UI loads.
   // Subsequent launches: isCloned() is true, returns almost immediately.

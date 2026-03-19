@@ -127,6 +127,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         final service = NoteService();

@@ -198,6 +198,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         final storage = _FakeNoteStorage();
@@ -246,6 +248,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         final storage = _FakeNoteStorage();
@@ -301,6 +305,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         return StorageBundle(
@@ -396,6 +402,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         final prefs = await SharedPreferences.getInstance();
@@ -498,6 +506,8 @@ void main() {
         required String owner,
         required String repo,
         required String branch,
+        String? userLogin,
+        String? userName,
         Future<void> Function()? onRemoteChanged,
       }) async {
         final prefs = await SharedPreferences.getInstance();
@@ -616,6 +626,8 @@ Future<StorageBundle> _fakeStorageFactory(
   required String owner,
   required String repo,
   required String branch,
+  String? userLogin,
+  String? userName,
   Future<void> Function()? onRemoteChanged,
 }) async {
   final service = NoteService();
