@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../main.dart';
 import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
@@ -998,7 +997,6 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Widget _buildTitleBar(AppColorsExtension c) {
-    final isDark = SimSyncApp.of(context).themeMode == ThemeMode.dark;
     final avatarUrl = widget.avatarUrl?.trim();
     final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
 
@@ -1052,17 +1050,6 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
             onPressed: () => unawaited(_openSettings()),
             tooltip: 'Settings',
-            splashRadius: 16,
-          ),
-          const SizedBox(width: AppDimensions.spacingXs),
-          IconButton(
-            icon: Icon(
-              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-              size: 18,
-              color: c.textSecondary,
-            ),
-            onPressed: () => SimSyncApp.of(context).toggleTheme(),
-            tooltip: isDark ? 'Light mode' : 'Dark mode',
             splashRadius: 16,
           ),
           const SizedBox(width: AppDimensions.spacingXs),

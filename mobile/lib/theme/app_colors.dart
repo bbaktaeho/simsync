@@ -45,29 +45,6 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     required this.localAccent,
   });
 
-  /// Dark theme palette — muted warm sand accent.
-  static const dark = AppColorsExtension(
-    scaffold: Color(0xFF0F1117),
-    surface: Color(0xFF161B22),
-    surfaceLight: Color(0xFF1C2128),
-    surfaceHover: Color(0xFF21262D),
-    border: Color(0xFF21262D),
-    borderSubtle: Color(0xFF30363D),
-    accent: Color(0xFFC4A882),
-    accentMuted: Color(0x33C4A882),
-    accentSubtle: Color(0x1AC4A882),
-    textPrimary: Color(0xFFE6EDF3),
-    textSecondary: Color(0xFF8B949E),
-    textMuted: Color(0xFF484F58),
-    textOnAccent: Color(0xFF0F1117),
-    error: Color(0xFFE5534B),
-    success: Color(0xFF57AB5A),
-    calendarToday: Color(0xFFC4A882),
-    calendarDot: Color(0xFFC4A882),
-    calendarSelected: Color(0xFF2D333B),
-    localAccent: Color(0xFFD97706),
-  );
-
   /// Light theme palette.
   static const light = AppColorsExtension(
     scaffold: Color(0xFFF6F8FA),

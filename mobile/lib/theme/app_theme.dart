@@ -3,24 +3,18 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 
-ThemeData buildDarkTheme() =>
-    _buildTheme(Brightness.dark, AppColorsExtension.dark);
+ThemeData buildLightTheme() => _buildTheme(AppColorsExtension.light);
 
-ThemeData buildLightTheme() =>
-    _buildTheme(Brightness.light, AppColorsExtension.light);
-
-ThemeData _buildTheme(Brightness brightness, AppColorsExtension c) {
-  final base = brightness == Brightness.dark
-      ? ThemeData.dark()
-      : ThemeData.light();
+ThemeData _buildTheme(AppColorsExtension c) {
+  final base = ThemeData.light();
   final baseTextTheme = GoogleFonts.manropeTextTheme(base.textTheme);
 
   return ThemeData(
-    brightness: brightness,
+    brightness: Brightness.light,
     scaffoldBackgroundColor: c.scaffold,
     extensions: [c],
     colorScheme: ColorScheme(
-      brightness: brightness,
+      brightness: Brightness.light,
       primary: c.accent,
       onPrimary: c.textOnAccent,
       surface: c.surface,
