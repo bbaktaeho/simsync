@@ -137,6 +137,20 @@ Flutter 생태계의 안정적이고 널리 사용되는 패키지를 선택한�
 
 ## Build & Run
 
+### Local secrets (`.env.local`)
+
+OAuth client id/secret 등 비밀값은 `.env.local` 에 둔다 (gitignored). 템플릿은 `.env.local.example` 참고.
+
+```bash
+cp .env.local.example .env.local
+# .env.local 을 열어 실제 값을 채운다 (절대 커밋 금지)
+
+# 셸에 로드해 빌드 명령에 전달:
+set -a; source .env.local; set +a
+```
+
+새 secret이 필요하면 GitHub → Settings → Developer settings → OAuth Apps 에서 **Reset client secret** 으로 발급받는다. 이미 외부(채팅·로그·git)에 노출된 secret은 즉시 reset 한다.
+
 ### Flutter App
 
 ```bash
@@ -149,12 +163,12 @@ flutter build macos           # macOS release
 flutter test                  # run tests
 flutter analyze               # static analysis
 
-# Mobile
+# Mobile (.env.local 을 source 한 셸에서)
 cd mobile
 flutter run                   # connected mobile device
-flutter build apk --debug \   # Android debug APK (OAuth 자격증명 필요)
-  --dart-define=SIMSYNC_GITHUB_CLIENT_ID=<id> \
-  --dart-define=SIMSYNC_GITHUB_CLIENT_SECRET=<secret>
+flutter build apk --debug \
+  --dart-define=SIMSYNC_GITHUB_CLIENT_ID="$SIMSYNC_GITHUB_CLIENT_ID" \
+  --dart-define=SIMSYNC_GITHUB_CLIENT_SECRET="$SIMSYNC_GITHUB_CLIENT_SECRET"
 flutter build ios             # iOS release
 flutter test                  # run tests
 flutter analyze               # static analysis
