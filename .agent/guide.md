@@ -14,8 +14,6 @@ SimSync (Simple Sync)는 마크다운 기반 개인 노트 앱이다.
 
 ## Purpose & Vision
 
-> 상세: [.agent/proposal/2026-03-09-product-proposal-draft.md](proposal/2026-03-09-product-proposal-draft.md)
-
 ### Why this exists
 
 기존 개인 기록 도구는 두 갈래로 갈린다 — 메모 앱은 빠르지만 시간이 지나면 맥락이 약해지고, 문서 앱은 구조적이지만 일상 기록과 회고로 이어지지 않는다.
@@ -224,7 +222,7 @@ ls -t .agent/develop/daily/          # 최근 수정순
 ls .agent/plan/ | sort                # 이름순
 
 # 3. frontmatter만 빠르게 훑기
-head -n 10 .agent/plan/006-2026-03-15-mobile-mvp3/plan.md
+head -n 10 .agent/plan/{plan-name}/plan.md
 
 # 4. 여러 파일 metadata 일괄 비교 (카탈로그 모드)
 for f in .agent/plan/*/plan.md; do echo "=== $f ==="; head -n 7 "$f"; done
