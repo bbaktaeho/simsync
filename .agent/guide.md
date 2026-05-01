@@ -12,6 +12,47 @@ created: 2026-03-09
 SimSync (Simple Sync)는 마크다운 기반 개인 노트 앱이다.
 캘린더 기반 일일 노트 작성, 마크다운 편집, 날짜/태그 검색, 자동 멀티 디바이스 동기화, AI 주기별 요약을 제공한다.
 
+## Purpose & Vision
+
+> 상세: [.agent/proposal/2026-03-09-product-proposal-draft.md](proposal/2026-03-09-product-proposal-draft.md)
+
+### Why this exists
+
+기존 개인 기록 도구는 두 갈래로 갈린다 — 메모 앱은 빠르지만 시간이 지나면 맥락이 약해지고, 문서 앱은 구조적이지만 일상 기록과 회고로 이어지지 않는다.
+SimSync는 그 중간을 노린다. `기록 → 축적 → 동기화 → 회고`로 이어지는 **개인 문서 워크플로우**가 핵심이다.
+
+### Core value (3 pillars)
+
+1. **Date-oriented writing** — 날짜를 기준으로 생각하고 기록한다
+2. **Multi-device continuity** — 데스크톱과 모바일을 오가도 작업이 끊기지 않는다
+3. **AI-powered reflection** — 누적된 기록을 주/월/년 단위로 정리해 회고를 돕는다 (계획)
+
+### Target user
+
+- 업무 기록을 날짜 기준으로 관리하는 개인
+- 마크다운 기반 작성에 익숙한 사용자
+- 여러 디바이스를 오가며 작업하는 사용자
+
+### Positioning
+
+- 메모 앱보다 구조적, 전통 문서 앱보다 가볍다
+- Obsidian류보다 **날짜 진입**이 강하다
+- Notion류보다 **개인 기록/회고**에 집중한다
+
+## Required Expertise
+
+Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 지식이 필요하다. 부족한 영역은 작업 전 관련 문서나 코드를 명시적으로 확인한다.
+
+| Area | 요점 |
+|------|------|
+| **Flutter / Dart** | adaptive layout (LayoutBuilder/MediaQuery), state management 패턴, `flutter analyze` clean 유지 |
+| **Cross-platform UX** | desktop vs. mobile 차이 (입력 방식, file dialog, OAuth callback, IA) |
+| **GitHub OAuth App** | loopback callback (desktop), Custom URL Scheme `simsync://callback` (mobile), token 안전 저장 |
+| **GitHub Contents API** | file CRUD, base64 인코딩, sha 기반 conflict 감지, rate limit 대응 |
+| **Sync patterns** | Last-Write-Wins, polling-based change detection, dirty note 보호 |
+| **Markdown ecosystem** | CommonMark, frontmatter, 편집 UX 패턴 |
+| **Domain (date-oriented note)** | daily note, calendar 탐색, 주/월/년 집계, 회고 workflow |
+
 ## Tech Stack
 
 | Component | Technology | Caveat |
@@ -138,7 +179,78 @@ flutter analyze               # static analysis
 
 ## Workflow
 
-작업 워크플로우는 [.agent/workflow.md](workflow.md)를 참고한다.
+모든 개발 작업은 [.agent/workflow.md](workflow.md)의 14단계 흐름을 따른다.
+
+핵심 요지:
+1. **계획 수립** → `.agent/plan/{순번}-{날짜}-{이름}/plan.md`
+2. **계획 검토** → 과도 설계/누락 확인
+3. **구현** → 변경 범위 최소화, 한 번에 한 관심사
+4. **검토 루프** (4–13) → 목적 적합성, 보안, 사이드 이펙트, 코드 품질, 사용자 흐름
+5. **커밋 & PR** → `develop` 브랜치 대상, conventional commit (`type: subject`)
+
+브랜치는 항상 최신 `develop`에서 시작한다. 상세는 workflow.md 참고.
+
+## Working with Project Documents
+
+> Agent는 문서를 처음부터 끝까지 읽지 않는다. CLI 도구로 필요한 부분만 찾아 컨텍스트를 절약한다.
+
+### Frontmatter convention
+
+`.agent/` 아래 모든 새 markdown 문서는 frontmatter로 시작한다:
+
+```yaml
+---
+title: 문서 제목
+description: 한 줄 요약 (검색/식별용)
+type: guide | workflow | plan | design | develop | proposal
+created: YYYY-MM-DD
+status: draft | active | archived   # 선택
+related:                              # 선택 - 관련 문서 경로
+  - .agent/plan/.../plan.md
+---
+```
+
+기존 frontmatter가 없는 문서는 수정 시 함께 추가한다. frontmatter 덕분에 `head -n 10`만으로 문서 성격을 파악할 수 있다.
+
+### Discovery commands (use BEFORE reading whole files)
+
+```bash
+# 1. 구조 파악 - 깊이 제한 필수
+tree -L 2 .agent/
+ls .agent/plan/
+
+# 2. 파일 목록 정렬
+ls -t .agent/develop/daily/          # 최근 수정순
+ls .agent/plan/ | sort                # 이름순
+
+# 3. frontmatter만 빠르게 훑기
+head -n 10 .agent/plan/006-2026-03-15-mobile-mvp3/plan.md
+
+# 4. 여러 파일 metadata 일괄 비교 (카탈로그 모드)
+for f in .agent/plan/*/plan.md; do echo "=== $f ==="; head -n 7 "$f"; done
+
+# 5. 키워드/패턴 검색
+find .agent -name "*sync*" -type f
+grep -rl "Last-Write-Wins" .agent/
+
+# 6. 섹션 위치 확인 → 부분만 읽기
+grep -n "^## " .agent/guide.md        # h2 + 줄번호
+
+# 7. 구조화된 메타데이터 - YAML(pubspec)은 yq, JSON(API 응답 등)은 jq
+yq '.dependencies | keys' desktop/pubspec.yaml    # YAML 키 목록
+jq -r '.[].name' response.json                     # JSON 필드 추출
+gh api repos/:owner/:repo/contents/notes | jq '.[].name'  # GitHub API 응답 파싱
+```
+
+### When to read full file vs. partial
+
+| 상황 | 권장 |
+|------|------|
+| 코드 파일 수정 전 | 전체 읽기 (필수) |
+| 짧은 문서 (< 100 줄) | 전체 읽기 |
+| 후보 파일 식별 | frontmatter + 제목만 |
+| 특정 섹션 참조 | grep으로 위치 찾고 부분만 |
+| 카탈로그 확인 | `for f in ...; head -n 7` 일괄 |
 
 ## Additional Docs
 
