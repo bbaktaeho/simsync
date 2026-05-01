@@ -583,7 +583,7 @@ class _EditorTagChip extends StatelessWidget {
     final c = context.colors;
 
     return Container(
-      padding: const EdgeInsets.only(left: 8, right: 2, top: 2, bottom: 2),
+      padding: const EdgeInsets.only(left: AppDimensions.spacingSm, right: 2, top: 2, bottom: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),

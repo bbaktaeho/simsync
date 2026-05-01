@@ -5,6 +5,7 @@ import '../storage/github/github_api_client.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_shadows.dart';
 
 class RepoSelectionScreen extends StatefulWidget {
   final String accessToken;
@@ -229,13 +230,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
             borderRadius:
                 BorderRadius.circular(AppDimensions.borderRadiusLg),
             border: Border.all(color: c.border),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x20000000),
-                blurRadius: 40,
-                offset: Offset(0, 16),
-              ),
-            ],
+            boxShadow: AppShadows.card,
           ),
           child: SingleChildScrollView(
             child: Column(

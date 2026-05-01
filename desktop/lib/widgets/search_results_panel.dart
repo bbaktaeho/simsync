@@ -83,12 +83,12 @@ class _SearchResultCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: Container(
         padding: const EdgeInsets.all(AppDimensions.spacingMd),
         decoration: BoxDecoration(
           color: isSelected ? c.accentSubtle : c.surfaceLight,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           border: Border.all(
             color: isSelected ? c.accent : c.borderSubtle,
           ),
@@ -197,7 +197,7 @@ class _ContextLines extends StatelessWidget {
             textAlign: TextAlign.right,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppDimensions.spacingSm),
         Expanded(child: text),
       ],
     );

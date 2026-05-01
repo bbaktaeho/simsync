@@ -349,7 +349,7 @@ class _SearchScreenState extends State<SearchScreen> {
     required VoidCallback onRemove,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppDimensions.spacingXs),
       decoration: BoxDecoration(
         color: c.accentSubtle,
         borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
@@ -366,7 +366,7 @@ class _SearchScreenState extends State<SearchScreen> {
               color: c.accent,
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppDimensions.spacingXs),
           GestureDetector(
             onTap: onRemove,
             child: Icon(Icons.close_rounded, size: 14, color: c.accent),
@@ -515,7 +515,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: note.tags.map((tag) {
                   return Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
+                      horizontal: AppDimensions.spacingSm,
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
@@ -970,7 +970,7 @@ class _QuickDateButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: 6),
         decoration: BoxDecoration(
           color: colors.surfaceLight,
           borderRadius: BorderRadius.circular(AppDimensions.borderRadius),

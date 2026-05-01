@@ -504,12 +504,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
         return AlertDialog(
           backgroundColor: c.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             side: BorderSide(color: c.border),
           ),
-          titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          titlePadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, 14, AppDimensions.spacingLg, 0),
+          contentPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, AppDimensions.spacingSm, AppDimensions.spacingLg, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingSm, AppDimensions.spacingXs, AppDimensions.spacingSm, 6),
           title: Text(
             '노트 삭제',
             style: TextStyle(
@@ -526,7 +526,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
             TextButton(
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: AppDimensions.spacingMd,
                   vertical: 6,
                 ),
                 minimumSize: Size.zero,
@@ -541,7 +541,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
             TextButton(
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
+                  horizontal: AppDimensions.spacingMd,
                   vertical: 6,
                 ),
                 minimumSize: Size.zero,
@@ -752,7 +752,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
             return AlertDialog(
               backgroundColor: c.surface,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
                 side: BorderSide(color: c.border),
               ),
               title: const Text('Search Filters'),

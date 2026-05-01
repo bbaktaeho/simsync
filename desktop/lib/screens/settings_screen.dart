@@ -12,6 +12,7 @@ import '../settings/shortcut_binding.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_shadows.dart';
 
 enum _SettingsPane { storage, editor, sync, shortcuts }
 
@@ -217,24 +218,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.all(16),
+      insetPadding: const EdgeInsets.all(AppDimensions.spacingLg),
       child: Container(
         width: dialogWidth,
         height: dialogHeight,
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
           border: Border.all(color: c.borderSubtle),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 32,
-              offset: const Offset(0, 18),
-            ),
-          ],
+          boxShadow: AppShadows.card,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusLarge),
           child: Row(
             children: [
               _buildNavigationRail(c),
@@ -378,7 +373,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ) {
     return SingleChildScrollView(
       key: const ValueKey(_SettingsPane.storage),
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -518,7 +513,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildEditorPane(AppColorsExtension c, AppSettings settings) {
     return SingleChildScrollView(
       key: const ValueKey(_SettingsPane.editor),
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -617,7 +612,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _buildSyncPane(AppColorsExtension c, AppSettings settings) {
     return SingleChildScrollView(
       key: const ValueKey(_SettingsPane.sync),
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -660,7 +655,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return SingleChildScrollView(
       key: const ValueKey(_SettingsPane.shortcuts),
-      padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -696,7 +691,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return AlertDialog(
               backgroundColor: c.surface,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
                 side: BorderSide(color: c.border),
               ),
               title: Text(
@@ -749,7 +744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: c.surfaceLight,
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                           border: Border.all(color: c.accent),
                         ),
                         alignment: Alignment.center,
@@ -815,7 +810,7 @@ class _NavigationItem extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
       child: AnimatedContainer(
         duration: AppDimensions.animFast,
         padding: const EdgeInsets.symmetric(
@@ -824,7 +819,7 @@ class _NavigationItem extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           color: isSelected ? c.accentSubtle : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           border: Border.all(
             color: isSelected
                 ? c.accent.withValues(alpha: 0.16)
@@ -845,7 +840,7 @@ class _NavigationItem extends StatelessWidget {
                 ),
                 decoration: BoxDecoration(
                   color: c.accent,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
                 ),
               )
             else
@@ -855,7 +850,7 @@ class _NavigationItem extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 color: c.surface,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                 border: Border.all(
                   color: isSelected
                       ? c.accent.withValues(alpha: 0.18)
@@ -955,7 +950,7 @@ class _DetailCard extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         border: Border.all(color: c.border),
       ),
       child: Column(
@@ -1017,8 +1012,8 @@ class _ActionButton extends StatelessWidget {
         foregroundColor: c.textPrimary,
         side: BorderSide(color: c.borderSubtle),
         backgroundColor: c.surface,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: AppDimensions.spacingSm),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusStandard)),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
@@ -1047,7 +1042,7 @@ class _PathPreview extends StatelessWidget {
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.border),
       ),
       child: SelectableText(
@@ -1075,7 +1070,7 @@ class _CurrentRepoCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.border),
       ),
       child: Column(
@@ -1151,13 +1146,13 @@ class _RepoChip extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: AnimatedContainer(
         duration: AppDimensions.animFast,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: 10),
         decoration: BoxDecoration(
           color: isActive ? c.accentSubtle : c.surface,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           border: Border.all(color: isActive ? c.accent : c.border),
         ),
         child: Text(
@@ -1183,13 +1178,13 @@ class _IconStepButton extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: Container(
         width: 34,
         height: 34,
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           border: Border.all(color: c.border),
         ),
         child: Icon(icon, size: 16, color: c.textSecondary),
@@ -1209,10 +1204,10 @@ class _ShortcutCard extends StatelessWidget {
     final c = context.colors;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppDimensions.spacingLg),
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         border: Border.all(color: c.border),
       ),
       child: Row(
@@ -1232,10 +1227,10 @@ class _ShortcutCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: AppDimensions.spacingXs),
                   decoration: BoxDecoration(
                     color: c.surface,
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
                     border: Border.all(color: c.borderSubtle),
                   ),
                   child: Text(
@@ -1285,7 +1280,7 @@ class _ZoomPreviewCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         border: Border.all(color: c.borderSubtle),
       ),
       child: Column(

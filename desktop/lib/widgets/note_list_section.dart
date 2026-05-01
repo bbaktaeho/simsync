@@ -283,7 +283,7 @@ class _NoteListItemState extends State<_NoteListItem> {
       position: RelativeRect.fromLTRB(
           position.dx, position.dy, position.dx, position.dy),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         side: BorderSide(color: c.border),
       ),
       color: c.surface,
@@ -366,7 +366,7 @@ class _TagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         label,

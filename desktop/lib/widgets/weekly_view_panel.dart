@@ -65,7 +65,7 @@ class WeeklyViewPanel extends StatelessWidget {
           ),
           const SizedBox(width: AppDimensions.spacingMd),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: 2),
             decoration: BoxDecoration(
               color: c.accentSubtle,
               borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
@@ -365,7 +365,7 @@ class _WeeklyTagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         label,
