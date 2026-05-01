@@ -291,7 +291,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
         const SizedBox(height: AppDimensions.spacingMd),
         Text(
           widget.userLogin,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
@@ -313,7 +313,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       children: [
         Text(
           '최근 연결',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: c.textMuted,
@@ -559,7 +559,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                 borderRadius:
                     BorderRadius.circular(AppDimensions.borderRadiusSm),
               ),
-              textStyle: GoogleFonts.manrope(
+              textStyle: GoogleFonts.inter(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -626,7 +626,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                 borderRadius:
                     BorderRadius.circular(AppDimensions.borderRadiusSm),
               ),
-              textStyle: GoogleFonts.manrope(
+              textStyle: GoogleFonts.inter(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -653,7 +653,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       children: [
         Text(
           '로컬 노트 저장 경로',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: c.textMuted,
@@ -697,7 +697,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                   ),
                   child: Text(
                     '변경',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w500,
                       color: c.textSecondary,

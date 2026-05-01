@@ -33,7 +33,7 @@ class SearchResultsPanel extends StatelessWidget {
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'No results found',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 13,
                 color: c.textMuted,
               ),
@@ -101,7 +101,7 @@ class _SearchResultCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
@@ -113,7 +113,7 @@ class _SearchResultCard extends StatelessWidget {
                 const SizedBox(width: AppDimensions.spacingSm),
                 Text(
                   dateStr,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 10,
                     color: c.textMuted,
                   ),

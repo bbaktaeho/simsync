@@ -1019,7 +1019,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             'SimSync',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
@@ -1059,7 +1059,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
             label: const Text('Logout'),
             style: TextButton.styleFrom(
               foregroundColor: c.textMuted,
-              textStyle: GoogleFonts.manrope(
+              textStyle: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -1216,7 +1216,7 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 'Weekly View',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: widget.isActive ? c.accent : c.textSecondary,

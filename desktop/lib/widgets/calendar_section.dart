@@ -74,7 +74,7 @@ class CalendarSection extends StatelessWidget {
                   const SizedBox(width: AppDimensions.spacingXs),
                   Text(
                     'Calendar',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: c.textSecondary,
@@ -91,7 +91,7 @@ class CalendarSection extends StatelessWidget {
             const SizedBox(width: AppDimensions.spacingXs),
             Text(
               monthLabel,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: c.textPrimary,
@@ -138,7 +138,7 @@ class CalendarSection extends StatelessWidget {
                 child: Center(
                   child: Text(
                     d,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: c.textMuted,
@@ -247,7 +247,7 @@ class _CalendarCell extends StatelessWidget {
           children: [
             Text(
               '$day',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: textColor,

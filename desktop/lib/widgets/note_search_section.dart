@@ -52,7 +52,7 @@ class NoteSearchSection extends StatelessWidget {
               controller: effectiveController,
               focusNode: focusNode,
               onChanged: onQueryChanged,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 color: c.textPrimary,
               ),
@@ -63,7 +63,7 @@ class NoteSearchSection extends StatelessWidget {
                   vertical: 6,
                 ),
                 hintText: _hasActiveFilters ? 'Search (filters active)' : 'Search notes',
-                hintStyle: GoogleFonts.manrope(
+                hintStyle: GoogleFonts.inter(
                   fontSize: 12,
                   color: c.textMuted,
                 ),

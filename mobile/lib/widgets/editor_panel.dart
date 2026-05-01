@@ -46,14 +46,14 @@ class _EditorPanelState extends State<EditorPanel> {
           child: TextField(
             controller: widget.titleController,
             onChanged: (_) => _handleChange(),
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
             ),
             decoration: InputDecoration(
               hintText: 'Untitled',
-              hintStyle: GoogleFonts.manrope(
+              hintStyle: GoogleFonts.inter(
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
                 color: c.textMuted,

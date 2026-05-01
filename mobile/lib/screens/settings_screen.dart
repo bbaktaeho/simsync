@@ -39,7 +39,7 @@ class SettingsScreen extends StatelessWidget {
         centerTitle: true,
         title: Text(
           '설정',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 18,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
@@ -219,7 +219,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           child: Text(
             title.toUpperCase(),
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: c.textMuted,
@@ -274,7 +274,7 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     color: c.textPrimary,
@@ -315,7 +315,7 @@ class SettingsScreen extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: c.textPrimary,
@@ -342,7 +342,7 @@ class SettingsScreen extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     value,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: c.textPrimary,
@@ -381,7 +381,7 @@ class SettingsScreen extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: c.textPrimary,
@@ -425,7 +425,7 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   activeRepo?.owner ?? 'Unknown',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: c.textPrimary,
@@ -457,7 +457,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(width: AppDimensions.spacingMd),
             Text(
               '로그아웃',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: c.error,

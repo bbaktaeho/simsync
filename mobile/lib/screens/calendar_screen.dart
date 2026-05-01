@@ -226,7 +226,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             color: c.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -363,7 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       title: Text(
         _monthFmt.format(_displayedMonth),
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w700,
           color: c.textPrimary,
@@ -389,7 +389,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             child: Text(
               '오늘',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: c.textSecondary,
@@ -478,7 +478,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 child: Center(
                   child: Text(
                     day,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: c.textMuted,
@@ -566,7 +566,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       alignment: Alignment.center,
                       child: Text(
                         '$day',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.inter(
                           fontSize: 13,
                           fontWeight: isToday
                               ? FontWeight.w700
@@ -631,7 +631,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 Text(
                   '${_selectedDate.day}',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: c.accent,
@@ -643,7 +643,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     Text(
                       weekdayName,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: c.textPrimary,
@@ -651,7 +651,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     Text(
                       '$noteCount개 노트',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 11,
                         color: c.textMuted,
                       ),
@@ -678,7 +678,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           children: [
             Text(
               _calendarExpanded ? '접기' : '펼치기',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
                 color: c.textMuted,
@@ -711,7 +711,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Expanded(
             child: Text(
               _dayHeaderFmt.format(_selectedDate),
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: c.textPrimary,
@@ -723,7 +723,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             icon: Icon(Icons.add_rounded, size: 18, color: c.accent),
             label: Text(
               '새 노트',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: c.accent,
@@ -755,7 +755,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const SizedBox(height: AppDimensions.spacingMd),
             Text(
               '이 날짜에 노트가 없습니다',
-              style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
             ),
           ],
         ),
@@ -813,7 +813,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Expanded(
                     child: Text(
                       note.title.isEmpty ? 'Untitled' : note.title,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: c.textPrimary,
@@ -838,7 +838,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     child: Text(
                       isLocal ? 'local' : 'synced',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
                         color: isLocal ? c.localAccent : c.accent,
@@ -887,7 +887,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: Text(
         '#$tag',
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 11,
           fontWeight: FontWeight.w500,
           color: c.accent,

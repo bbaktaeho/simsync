@@ -64,7 +64,7 @@ class NoteListWidget extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '노트가 없습니다',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 15,
               fontWeight: FontWeight.w500,
               color: c.textMuted,
@@ -103,7 +103,7 @@ class NoteListWidget extends StatelessWidget {
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 17,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
@@ -111,7 +111,7 @@ class NoteListWidget extends StatelessWidget {
         ),
         content: Text(
           '"${note.title.isEmpty ? "Untitled" : note.title}" 노트를 삭제하시겠습니까?',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 14,
             color: c.textSecondary,
           ),
@@ -121,7 +121,7 @@ class NoteListWidget extends StatelessWidget {
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               '취소',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
                 color: c.textSecondary,
@@ -132,7 +132,7 @@ class NoteListWidget extends StatelessWidget {
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               '삭제',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: c.error,
@@ -183,7 +183,7 @@ class _NoteCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
@@ -205,7 +205,7 @@ class _NoteCard extends StatelessWidget {
                     const EdgeInsets.only(bottom: AppDimensions.spacingSm),
                 child: Text(
                   note.content.replaceAll('\n', ' '),
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 13,
                     color: c.textSecondary,
                     height: 1.5,
@@ -220,7 +220,7 @@ class _NoteCard extends StatelessWidget {
               children: [
                 Text(
                   DateFormat('yyyy-MM-dd HH:mm').format(note.updatedAt),
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 11,
                     color: c.textMuted,
                   ),
@@ -248,7 +248,7 @@ class _NoteCard extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4),
             child: Text(
               '+$overflow',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: c.textMuted,
@@ -289,7 +289,7 @@ class _StorageBadge extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             isLocal ? 'local' : 'synced',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 10,
               fontWeight: FontWeight.w600,
               color: color,
@@ -321,7 +321,7 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: c.accent,

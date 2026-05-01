@@ -271,7 +271,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Text(
             'Settings',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
@@ -280,7 +280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Workspace and editor preferences',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 12,
               height: 1.5,
               color: c.textSecondary,
@@ -343,7 +343,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: Text(
               'Done',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
@@ -404,7 +404,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: Text(
                     settings.syncEnabled ? 'Enabled' : 'Disabled',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
@@ -438,7 +438,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 else if (recentRepos.isEmpty)
                   Text(
                     'No recent repositories',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 12,
                       color: c.textMuted,
                     ),
@@ -504,7 +504,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: AppDimensions.spacingSm),
                   Text(
                     _repoError!,
-                    style: GoogleFonts.manrope(fontSize: 12, color: c.error),
+                    style: GoogleFonts.inter(fontSize: 12, color: c.error),
                   ),
                 ],
               ],
@@ -544,7 +544,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: AppDimensions.spacingMd),
                     Text(
                       '${(settings.contentScale * 100).round()}%',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: c.textPrimary,
@@ -567,7 +567,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Text(
                   'Shortcuts: cmd + +, cmd + -, cmd + wheel, trackpad pinch',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 12,
                     color: c.textSecondary,
                   ),
@@ -593,7 +593,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(width: AppDimensions.spacingMd),
                 Text(
                   '${settings.searchContextLines}',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: c.textPrimary,
@@ -701,7 +701,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               title: Text(
                 '${binding.action.label} 단축키 변경',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: c.textPrimary,
@@ -714,7 +714,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       '새 키 조합을 입력하세요',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 13,
                         color: c.textSecondary,
                       ),
@@ -875,7 +875,7 @@ class _NavigationItem extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: isSelected ? c.textPrimary : c.textSecondary,
@@ -884,7 +884,7 @@ class _NavigationItem extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     description,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       height: 1.4,
                       color: c.textMuted,
@@ -914,7 +914,7 @@ class _PaneHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
@@ -923,7 +923,7 @@ class _PaneHeader extends StatelessWidget {
         const SizedBox(height: AppDimensions.spacingSm),
         Text(
           description,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 13,
             height: 1.6,
             color: c.textSecondary,
@@ -970,7 +970,7 @@ class _DetailCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: c.textPrimary,
@@ -979,7 +979,7 @@ class _DetailCard extends StatelessWidget {
                     const SizedBox(height: AppDimensions.spacingXs),
                     Text(
                       description,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 12,
                         height: 1.6,
                         color: c.textSecondary,
@@ -1024,7 +1024,7 @@ class _ActionButton extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 12,
           fontWeight: FontWeight.w700,
           color: c.textPrimary,
@@ -1083,7 +1083,7 @@ class _CurrentRepoCard extends StatelessWidget {
         children: [
           Text(
             'Current source',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.4,
@@ -1093,7 +1093,7 @@ class _CurrentRepoCard extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             activeRepo?.fullName ?? 'Not connected',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
@@ -1125,7 +1125,7 @@ class _SectionLabel extends StatelessWidget {
     final c = context.colors;
     return Text(
       label,
-      style: GoogleFonts.manrope(
+      style: GoogleFonts.inter(
         fontSize: 11,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.5,
@@ -1223,7 +1223,7 @@ class _ShortcutCard extends StatelessWidget {
               children: [
                 Text(
                   binding.action.label,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: c.textPrimary,
@@ -1252,7 +1252,7 @@ class _ShortcutCard extends StatelessWidget {
           if (binding.isFixed)
             Text(
               'Fixed',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 11,
                 color: c.textMuted,
               ),
@@ -1293,7 +1293,7 @@ class _ZoomPreviewCard extends StatelessWidget {
         children: [
           Text(
             'Preview',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: c.textMuted,
@@ -1302,7 +1302,7 @@ class _ZoomPreviewCard extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             'Daily Note',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 22 * contentScale,
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
@@ -1311,7 +1311,7 @@ class _ZoomPreviewCard extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'A compact preview makes zoom changes feel immediate even before you close settings.',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 13 * contentScale,
               height: 1.6,
               color: c.textSecondary,

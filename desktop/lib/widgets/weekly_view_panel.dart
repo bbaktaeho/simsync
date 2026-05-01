@@ -57,7 +57,7 @@ class WeeklyViewPanel extends StatelessWidget {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             'Weekly View',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: c.textPrimary,
@@ -72,7 +72,7 @@ class WeeklyViewPanel extends StatelessWidget {
             ),
             child: Text(
               '$startStr – $endStr',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 color: c.accent,
@@ -82,7 +82,7 @@ class WeeklyViewPanel extends StatelessWidget {
           const Spacer(),
           Text(
             '$noteCount note${noteCount != 1 ? 's' : ''}',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 11,
               color: c.textMuted,
             ),
@@ -105,12 +105,12 @@ class WeeklyViewPanel extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingLg),
           Text(
             'No notes this week',
-            style: GoogleFonts.manrope(fontSize: 15, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 15, color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'Select a date and start writing',
-            style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
           ),
         ],
       ),
@@ -197,7 +197,7 @@ class _DateGroup extends StatelessWidget {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 dayLabel,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: isToday ? c.accent : c.textPrimary,
@@ -206,7 +206,7 @@ class _DateGroup extends StatelessWidget {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 dateLabel,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 12,
                   color: c.textMuted,
                 ),
@@ -279,7 +279,7 @@ class _NoteCardState extends State<_NoteCard> {
                       widget.note.title.isEmpty
                           ? 'Untitled'
                           : widget.note.title,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: c.textPrimary,
@@ -289,7 +289,7 @@ class _NoteCardState extends State<_NoteCard> {
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     timeStr,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       color: c.textMuted,
                     ),
@@ -369,7 +369,7 @@ class _WeeklyTagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: c.accent,

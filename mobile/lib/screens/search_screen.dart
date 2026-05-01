@@ -216,7 +216,7 @@ class _SearchScreenState extends State<SearchScreen> {
               controller: _searchController,
               focusNode: _searchFocusNode,
               onChanged: _onSearchTextChanged,
-              style: GoogleFonts.manrope(fontSize: 15, color: c.textPrimary),
+              style: GoogleFonts.inter(fontSize: 15, color: c.textPrimary),
               decoration: InputDecoration(
                 hintText: '노트 검색...',
                 hintStyle: TextStyle(color: c.textMuted, fontSize: 15),
@@ -360,7 +360,7 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           Text(
             label,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 12,
               fontWeight: FontWeight.w500,
               color: c.accent,
@@ -386,7 +386,7 @@ class _SearchScreenState extends State<SearchScreen> {
         alignment: Alignment.centerLeft,
         child: Text(
           '${_results.length}개 결과',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 13,
             fontWeight: FontWeight.w500,
             color: c.textMuted,
@@ -408,7 +408,7 @@ class _SearchScreenState extends State<SearchScreen> {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '검색어를 입력하세요',
-            style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
           ),
         ],
       ),
@@ -425,7 +425,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const SizedBox(height: AppDimensions.spacingMd),
             Text(
               '검색 결과가 없습니다',
-              style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
             ),
           ],
         ),
@@ -465,7 +465,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                       color: c.textPrimary,
@@ -490,7 +490,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   child: Text(
                     isLocal ? 'local' : 'synced',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 10,
                       fontWeight: FontWeight.w600,
                       color: isLocal ? c.localAccent : c.accent,
@@ -526,7 +526,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                     child: Text(
                       '#$tag',
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: c.accent,
@@ -761,7 +761,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               const SizedBox(height: AppDimensions.spacingLg),
               Text(
                 '필터',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                   color: c.textPrimary,
@@ -772,7 +772,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               // Tag input
               Text(
                 '태그',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: c.textSecondary,
@@ -781,7 +781,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               const SizedBox(height: AppDimensions.spacingSm),
               TextField(
                 controller: _tagController,
-                style: GoogleFonts.manrope(fontSize: 14, color: c.textPrimary),
+                style: GoogleFonts.inter(fontSize: 14, color: c.textPrimary),
                 decoration: InputDecoration(
                   hintText: '태그를 입력하세요',
                   hintStyle: TextStyle(color: c.textMuted),
@@ -797,7 +797,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               // Date range
               Text(
                 '날짜 범위',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: c.textSecondary,
@@ -910,7 +910,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       ),
                       child: Text(
                         '초기화',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                           color: c.textSecondary,
@@ -936,7 +936,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       ),
                       child: Text(
                         '적용',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.inter(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
@@ -978,7 +978,7 @@ class _QuickDateButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: colors.textSecondary,

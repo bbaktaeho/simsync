@@ -149,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: AppDimensions.spacingLg),
         Text(
           'SimSync',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 24,
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
