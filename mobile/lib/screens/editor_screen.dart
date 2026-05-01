@@ -165,7 +165,7 @@ class _EditorScreenState extends State<EditorScreen>
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             color: c.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -282,7 +282,7 @@ class _EditorScreenState extends State<EditorScreen>
       ),
       title: Text(
         _dateFmt.format(_note.noteDate),
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 15,
           fontWeight: FontWeight.w600,
           color: c.textPrimary,
@@ -310,7 +310,7 @@ class _EditorScreenState extends State<EditorScreen>
                       const SizedBox(width: 4),
                       Text(
                         '저장 중...',
-                        style: GoogleFonts.manrope(
+                        style: GoogleFonts.inter(
                           fontSize: 12,
                           color: c.textMuted,
                         ),
@@ -319,7 +319,7 @@ class _EditorScreenState extends State<EditorScreen>
                   )
                 : Text(
                     _isDirty ? '' : '저장됨',
-                    style: GoogleFonts.manrope(fontSize: 12, color: c.success),
+                    style: GoogleFonts.inter(fontSize: 12, color: c.success),
                   ),
           ),
         ),
@@ -345,7 +345,7 @@ class _EditorScreenState extends State<EditorScreen>
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     '삭제',
-                    style: GoogleFonts.manrope(fontSize: 14, color: c.error),
+                    style: GoogleFonts.inter(fontSize: 14, color: c.error),
                   ),
                 ],
               ),
@@ -365,11 +365,11 @@ class _EditorScreenState extends State<EditorScreen>
         unselectedLabelColor: c.textMuted,
         indicatorColor: c.accent,
         indicatorWeight: 2,
-        labelStyle: GoogleFonts.manrope(
+        labelStyle: GoogleFonts.inter(
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
-        unselectedLabelStyle: GoogleFonts.manrope(
+        unselectedLabelStyle: GoogleFonts.inter(
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
@@ -394,7 +394,7 @@ class _EditorScreenState extends State<EditorScreen>
                 TextField(
                   controller: _titleController,
                   onChanged: _onTitleChanged,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: c.textPrimary,
@@ -552,7 +552,7 @@ class _EditorScreenState extends State<EditorScreen>
         children: [
           Text(
             '태그',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 16,
               fontWeight: FontWeight.w600,
               color: c.textPrimary,
@@ -567,7 +567,7 @@ class _EditorScreenState extends State<EditorScreen>
           TextField(
             controller: _tagsController,
             onChanged: _onTagsChanged,
-            style: GoogleFonts.manrope(fontSize: 14, color: c.textPrimary),
+            style: GoogleFonts.inter(fontSize: 14, color: c.textPrimary),
             decoration: InputDecoration(
               hintText: 'work, daily, idea',
               hintStyle: TextStyle(color: c.textMuted),
@@ -594,7 +594,7 @@ class _EditorScreenState extends State<EditorScreen>
                   ),
                   child: Text(
                     '#$tag',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: c.accent,
@@ -644,7 +644,7 @@ class _ToolbarButton extends StatelessWidget {
             ? Icon(icon, size: 18, color: colors.textSecondary)
             : Text(
                 label ?? '',
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 14,
                   fontWeight: fontWeight ?? FontWeight.w600,
                   fontStyle: fontStyle,

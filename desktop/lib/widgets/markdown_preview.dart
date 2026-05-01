@@ -27,7 +27,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
       return Center(
         child: Text(
           'Nothing to preview',
-          style: GoogleFonts.manrope(
+          style: GoogleFonts.inter(
             fontSize: 14 * contentScale,
             color: c.textMuted,
           ),
@@ -48,37 +48,37 @@ class MarkdownPreviewWidget extends StatelessWidget {
     double scaled(double value) => value * contentScale;
 
     return MarkdownStyleSheet(
-      h1: GoogleFonts.manrope(
+      h1: GoogleFonts.inter(
         fontSize: scaled(26),
         fontWeight: FontWeight.w700,
         color: c.textPrimary,
         height: 1.4,
       ),
-      h2: GoogleFonts.manrope(
+      h2: GoogleFonts.inter(
         fontSize: scaled(21),
         fontWeight: FontWeight.w600,
         color: c.textPrimary,
         height: 1.4,
       ),
-      h3: GoogleFonts.manrope(
+      h3: GoogleFonts.inter(
         fontSize: scaled(17),
         fontWeight: FontWeight.w600,
         color: c.textPrimary,
         height: 1.4,
       ),
-      h4: GoogleFonts.manrope(
+      h4: GoogleFonts.inter(
         fontSize: scaled(15),
         fontWeight: FontWeight.w600,
         color: c.textPrimary,
         height: 1.4,
       ),
-      h5: GoogleFonts.manrope(
+      h5: GoogleFonts.inter(
         fontSize: scaled(14),
         fontWeight: FontWeight.w600,
         color: c.textPrimary,
         height: 1.4,
       ),
-      h6: GoogleFonts.manrope(
+      h6: GoogleFonts.inter(
         fontSize: scaled(13),
         fontWeight: FontWeight.w600,
         color: c.textSecondary,
@@ -90,17 +90,17 @@ class MarkdownPreviewWidget extends StatelessWidget {
       h4Padding: const EdgeInsets.only(top: 16, bottom: 8),
       h5Padding: const EdgeInsets.only(top: 16, bottom: 8),
       h6Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      p: GoogleFonts.manrope(
+      p: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.textPrimary,
         height: 1.7,
       ),
-      a: GoogleFonts.manrope(
+      a: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.accent,
         decoration: TextDecoration.underline,
       ),
-      listBullet: GoogleFonts.manrope(
+      listBullet: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.textSecondary,
       ),
@@ -115,7 +115,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
         border: Border.all(color: c.border),
       ),
       codeblockPadding: const EdgeInsets.all(12),
-      blockquote: GoogleFonts.manrope(
+      blockquote: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.textSecondary,
         fontStyle: FontStyle.italic,
@@ -128,13 +128,13 @@ class MarkdownPreviewWidget extends StatelessWidget {
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.border)),
       ),
-      checkbox: GoogleFonts.manrope(fontSize: scaled(14), color: c.accent),
-      tableHead: GoogleFonts.manrope(
+      checkbox: GoogleFonts.inter(fontSize: scaled(14), color: c.accent),
+      tableHead: GoogleFonts.inter(
         fontSize: scaled(13),
         fontWeight: FontWeight.w600,
         color: c.textPrimary,
       ),
-      tableBody: GoogleFonts.manrope(
+      tableBody: GoogleFonts.inter(
         fontSize: scaled(13),
         color: c.textSecondary,
       ),

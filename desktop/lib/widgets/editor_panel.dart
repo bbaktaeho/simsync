@@ -167,7 +167,7 @@ class _EditorPanelState extends State<EditorPanel> {
           if (hasDate) ...[
             Text(
               dateLabel!,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: c.textSecondary,
@@ -176,7 +176,7 @@ class _EditorPanelState extends State<EditorPanel> {
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'No notes for this date',
-              style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingXl),
             Row(
@@ -201,12 +201,12 @@ class _EditorPanelState extends State<EditorPanel> {
           ] else ...[
             Text(
               'Select a note to start editing',
-              style: GoogleFonts.manrope(fontSize: 15, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 15, color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'or create a new one from the sidebar',
-              style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
             ),
           ],
         ],
@@ -226,14 +226,14 @@ class _EditorPanelState extends State<EditorPanel> {
               controller: _titleController,
               onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
               readOnly: widget.isReadOnly,
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
                 color: c.textPrimary,
               ),
               decoration: InputDecoration(
                 hintText: 'Untitled',
-                hintStyle: GoogleFonts.manrope(
+                hintStyle: GoogleFonts.inter(
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                   color: c.textMuted,
@@ -288,13 +288,13 @@ class _EditorPanelState extends State<EditorPanel> {
                   child: TextField(
                     controller: _tagController,
                     readOnly: widget.isReadOnly,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 11,
                       color: c.textSecondary,
                     ),
                     decoration: InputDecoration(
                       hintText: '+ tag',
-                      hintStyle: GoogleFonts.manrope(
+                      hintStyle: GoogleFonts.inter(
                         fontSize: 11,
                         color: c.textMuted,
                       ),
@@ -318,7 +318,7 @@ class _EditorPanelState extends State<EditorPanel> {
               const SizedBox(width: AppDimensions.spacingXs),
               Text(
                 dateStr,
-                style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+                style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
               ),
             ],
           ),
@@ -421,7 +421,7 @@ class _EditorPanelState extends State<EditorPanel> {
               child: Text(
                 widget.readOnlyReason!,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+                style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
               ),
             ),
             const SizedBox(width: AppDimensions.spacingMd),
@@ -435,13 +435,13 @@ class _EditorPanelState extends State<EditorPanel> {
             const SizedBox(width: AppDimensions.spacingXs),
             Text(
               savedText,
-              style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+              style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
             ),
           ],
           const Spacer(),
           Text(
             'Markdown ${(widget.contentScale * 100).round()}%',
-            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
           ),
         ],
       ),
@@ -491,7 +491,7 @@ class _ToggleButtonState extends State<_ToggleButton> {
               const SizedBox(width: 4),
               Text(
                 widget.label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: c.textSecondary,
@@ -558,7 +558,7 @@ class _CreateNoteButtonState extends State<_CreateNoteButton> {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 widget.label,
-                style: GoogleFonts.manrope(
+                style: GoogleFonts.inter(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: _isHovered ? accentColor : c.textSecondary,
@@ -594,7 +594,7 @@ class _EditorTagChip extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 11,
               fontWeight: FontWeight.w500,
               color: c.accent,

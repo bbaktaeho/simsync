@@ -248,7 +248,7 @@ class _ToolbarButton extends StatelessWidget {
         color: c.textPrimary,
       );
     } else {
-      textStyle = GoogleFonts.manrope(
+      textStyle = GoogleFonts.inter(
         fontSize: 13,
         fontWeight: isExtraBold
             ? FontWeight.w900

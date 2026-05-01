@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Custom color extension attached to ThemeData.
-/// Access via `Theme.of(context).extension<AppColorsExtension>()!`
+/// Access via `Theme.of(context).extension<AppColorsExtension>()!`.
+///
+/// Palette mapped from DESIGN.md (Notion-inspired). Light only.
 class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
   final Color scaffold;
   final Color surface;
@@ -22,6 +24,12 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
   final Color calendarDot;
   final Color calendarSelected;
   final Color localAccent;
+  // ── DESIGN.md additions ──
+  final Color focus;
+  final Color badgeText;
+  final Color linkLight;
+  final Color highlight;
+  final Color shadowTint;
 
   const AppColorsExtension({
     required this.scaffold,
@@ -43,52 +51,39 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     required this.calendarDot,
     required this.calendarSelected,
     required this.localAccent,
+    required this.focus,
+    required this.badgeText,
+    required this.linkLight,
+    required this.highlight,
+    required this.shadowTint,
   });
 
-  /// Dark theme palette — muted warm sand accent.
-  static const dark = AppColorsExtension(
-    scaffold: Color(0xFF0F1117),
-    surface: Color(0xFF161B22),
-    surfaceLight: Color(0xFF1C2128),
-    surfaceHover: Color(0xFF21262D),
-    border: Color(0xFF21262D),
-    borderSubtle: Color(0xFF30363D),
-    accent: Color(0xFFC4A882),
-    accentMuted: Color(0x33C4A882),
-    accentSubtle: Color(0x1AC4A882),
-    textPrimary: Color(0xFFE6EDF3),
-    textSecondary: Color(0xFF8B949E),
-    textMuted: Color(0xFF484F58),
-    textOnAccent: Color(0xFF0F1117),
-    error: Color(0xFFE5534B),
-    success: Color(0xFF57AB5A),
-    calendarToday: Color(0xFFC4A882),
-    calendarDot: Color(0xFFC4A882),
-    calendarSelected: Color(0xFF2D333B),
-    localAccent: Color(0xFFD97706),
-  );
-
-  /// Light theme palette.
+  /// Notion-inspired light palette (DESIGN.md §2).
   static const light = AppColorsExtension(
-    scaffold: Color(0xFFF6F8FA),
-    surface: Color(0xFFFFFFFF),
-    surfaceLight: Color(0xFFF0F2F5),
-    surfaceHover: Color(0xFFE8EBF0),
-    border: Color(0xFFD8DEE4),
-    borderSubtle: Color(0xFFE1E7ED),
-    accent: Color(0xFF9C7E56),
-    accentMuted: Color(0x339C7E56),
-    accentSubtle: Color(0x149C7E56),
-    textPrimary: Color(0xFF1F2328),
-    textSecondary: Color(0xFF656D76),
-    textMuted: Color(0xFF9CA3AF),
-    textOnAccent: Color(0xFFFFFFFF),
-    error: Color(0xFFCF222E),
-    success: Color(0xFF1A7F37),
-    calendarToday: Color(0xFF9C7E56),
-    calendarDot: Color(0xFF9C7E56),
-    calendarSelected: Color(0xFFE8EBF0),
-    localAccent: Color(0xFFB45309),
+    scaffold: Color(0xFFFFFFFF), // Pure White (page bg)
+    surface: Color(0xFFFFFFFF), // Card surface
+    surfaceLight: Color(0xFFF6F5F4), // Warm White (alt section bg)
+    surfaceHover: Color(0x0D000000), // rgba(0,0,0,0.05) — secondary bg
+    border: Color(0x1A000000), // rgba(0,0,0,0.10) — whisper border
+    borderSubtle: Color(0x0F000000), // rgba(0,0,0,0.06) — fainter divider
+    accent: Color(0xFF0075DE), // Notion Blue (CTA, link)
+    accentMuted: Color(0xFF005BAB), // Active Blue (pressed)
+    accentSubtle: Color(0xFFF2F9FF), // Badge Blue Bg
+    textPrimary: Color(0xF2000000), // rgba(0,0,0,0.95) — Notion Black
+    textSecondary: Color(0xFF615D59), // Warm Gray 500
+    textMuted: Color(0xFFA39E98), // Warm Gray 300
+    textOnAccent: Color(0xFFFFFFFF), // Button text on blue
+    error: Color(0xFFDD5B00), // Orange (warning/attention)
+    success: Color(0xFF1AAE39), // Green (confirmation)
+    calendarToday: Color(0xFF0075DE), // Notion Blue
+    calendarDot: Color(0xFF0075DE), // Notion Blue
+    calendarSelected: Color(0xFFF2F9FF), // Badge Blue Bg (subtle)
+    localAccent: Color(0xFFDD5B00), // Orange (local note emphasis)
+    focus: Color(0xFF097FE8), // Focus Blue (keyboard ring)
+    badgeText: Color(0xFF097FE8), // Pill badge text on accentSubtle
+    linkLight: Color(0xFF62AEF0), // Link variant for dark surfaces
+    highlight: Color(0xFFFDE68A), // Search match highlight (yellow)
+    shadowTint: Color(0x0A000000), // rgba(0,0,0,0.04) — base shadow tint
   );
 
   @override
@@ -113,6 +108,11 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarDot: calendarDot,
       calendarSelected: calendarSelected,
       localAccent: localAccent ?? this.localAccent,
+      focus: focus,
+      badgeText: badgeText,
+      linkLight: linkLight,
+      highlight: highlight,
+      shadowTint: shadowTint,
     );
   }
 
@@ -139,6 +139,11 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarDot: Color.lerp(calendarDot, other.calendarDot, t)!,
       calendarSelected: Color.lerp(calendarSelected, other.calendarSelected, t)!,
       localAccent: Color.lerp(localAccent, other.localAccent, t)!,
+      focus: Color.lerp(focus, other.focus, t)!,
+      badgeText: Color.lerp(badgeText, other.badgeText, t)!,
+      linkLight: Color.lerp(linkLight, other.linkLight, t)!,
+      highlight: Color.lerp(highlight, other.highlight, t)!,
+      shadowTint: Color.lerp(shadowTint, other.shadowTint, t)!,
     );
   }
 }

@@ -50,7 +50,7 @@ class SearchResultsWidget extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '검색 결과가 없습니다',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 15,
               fontWeight: FontWeight.w500,
               color: c.textMuted,
@@ -99,7 +99,7 @@ class _SearchResultCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
@@ -113,7 +113,7 @@ class _SearchResultCard extends StatelessWidget {
                 const SizedBox(width: AppDimensions.spacingSm),
                 Text(
                   dateStr,
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                     fontSize: 11,
                     color: c.textMuted,
                   ),
@@ -324,7 +324,7 @@ class _StorageBadge extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             isLocal ? 'local' : 'synced',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 9,
               fontWeight: FontWeight.w600,
               color: color,
@@ -355,7 +355,7 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 10,
           fontWeight: FontWeight.w500,
           color: c.accent,

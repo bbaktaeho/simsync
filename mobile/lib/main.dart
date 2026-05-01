@@ -91,33 +91,15 @@ class SimSyncApp extends StatefulWidget {
 
   @override
   State<SimSyncApp> createState() => SimSyncAppState();
-
-  /// Allow descendants to toggle theme mode.
-  static SimSyncAppState of(BuildContext context) =>
-      context.findAncestorStateOfType<SimSyncAppState>()!;
 }
 
 class SimSyncAppState extends State<SimSyncApp> {
-  ThemeMode _themeMode = ThemeMode.light;
-
-  ThemeMode get themeMode => _themeMode;
-
-  void toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.dark
-          ? ThemeMode.light
-          : ThemeMode.dark;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SimSync',
       debugShowCheckedModeBanner: false,
       theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
-      themeMode: _themeMode,
       home: _AppShell(
         authService: widget.authService,
         storageFactory: widget.storageFactory ?? _defaultStorageFactory,

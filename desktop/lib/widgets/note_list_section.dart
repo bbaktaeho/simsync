@@ -59,7 +59,7 @@ class NoteListSection extends StatelessWidget {
         children: [
           Text(
             'Notes',
-            style: GoogleFonts.manrope(
+            style: GoogleFonts.inter(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: c.textSecondary,
@@ -75,7 +75,7 @@ class NoteListSection extends StatelessWidget {
             ),
             child: Text(
               '$totalCount',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: c.textMuted,
@@ -103,12 +103,12 @@ class NoteListSection extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'No notes yet',
-            style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Select a date and create one',
-            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
           ),
         ],
       ),
@@ -148,7 +148,7 @@ class NoteListSection extends StatelessWidget {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             '${currentPage + 1} / $totalPages',
-            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
           _PaginationButton(
@@ -243,7 +243,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                   children: [
                     Text(
                       widget.note.title.isEmpty ? 'Untitled' : widget.note.title,
-                      style: GoogleFonts.manrope(
+                      style: GoogleFonts.inter(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                         color: widget.isSelected ? c.textPrimary : c.textSecondary,
@@ -261,7 +261,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                         ],
                         Text(
                           dateStr,
-                          style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                          style: GoogleFonts.inter(fontSize: 10, color: c.textMuted),
                         ),
                       ],
                     ),
@@ -322,7 +322,7 @@ class _NoteListItemState extends State<_NoteListItem> {
             padding: const EdgeInsets.only(left: 2),
             child: Text(
               '+$overflow',
-              style: GoogleFonts.manrope(
+              style: GoogleFonts.inter(
                 fontSize: 9,
                 fontWeight: FontWeight.w600,
                 color: c.textMuted,
@@ -337,7 +337,7 @@ class _NoteListItemState extends State<_NoteListItem> {
     return Tooltip(
       message: tags.join(', '),
       waitDuration: const Duration(milliseconds: 300),
-      textStyle: GoogleFonts.manrope(
+      textStyle: GoogleFonts.inter(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         color: c.textPrimary,
@@ -370,7 +370,7 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
+        style: GoogleFonts.inter(
           fontSize: 9,
           fontWeight: FontWeight.w500,
           color: c.accent,
@@ -409,7 +409,7 @@ class _AddNoteButton extends StatelessWidget {
               Icon(Icons.cloud_outlined, size: 14, color: c.accent),
               const SizedBox(width: 8),
               Text('동기화 노트',
-                  style: GoogleFonts.manrope(
+                  style: GoogleFonts.inter(
                       fontSize: 12, color: c.textPrimary)),
             ],
           ),
@@ -423,7 +423,7 @@ class _AddNoteButton extends StatelessWidget {
                     size: 14, color: c.localAccent),
                 const SizedBox(width: 8),
                 Text('로컬 노트',
-                    style: GoogleFonts.manrope(
+                    style: GoogleFonts.inter(
                         fontSize: 12, color: c.textPrimary)),
               ],
             ),
