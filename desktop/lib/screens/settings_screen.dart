@@ -1146,7 +1146,7 @@ class _RepoChip extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: AnimatedContainer(
         duration: AppDimensions.animFast,
         padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: 10),
@@ -1178,7 +1178,7 @@ class _IconStepButton extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: Container(
         width: 34,
         height: 34,
