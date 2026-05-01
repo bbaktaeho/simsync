@@ -138,8 +138,8 @@ class _SearchResultCard extends StatelessWidget {
 
   Widget _buildTags(AppColorsExtension c, List<String> tags) {
     return Wrap(
-      spacing: 4,
-      runSpacing: 4,
+      spacing: AppDimensions.spacingXs,
+      runSpacing: AppDimensions.spacingXs,
       children: tags.map((tag) => _TagChip(label: tag)).toList(),
     );
   }
@@ -239,7 +239,7 @@ class _ContextLines extends StatelessWidget {
             textAlign: TextAlign.right,
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppDimensions.spacingSm),
         Expanded(child: text),
       ],
     );
@@ -351,7 +351,7 @@ class _TagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         label,

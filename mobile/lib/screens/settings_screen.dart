@@ -487,7 +487,7 @@ class _StepperButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(AppDimensions.spacingSm),
         child: Icon(
           icon,
           size: 16,

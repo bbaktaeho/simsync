@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_shadows.dart';
 
 /// Keyboard accessory toolbar that inserts markdown syntax into a
 /// [TextEditingController].
@@ -269,19 +270,13 @@ class _ToolbarButton extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minWidth: 36),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: 6),
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius:
                 BorderRadius.circular(AppDimensions.borderRadius),
             border: Border.all(color: c.borderSubtle),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 2,
-                offset: const Offset(0, 1),
-              ),
-            ],
+            boxShadow: AppShadows.card,
           ),
           alignment: Alignment.center,
           child: Text(label, style: textStyle),

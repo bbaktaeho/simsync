@@ -582,7 +582,7 @@ class _EditorScreenState extends State<EditorScreen>
               children: _note.tags.map((tag) {
                 return Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
+                    horizontal: AppDimensions.spacingMd,
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
@@ -666,7 +666,7 @@ class _ToolbarDivider extends StatelessWidget {
     return Container(
       width: 1,
       height: 20,
-      margin: const EdgeInsets.symmetric(horizontal: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingXs),
       color: colors.borderSubtle,
     );
   }
