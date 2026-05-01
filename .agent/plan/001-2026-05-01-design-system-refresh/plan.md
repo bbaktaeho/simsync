@@ -3,7 +3,7 @@ title: Design System Refresh (Notion-inspired)
 description: DESIGN.md를 desktop/mobile Flutter 앱에 적용. 라이트 단일, Inter 폰트, 2단계 PR
 type: plan
 created: 2026-05-01
-status: draft
+status: active
 related:
   - DESIGN.md
   - .agent/plan/001-2026-05-01-design-system-refresh/01-current-state-audit.md
@@ -49,10 +49,10 @@ Audit 결과 인라인 스타일 712곳 (typography 398 + radius 129 + spacing 1
 
 1. **계획 수립** — 이 디렉토리의 plan + 6개 상세 문서. (현재 단계)
 2. **계획 검토** — 사용자 검토/승인.
-3. **PR1 구현** — 04-pr1-foundation.md 따라 토큰/폰트/색/다크 제거.
-4. **PR1 검토** (4–13단계) — flutter analyze, flutter test, golden baseline 생성, 사용자 시각 QA.
-5. **PR1 커밋·PR** — `feat: design system foundation` (develop 대상).
-6. **PR2 구현** — 05-pr2-migration.md 따라 화면별 인라인→토큰 전환.
+3. ~~**PR1 구현** — 04-pr1-foundation.md 따라 토큰/폰트/색/다크 제거.~~ ✅ done (PR #17)
+4. ~~**PR1 검토** (4–13단계) — flutter analyze, flutter test, golden baseline 생성, 사용자 시각 QA.~~ ✅ done
+5. ~~**PR1 커밋·PR** — `feat: design system foundation` (develop 대상).~~ ✅ done (PR #17 open)
+6. **PR2 구현** — 05-pr2-migration.md 따라 화면별 인라인→토큰 전환. ← 현재 단계
 7. **PR2 검토 + 커밋·PR** — golden 회귀 자동 감지, 수동 QA.
 
 ## Document Map
