@@ -59,7 +59,7 @@ class NoteSearchSection extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 8,
+                  horizontal: AppDimensions.spacingSm,
                   vertical: 6,
                 ),
                 hintText: _hasActiveFilters ? 'Search (filters active)' : 'Search notes',

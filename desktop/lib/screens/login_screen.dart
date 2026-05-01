@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../auth/github_oauth_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_shadows.dart';
 
 class LoginScreen extends StatefulWidget {
   final Future<void> Function() onGitHubLogin;
@@ -98,13 +99,7 @@ class _LoginScreenState extends State<LoginScreen>
         color: c.surface,
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
         border: Border.all(color: c.border),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x20000000),
-            blurRadius: 40,
-            offset: Offset(0, 16),
-          ),
-        ],
+        boxShadow: AppShadows.card,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

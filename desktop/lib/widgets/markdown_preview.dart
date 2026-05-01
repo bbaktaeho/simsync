@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
 
 /// Renders markdown content with theme-aware styling.
 class MarkdownPreviewWidget extends StatelessWidget {
@@ -84,12 +85,12 @@ class MarkdownPreviewWidget extends StatelessWidget {
         color: c.textSecondary,
         height: 1.4,
       ),
-      h1Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h2Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h3Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h4Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h5Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h6Padding: const EdgeInsets.only(top: 16, bottom: 8),
+      h1Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h2Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h3Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h4Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
+      h5Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
+      h6Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
       p: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.textPrimary,
@@ -111,10 +112,10 @@ class MarkdownPreviewWidget extends StatelessWidget {
       ),
       codeblockDecoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
         border: Border.all(color: c.border),
       ),
-      codeblockPadding: const EdgeInsets.all(12),
+      codeblockPadding: const EdgeInsets.all(AppDimensions.spacingMd),
       blockquote: GoogleFonts.inter(
         fontSize: scaled(14),
         color: c.textSecondary,
@@ -124,7 +125,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
       blockquoteDecoration: BoxDecoration(
         border: Border(left: BorderSide(color: c.accent, width: 3)),
       ),
-      blockquotePadding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+      blockquotePadding: const EdgeInsets.only(left: AppDimensions.spacingLg, top: AppDimensions.spacingXs, bottom: AppDimensions.spacingXs),
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.border)),
       ),
@@ -181,10 +182,10 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
       width: double.infinity,
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
         border: Border.all(color: c.border),
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
       child: HighlightView(
         textContent.endsWith('\n')
             ? textContent.substring(0, textContent.length - 1)
