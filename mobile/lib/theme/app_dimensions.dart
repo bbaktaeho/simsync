@@ -1,22 +1,32 @@
 /// Layout constants for consistent spacing and sizing.
 abstract final class AppDimensions {
-  // ── Spacing ──
+  // ── Spacing (DESIGN.md: 8px base scale) ──
   static const double spacingXs = 4.0;
   static const double spacingSm = 8.0;
   static const double spacingMd = 12.0;
   static const double spacingLg = 16.0;
   static const double spacingXl = 24.0;
   static const double spacingXxl = 32.0;
+  static const double spacingXxxl = 48.0;
+  static const double spacingHero = 48.0; // section vertical rhythm (mobile)
 
-  // ── Layout ──
-  static const double borderRadius = 8.0;
-  static const double borderRadiusSm = 4.0;
-  static const double borderRadiusLg = 12.0;
+  // ── Border Radius (DESIGN.md: micro 4 / subtle 5 / standard 8 / comfortable 12 / large 16 / pill) ──
+  static const double radiusMicro = 4.0;
+  static const double radiusSubtle = 5.0;
+  static const double radiusStandard = 8.0;
+  static const double radiusComfortable = 12.0;
+  static const double radiusLarge = 16.0;
+  static const double radiusPill = 9999.0;
+
+  // Deprecated aliases — remove in PR2 once all usages migrated.
+  static const double borderRadius = radiusStandard;
+  static const double borderRadiusSm = radiusMicro;
+  static const double borderRadiusLg = radiusComfortable;
+  static const double cardBorderRadius = 10.0; // mobile-specific legacy
 
   // ── Mobile-specific ──
   static const double bottomNavHeight = 56.0;
   static const double toolbarHeight = 48.0;
-  static const double cardBorderRadius = 10.0;
 
   // ── Animation ──
   static const Duration animFast = Duration(milliseconds: 200);
