@@ -64,43 +64,28 @@ Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 �
 
 ## Project Structure
 
-> 이 구조는 개발 진행에 따라 변경될 수 있다. 변경 시 이 섹션을 갱신한다.
+> 정적 트리는 두지 않는다. stale 되기 쉬워 항상 CLI로 실제 구조를 확인한다.
 
+```bash
+# 전체 개요 (tree 우선, 없으면 find fallback)
+tree -L 2 -a -I '.git|build|.dart_tool|node_modules' . \
+  || find . -maxdepth 2 -not -path '*/.*' -not -path '*/build/*'
+
+tree -L 3 desktop/lib              # Flutter 모듈 단위
+ls .agent/                          # 문서 카테고리
 ```
-simsync/
-├── AGENTS.md          # Agent instruction (single source of truth)
-├── .agent/            # Agent 가이드 및 작업 문서
-│   ├── guide.md       # 이 문서
-│   ├── workflow.md    # 작업 워크플로우
-│   ├── plan/          # 기획 및 설계 문서
-│   ├── develop/       # 개발 일지
-│   ├── proposal/      # 제품 제안서
-│   └── rules/         # rules.md (AGENTS.md symlink)
-├── desktop/           # Flutter client (macOS/Windows/Linux)
-│   ├── lib/
-│   │   ├── auth/      # GitHub OAuth, session 관리
-│   │   ├── models/    # Domain models
-│   │   ├── screens/   # UI screens
-│   │   ├── search/    # Full-text search
-│   │   ├── services/  # Business logic
-│   │   ├── settings/  # App settings, shortcuts
-│   │   ├── storage/   # GitHub/local storage abstraction
-│   │   ├── theme/     # Theme and design tokens
-│   │   └── widgets/   # Shared widgets
-│   └── test/
-└── mobile/            # Flutter client (Android/iOS)
-    ├── lib/
-    │   ├── auth/      # GitHub OAuth (Custom URL Scheme)
-    │   ├── models/    # Domain models (desktop과 동일)
-    │   ├── screens/   # Mobile UI (Bottom Navigation)
-    │   ├── search/    # Full-text search (desktop과 동일)
-    │   ├── services/  # Business logic (desktop과 동일)
-    │   ├── settings/  # App settings (shortcuts 제외)
-    │   ├── storage/   # GitHub/local storage (desktop과 동일)
-    │   ├── theme/     # Theme (mobile dimensions)
-    │   └── widgets/   # Mobile widgets
-    └── test/
-```
+
+`tree`가 없으면 `brew install tree` (macOS) 또는 `find` 사용.
+
+### Top-level layout (개념)
+
+- `AGENTS.md` — agent instruction single source of truth (`CLAUDE.md`, `GEMINI.md`가 symlink)
+- `DESIGN.md` — UI/UX 디자인 시스템 (Notion-inspired)
+- `.agent/` — agent 가이드와 작업 문서 (`guide.md`, `workflow.md`, `plan/`, `develop/`, `proposal/`, `rules/`)
+- `desktop/` — Flutter client (macOS/Windows/Linux)
+- `mobile/` — Flutter client (Android/iOS)
+
+데스크톱과 모바일은 별도 Flutter 프로젝트이며 `lib/` 하위에 동일 모듈 구조(`auth/`, `models/`, `screens/`, `search/`, `services/`, `settings/`, `storage/`, `theme/`, `widgets/`)를 가진다. 비즈니스 로직은 복제, UI는 플랫폼별로 작성한다.
 
 ## Domain Entities
 
