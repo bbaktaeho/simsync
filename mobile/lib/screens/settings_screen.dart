@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
@@ -7,6 +6,7 @@ import '../storage/github/repo_cache.dart';
 import '../storage/sync_engine.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class SettingsScreen extends StatelessWidget {
   final AppSettingsController settingsController;
@@ -39,11 +39,7 @@ class SettingsScreen extends StatelessWidget {
         centerTitle: true,
         title: Text(
           '설정',
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: c.textPrimary,
-          ),
+          style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
         ),
       ),
       body: ListenableBuilder(
@@ -61,6 +57,7 @@ class SettingsScreen extends StatelessWidget {
                 title: 'Storage',
                 children: [
                   _buildInfoTile(
+                    context,
                     c,
                     icon: Icons.folder_outlined,
                     title: '로컬 경로',
@@ -70,6 +67,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   _buildDivider(c),
                   _buildInfoTile(
+                    context,
                     c,
                     icon: Icons.cloud_outlined,
                     title: '동기화 리포지토리',
@@ -86,6 +84,7 @@ class SettingsScreen extends StatelessWidget {
                 title: 'Editor & Preview',
                 children: [
                   _buildStepperTile(
+                    context,
                     c,
                     icon: Icons.text_fields_rounded,
                     title: '콘텐츠 배율',
@@ -103,6 +102,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   _buildDivider(c),
                   _buildStepperTile(
+                    context,
                     c,
                     icon: Icons.format_line_spacing_rounded,
                     title: '검색 컨텍스트 줄 수',
@@ -129,6 +129,7 @@ class SettingsScreen extends StatelessWidget {
                 title: 'Sync',
                 children: [
                   _buildSwitchTile(
+                    context,
                     c,
                     icon: Icons.sync_rounded,
                     title: '자동 동기화',
@@ -140,6 +141,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                   _buildDivider(c),
                   _buildStepperTile(
+                    context,
                     c,
                     icon: Icons.timer_outlined,
                     title: '동기화 간격 (초)',
@@ -177,9 +179,9 @@ class SettingsScreen extends StatelessWidget {
                 c,
                 title: 'Account',
                 children: [
-                  _buildAccountTile(c),
+                  _buildAccountTile(context, c),
                   _buildDivider(c),
-                  _buildLogoutTile(c),
+                  _buildLogoutTile(context, c),
                 ],
               ),
               const SizedBox(height: AppDimensions.spacingLg),
@@ -189,6 +191,7 @@ class SettingsScreen extends StatelessWidget {
                 title: 'App',
                 children: [
                   _buildInfoTile(
+                    context,
                     c,
                     icon: Icons.info_outline_rounded,
                     title: '버전',
@@ -219,9 +222,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           child: Text(
             title.toUpperCase(),
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+            style: Theme.of(context).textTheme.labelMedium!.copyWith(
               color: c.textMuted,
               letterSpacing: 0.5,
             ),
@@ -254,6 +255,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildInfoTile(
+    BuildContext context,
     AppColorsExtension c, {
     required IconData icon,
     required String title,
@@ -274,16 +276,16 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: GoogleFonts.inter(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                  style: Theme.of(context).textTheme.titleSmall!.copyWith(
                     color: c.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: TextStyle(fontSize: 12, color: c.textMuted),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    color: c.textMuted,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -296,6 +298,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildStepperTile(
+    BuildContext context,
     AppColorsExtension c, {
     required IconData icon,
     required String title,
@@ -315,9 +318,7 @@ class SettingsScreen extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+              style: Theme.of(context).textTheme.titleSmall!.copyWith(
                 color: c.textPrimary,
               ),
             ),
@@ -342,9 +343,7 @@ class SettingsScreen extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Text(
                     value,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                    style: AppTextStyles.captionSemibold.copyWith(
                       color: c.textPrimary,
                     ),
                   ),
@@ -363,6 +362,7 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Widget _buildSwitchTile(
+    BuildContext context,
     AppColorsExtension c, {
     required IconData icon,
     required String title,
@@ -381,9 +381,7 @@ class SettingsScreen extends StatelessWidget {
           Expanded(
             child: Text(
               title,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+              style: Theme.of(context).textTheme.titleSmall!.copyWith(
                 color: c.textPrimary,
               ),
             ),
@@ -399,7 +397,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAccountTile(AppColorsExtension c) {
+  Widget _buildAccountTile(BuildContext context, AppColorsExtension c) {
     final url = avatarUrl?.trim();
     final hasAvatar = url != null && url.isNotEmpty;
 
@@ -425,15 +423,15 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   activeRepo?.owner ?? 'Unknown',
-                  style: GoogleFonts.inter(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
                     color: c.textPrimary,
                   ),
                 ),
                 Text(
                   'GitHub',
-                  style: TextStyle(fontSize: 12, color: c.textMuted),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    color: c.textMuted,
+                  ),
                 ),
               ],
             ),
@@ -443,7 +441,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutTile(AppColorsExtension c) {
+  Widget _buildLogoutTile(BuildContext context, AppColorsExtension c) {
     return GestureDetector(
       onTap: onLogout,
       child: Padding(
@@ -457,9 +455,7 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(width: AppDimensions.spacingMd),
             Text(
               '로그아웃',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+              style: Theme.of(context).textTheme.titleSmall!.copyWith(
                 color: c.error,
               ),
             ),

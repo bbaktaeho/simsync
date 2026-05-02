@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import 'markdown_preview.dart';
 
 /// Auto-save debounce duration.
@@ -167,16 +167,12 @@ class _EditorPanelState extends State<EditorPanel> {
           if (hasDate) ...[
             Text(
               dateLabel!,
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.textSecondary,
-              ),
+              style: Theme.of(context).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textSecondary),
             ),
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'No notes for this date',
-              style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
+              style: AppTextStyles.caption.copyWith(color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingXl),
             Row(
@@ -201,12 +197,12 @@ class _EditorPanelState extends State<EditorPanel> {
           ] else ...[
             Text(
               'Select a note to start editing',
-              style: GoogleFonts.inter(fontSize: 15, color: c.textMuted),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w400, color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'or create a new one from the sidebar',
-              style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
+              style: AppTextStyles.caption.copyWith(color: c.textMuted),
             ),
           ],
         ],
@@ -226,18 +222,10 @@ class _EditorPanelState extends State<EditorPanel> {
               controller: _titleController,
               onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
               readOnly: widget.isReadOnly,
-              style: GoogleFonts.inter(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary,
-              ),
+              style: Theme.of(context).textTheme.labelLarge!.copyWith(color: c.textPrimary),
               decoration: InputDecoration(
                 hintText: 'Untitled',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: c.textMuted,
-                ),
+                hintStyle: Theme.of(context).textTheme.labelLarge!.copyWith(color: c.textMuted),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -288,16 +276,10 @@ class _EditorPanelState extends State<EditorPanel> {
                   child: TextField(
                     controller: _tagController,
                     readOnly: widget.isReadOnly,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: c.textSecondary,
-                    ),
+                    style: AppTextStyles.micro.copyWith(color: c.textSecondary),
                     decoration: InputDecoration(
                       hintText: '+ tag',
-                      hintStyle: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: c.textMuted,
-                      ),
+                      hintStyle: AppTextStyles.micro.copyWith(color: c.textMuted),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
                       focusedBorder: InputBorder.none,
@@ -318,7 +300,7 @@ class _EditorPanelState extends State<EditorPanel> {
               const SizedBox(width: AppDimensions.spacingXs),
               Text(
                 dateStr,
-                style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+                style: AppTextStyles.micro.copyWith(color: c.textMuted),
               ),
             ],
           ),
@@ -339,17 +321,10 @@ class _EditorPanelState extends State<EditorPanel> {
           maxLines: null,
           expands: true,
           textAlignVertical: TextAlignVertical.top,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 14 * widget.contentScale,
-            color: c.textPrimary,
-            height: 1.7,
-          ),
+          style: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textPrimary),
           decoration: InputDecoration(
             hintText: 'Start writing in markdown...',
-            hintStyle: GoogleFonts.jetBrainsMono(
-              fontSize: 14 * widget.contentScale,
-              color: c.textMuted,
-            ),
+            hintStyle: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textMuted),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
@@ -421,7 +396,7 @@ class _EditorPanelState extends State<EditorPanel> {
               child: Text(
                 widget.readOnlyReason!,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+                style: AppTextStyles.micro.copyWith(color: c.textMuted),
               ),
             ),
             const SizedBox(width: AppDimensions.spacingMd),
@@ -435,13 +410,13 @@ class _EditorPanelState extends State<EditorPanel> {
             const SizedBox(width: AppDimensions.spacingXs),
             Text(
               savedText,
-              style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+              style: AppTextStyles.micro.copyWith(color: c.textMuted),
             ),
           ],
           const Spacer(),
           Text(
             'Markdown ${(widget.contentScale * 100).round()}%',
-            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -491,11 +466,7 @@ class _ToggleButtonState extends State<_ToggleButton> {
               const SizedBox(width: 4),
               Text(
                 widget.label,
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: c.textSecondary,
-                ),
+                style: AppTextStyles.microMedium.copyWith(color: c.textSecondary),
               ),
             ],
           ),
@@ -558,11 +529,7 @@ class _CreateNoteButtonState extends State<_CreateNoteButton> {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 widget.label,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: _isHovered ? accentColor : c.textSecondary,
-                ),
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500, color: _isHovered ? accentColor : c.textSecondary),
               ),
             ],
           ),
@@ -594,11 +561,7 @@ class _EditorTagChip extends StatelessWidget {
         children: [
           Text(
             label,
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w500,
-              color: c.accent,
-            ),
+            style: AppTextStyles.microMedium.copyWith(color: c.accent),
           ),
           if (onRemove != null)
             GestureDetector(

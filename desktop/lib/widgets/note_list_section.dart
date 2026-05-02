@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class NoteListSection extends StatelessWidget {
   final List<Note> notes;
@@ -59,12 +59,7 @@ class NoteListSection extends StatelessWidget {
         children: [
           Text(
             'Notes',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: c.textSecondary,
-              letterSpacing: 0.5,
-            ),
+            style: AppTextStyles.microSemibold.copyWith(color: c.textSecondary, letterSpacing: 0.5),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
           Container(
@@ -75,11 +70,7 @@ class NoteListSection extends StatelessWidget {
             ),
             child: Text(
               '$totalCount',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
             ),
           ),
           const Spacer(),
@@ -103,12 +94,12 @@ class NoteListSection extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'No notes yet',
-            style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Select a date and create one',
-            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -148,7 +139,7 @@ class NoteListSection extends StatelessWidget {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             '${currentPage + 1} / $totalPages',
-            style: GoogleFonts.inter(fontSize: 11, color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
           _PaginationButton(
@@ -243,11 +234,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                   children: [
                     Text(
                       widget.note.title.isEmpty ? 'Untitled' : widget.note.title,
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: widget.isSelected ? c.textPrimary : c.textSecondary,
-                      ),
+                      style: AppTextStyles.captionMedium.copyWith(color: widget.isSelected ? c.textPrimary : c.textSecondary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -261,7 +248,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                         ],
                         Text(
                           dateStr,
-                          style: GoogleFonts.inter(fontSize: 10, color: c.textMuted),
+                          style: AppTextStyles.nano.copyWith(color: c.textMuted),
                         ),
                       ],
                     ),
@@ -299,7 +286,7 @@ class _NoteListItemState extends State<_NoteListItem> {
             children: [
               Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
               const SizedBox(width: 6),
-              Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
+              Text('삭제', style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.error)),
             ],
           ),
         ),
@@ -322,11 +309,7 @@ class _NoteListItemState extends State<_NoteListItem> {
             padding: const EdgeInsets.only(left: 2),
             child: Text(
               '+$overflow',
-              style: GoogleFonts.inter(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.attoBold.copyWith(color: c.textMuted),
             ),
           ),
       ],
@@ -337,11 +320,7 @@ class _NoteListItemState extends State<_NoteListItem> {
     return Tooltip(
       message: tags.join(', '),
       waitDuration: const Duration(milliseconds: 300),
-      textStyle: GoogleFonts.inter(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: c.textPrimary,
-      ),
+      textStyle: AppTextStyles.microMedium.copyWith(color: c.textPrimary),
       decoration: BoxDecoration(
         color: c.surfaceHover,
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
@@ -370,11 +349,7 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-          color: c.accent,
-        ),
+        style: AppTextStyles.atto.copyWith(fontWeight: FontWeight.w500, color: c.accent),
       ),
     );
   }
@@ -409,8 +384,7 @@ class _AddNoteButton extends StatelessWidget {
               Icon(Icons.cloud_outlined, size: 14, color: c.accent),
               const SizedBox(width: 8),
               Text('동기화 노트',
-                  style: GoogleFonts.inter(
-                      fontSize: 12, color: c.textPrimary)),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
             ],
           ),
         ),
@@ -423,8 +397,7 @@ class _AddNoteButton extends StatelessWidget {
                     size: 14, color: c.localAccent),
                 const SizedBox(width: 8),
                 Text('로컬 노트',
-                    style: GoogleFonts.inter(
-                        fontSize: 12, color: c.textPrimary)),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
               ],
             ),
           ),

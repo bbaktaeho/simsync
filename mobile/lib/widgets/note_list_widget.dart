@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 /// Displays a list of note cards with swipe-to-delete and empty state.
 class NoteListWidget extends StatelessWidget {
@@ -64,11 +64,7 @@ class NoteListWidget extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '노트가 없습니다',
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w500,
-              color: c.textMuted,
-            ),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -103,40 +99,28 @@ class NoteListWidget extends StatelessWidget {
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.inter(
-            fontSize: 17,
+          style: AppTextStyles.noteTitle.copyWith(
             fontWeight: FontWeight.w700,
             color: c.textPrimary,
           ),
         ),
         content: Text(
           '"${note.title.isEmpty ? "Untitled" : note.title}" 노트를 삭제하시겠습니까?',
-          style: GoogleFonts.inter(
-            fontSize: 14,
-            color: c.textSecondary,
-          ),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: c.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
             child: Text(
               '취소',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: c.textSecondary,
-              ),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(color: c.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             child: Text(
               '삭제',
-              style: GoogleFonts.inter(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: c.error,
-              ),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(color: c.error),
             ),
           ),
         ],
@@ -183,8 +167,7 @@ class _NoteCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
+                    style: AppTextStyles.noteTitle.copyWith(
                       fontWeight: FontWeight.w700,
                       color: c.textPrimary,
                     ),
@@ -205,8 +188,7 @@ class _NoteCard extends StatelessWidget {
                     const EdgeInsets.only(bottom: AppDimensions.spacingSm),
                 child: Text(
                   note.content.replaceAll('\n', ' '),
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
+                  style: AppTextStyles.caption.copyWith(
                     color: c.textSecondary,
                     height: 1.5,
                   ),
@@ -220,10 +202,7 @@ class _NoteCard extends StatelessWidget {
               children: [
                 Text(
                   DateFormat('yyyy-MM-dd HH:mm').format(note.updatedAt),
-                  style: GoogleFonts.inter(
-                    fontSize: 11,
-                    color: c.textMuted,
-                  ),
+                  style: AppTextStyles.micro.copyWith(color: c.textMuted),
                 ),
                 const Spacer(),
                 if (note.tags.isNotEmpty) _buildTags(c, note.tags),
@@ -248,11 +227,7 @@ class _NoteCard extends StatelessWidget {
             padding: const EdgeInsets.only(left: 4),
             child: Text(
               '+$overflow',
-              style: GoogleFonts.inter(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
             ),
           ),
       ],
@@ -289,11 +264,7 @@ class _StorageBadge extends StatelessWidget {
           const SizedBox(width: 3),
           Text(
             isLocal ? 'local' : 'synced',
-            style: GoogleFonts.inter(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
+            style: AppTextStyles.nanoSemibold.copyWith(color: color),
           ),
         ],
       ),
@@ -321,11 +292,7 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          color: c.accent,
-        ),
+        style: AppTextStyles.nanoMedium.copyWith(color: c.accent),
       ),
     );
   }

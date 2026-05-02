@@ -1,8 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+
+import '../theme/app_text_styles.dart';
 
 import '../models/note.dart';
 import '../settings/app_settings_controller.dart';
@@ -165,15 +166,15 @@ class _EditorScreenState extends State<EditorScreen>
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.inter(
+          style: Theme.of(context).textTheme.labelLarge!.copyWith(
             color: c.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
           ),
         ),
         content: Text(
           "'${_note.title.isEmpty ? 'Untitled' : _note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-          style: TextStyle(color: c.textSecondary, fontSize: 14),
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+            color: c.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -282,9 +283,7 @@ class _EditorScreenState extends State<EditorScreen>
       ),
       title: Text(
         _dateFmt.format(_note.noteDate),
-        style: GoogleFonts.inter(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
+        style: Theme.of(context).textTheme.titleMedium!.copyWith(
           color: c.textPrimary,
         ),
       ),
@@ -310,8 +309,7 @@ class _EditorScreenState extends State<EditorScreen>
                       const SizedBox(width: 4),
                       Text(
                         '저장 중...',
-                        style: GoogleFonts.inter(
-                          fontSize: 12,
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
                           color: c.textMuted,
                         ),
                       ),
@@ -319,7 +317,9 @@ class _EditorScreenState extends State<EditorScreen>
                   )
                 : Text(
                     _isDirty ? '' : '저장됨',
-                    style: GoogleFonts.inter(fontSize: 12, color: c.success),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: c.success,
+                    ),
                   ),
           ),
         ),
@@ -345,7 +345,9 @@ class _EditorScreenState extends State<EditorScreen>
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     '삭제',
-                    style: GoogleFonts.inter(fontSize: 14, color: c.error),
+                    style: Theme.of(ctx).textTheme.bodySmall!.copyWith(
+                      color: c.error,
+                    ),
                   ),
                 ],
               ),
@@ -365,14 +367,8 @@ class _EditorScreenState extends State<EditorScreen>
         unselectedLabelColor: c.textMuted,
         indicatorColor: c.accent,
         indicatorWeight: 2,
-        labelStyle: GoogleFonts.inter(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        unselectedLabelStyle: GoogleFonts.inter(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
+        labelStyle: Theme.of(context).textTheme.labelLarge,
+        unselectedLabelStyle: Theme.of(context).textTheme.titleSmall,
         tabs: const [
           Tab(text: 'Editor'),
           Tab(text: 'Preview'),
@@ -394,17 +390,15 @@ class _EditorScreenState extends State<EditorScreen>
                 TextField(
                   controller: _titleController,
                   onChanged: _onTitleChanged,
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
+                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
                     fontWeight: FontWeight.w700,
                     color: c.textPrimary,
                   ),
                   decoration: InputDecoration(
                     hintText: '제목',
-                    hintStyle: TextStyle(
-                      color: c.textMuted,
-                      fontSize: 20,
+                    hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
                       fontWeight: FontWeight.w700,
+                      color: c.textMuted,
                     ),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
@@ -422,14 +416,12 @@ class _EditorScreenState extends State<EditorScreen>
                   onChanged: _onContentChanged,
                   maxLines: null,
                   keyboardType: TextInputType.multiline,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 14,
-                    color: c.textPrimary,
-                    height: 1.6,
-                  ),
+                  style: AppTextStyles.codeMono(size: 14, height: 1.6).copyWith(color: c.textPrimary),
                   decoration: InputDecoration(
                     hintText: '마크다운으로 작성하세요...',
-                    hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
+                    hintStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      color: c.textMuted,
+                    ),
                     border: InputBorder.none,
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
@@ -552,22 +544,22 @@ class _EditorScreenState extends State<EditorScreen>
         children: [
           Text(
             '태그',
-            style: GoogleFonts.inter(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+            style: Theme.of(context).textTheme.labelLarge!.copyWith(
               color: c.textPrimary,
             ),
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             '쉼표(,)로 태그를 구분하세요',
-            style: TextStyle(fontSize: 13, color: c.textMuted),
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingMd),
           TextField(
             controller: _tagsController,
             onChanged: _onTagsChanged,
-            style: GoogleFonts.inter(fontSize: 14, color: c.textPrimary),
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              color: c.textPrimary,
+            ),
             decoration: InputDecoration(
               hintText: 'work, daily, idea',
               hintStyle: TextStyle(color: c.textMuted),
@@ -594,9 +586,7 @@ class _EditorScreenState extends State<EditorScreen>
                   ),
                   child: Text(
                     '#$tag',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                    style: AppTextStyles.captionMedium.copyWith(
                       color: c.accent,
                     ),
                   ),
@@ -644,8 +634,7 @@ class _ToolbarButton extends StatelessWidget {
             ? Icon(icon, size: 18, color: colors.textSecondary)
             : Text(
                 label ?? '',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(
                   fontWeight: fontWeight ?? FontWeight.w600,
                   fontStyle: fontStyle,
                   color: colors.textSecondary,

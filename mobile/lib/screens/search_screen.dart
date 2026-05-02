@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
@@ -12,6 +11,7 @@ import '../settings/app_settings_controller.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import 'editor_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -216,10 +216,16 @@ class _SearchScreenState extends State<SearchScreen> {
               controller: _searchController,
               focusNode: _searchFocusNode,
               onChanged: _onSearchTextChanged,
-              style: GoogleFonts.inter(fontSize: 15, color: c.textPrimary),
+              style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.w400,
+                    color: c.textPrimary,
+                  ),
               decoration: InputDecoration(
                 hintText: '노트 검색...',
-                hintStyle: TextStyle(color: c.textMuted, fontSize: 15),
+                hintStyle: Theme.of(context).textTheme.titleMedium!.copyWith(
+                      fontWeight: FontWeight.w400,
+                      color: c.textMuted,
+                    ),
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   color: c.textMuted,
@@ -360,11 +366,10 @@ class _SearchScreenState extends State<SearchScreen> {
         children: [
           Text(
             label,
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: c.accent,
-            ),
+            style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: c.accent,
+                ),
           ),
           const SizedBox(width: AppDimensions.spacingXs),
           GestureDetector(
@@ -386,11 +391,7 @@ class _SearchScreenState extends State<SearchScreen> {
         alignment: Alignment.centerLeft,
         child: Text(
           '${_results.length}개 결과',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: c.textMuted,
-          ),
+          style: AppTextStyles.captionMedium.copyWith(color: c.textMuted),
         ),
       ),
     );
@@ -408,7 +409,7 @@ class _SearchScreenState extends State<SearchScreen> {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             '검색어를 입력하세요',
-            style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -425,7 +426,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const SizedBox(height: AppDimensions.spacingMd),
             Text(
               '검색 결과가 없습니다',
-              style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.textMuted),
             ),
           ],
         ),
@@ -465,11 +466,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.inter(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: c.textPrimary,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -490,9 +487,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
                   child: Text(
                     isLocal ? 'local' : 'synced',
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                    style: AppTextStyles.nanoSemibold.copyWith(
                       color: isLocal ? c.localAccent : c.accent,
                     ),
                   ),
@@ -502,7 +497,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const SizedBox(height: 2),
             Text(
               _dateFmt.format(note.noteDate),
-              style: TextStyle(fontSize: 12, color: c.textMuted),
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingSm),
             // Context lines with highlight
@@ -526,11 +521,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
                     child: Text(
                       '#$tag',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: c.accent,
-                      ),
+                      style: AppTextStyles.microMedium.copyWith(color: c.accent),
                     ),
                   );
                 }).toList(),
@@ -544,13 +535,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildContextLines(AppColorsExtension c, SearchResult result) {
     final lines = <InlineSpan>[];
+    final baseStyle = Theme.of(context).textTheme.labelSmall!.copyWith(height: 1.5);
 
     // Context before
     for (final line in result.contextBefore) {
       lines.add(
         TextSpan(
           text: '$line\n',
-          style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
+          style: baseStyle.copyWith(color: c.textMuted),
         ),
       );
     }
@@ -566,29 +558,19 @@ class _SearchScreenState extends State<SearchScreen> {
           children: [
             TextSpan(
               text: before,
-              style: TextStyle(
-                color: c.textSecondary,
-                fontSize: 12,
-                height: 1.5,
-              ),
+              style: baseStyle.copyWith(color: c.textSecondary),
             ),
             TextSpan(
               text: matched,
-              style: TextStyle(
+              style: baseStyle.copyWith(
                 color: c.accent,
-                fontSize: 12,
-                height: 1.5,
                 fontWeight: FontWeight.w700,
                 backgroundColor: c.accentSubtle,
               ),
             ),
             TextSpan(
               text: '$after\n',
-              style: TextStyle(
-                color: c.textSecondary,
-                fontSize: 12,
-                height: 1.5,
-              ),
+              style: baseStyle.copyWith(color: c.textSecondary),
             ),
           ],
         ),
@@ -597,7 +579,7 @@ class _SearchScreenState extends State<SearchScreen> {
       lines.add(
         TextSpan(
           text: '${match.line}\n',
-          style: TextStyle(color: c.textSecondary, fontSize: 12, height: 1.5),
+          style: baseStyle.copyWith(color: c.textSecondary),
         ),
       );
     }
@@ -607,7 +589,7 @@ class _SearchScreenState extends State<SearchScreen> {
       lines.add(
         TextSpan(
           text: '$line\n',
-          style: TextStyle(color: c.textMuted, fontSize: 12, height: 1.5),
+          style: baseStyle.copyWith(color: c.textMuted),
         ),
       );
     }
@@ -761,27 +743,19 @@ class _FilterSheetState extends State<_FilterSheet> {
               const SizedBox(height: AppDimensions.spacingLg),
               Text(
                 '필터',
-                style: GoogleFonts.inter(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
+                style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
               ),
               const SizedBox(height: AppDimensions.spacingLg),
 
               // Tag input
               Text(
                 '태그',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: c.textSecondary,
-                ),
+                style: AppTextStyles.captionSemibold.copyWith(color: c.textSecondary),
               ),
               const SizedBox(height: AppDimensions.spacingSm),
               TextField(
                 controller: _tagController,
-                style: GoogleFonts.inter(fontSize: 14, color: c.textPrimary),
+                style: Theme.of(context).textTheme.bodySmall!.copyWith(color: c.textPrimary),
                 decoration: InputDecoration(
                   hintText: '태그를 입력하세요',
                   hintStyle: TextStyle(color: c.textMuted),
@@ -797,11 +771,7 @@ class _FilterSheetState extends State<_FilterSheet> {
               // Date range
               Text(
                 '날짜 범위',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: c.textSecondary,
-                ),
+                style: AppTextStyles.captionSemibold.copyWith(color: c.textSecondary),
               ),
               const SizedBox(height: AppDimensions.spacingSm),
               Row(
@@ -818,7 +788,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         _startDate != null
                             ? dateFmt.format(_startDate!)
                             : '시작일',
-                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                        style: AppTextStyles.caption.copyWith(color: c.textSecondary),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: c.border),
@@ -849,7 +819,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                       ),
                       label: Text(
                         _endDate != null ? dateFmt.format(_endDate!) : '종료일',
-                        style: TextStyle(color: c.textSecondary, fontSize: 13),
+                        style: AppTextStyles.caption.copyWith(color: c.textSecondary),
                       ),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: c.border),
@@ -910,11 +880,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                       ),
                       child: Text(
                         '초기화',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: c.textSecondary,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: c.textSecondary,
+                            ),
                       ),
                     ),
                   ),
@@ -936,10 +905,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                       ),
                       child: Text(
                         '적용',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
+                        style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                              fontWeight: FontWeight.w600,
+                              color: c.textOnAccent,
+                            ),
                       ),
                     ),
                   ),
@@ -978,11 +947,10 @@ class _QuickDateButton extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            color: colors.textSecondary,
-          ),
+          style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                fontWeight: FontWeight.w500,
+                color: colors.textSecondary,
+              ),
         ),
       ),
     );

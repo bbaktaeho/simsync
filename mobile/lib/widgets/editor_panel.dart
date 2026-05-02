@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 /// Editor content area for the mobile editor screen.
 ///
@@ -46,18 +46,10 @@ class _EditorPanelState extends State<EditorPanel> {
           child: TextField(
             controller: widget.titleController,
             onChanged: (_) => _handleChange(),
-            style: GoogleFonts.inter(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: c.textPrimary),
             decoration: InputDecoration(
               hintText: 'Untitled',
-              hintStyle: GoogleFonts.inter(
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                color: c.textMuted,
-              ),
+              hintStyle: Theme.of(context).textTheme.headlineSmall?.copyWith(color: c.textMuted),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
@@ -82,17 +74,10 @@ class _EditorPanelState extends State<EditorPanel> {
                 maxLines: null,
                 expands: true,
                 textAlignVertical: TextAlignVertical.top,
-                style: GoogleFonts.jetBrainsMono(
-                  fontSize: 14,
-                  color: c.textPrimary,
-                  height: 1.7,
-                ),
+                style: AppTextStyles.codeMonoBody(1.0).copyWith(color: c.textPrimary),
                 decoration: InputDecoration(
                   hintText: 'Start writing in markdown...',
-                  hintStyle: GoogleFonts.jetBrainsMono(
-                    fontSize: 14,
-                    color: c.textMuted,
-                  ),
+                  hintStyle: AppTextStyles.codeMono(size: 14).copyWith(color: c.textMuted),
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,

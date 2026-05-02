@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -52,10 +51,9 @@ class NoteSearchSection extends StatelessWidget {
               controller: effectiveController,
               focusNode: focusNode,
               onChanged: onQueryChanged,
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: c.textPrimary,
-              ),
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                    color: c.textPrimary,
+                  ),
               decoration: InputDecoration(
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
@@ -63,10 +61,9 @@ class NoteSearchSection extends StatelessWidget {
                   vertical: 6,
                 ),
                 hintText: _hasActiveFilters ? 'Search (filters active)' : 'Search notes',
-                hintStyle: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: c.textMuted,
-                ),
+                hintStyle: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: c.textMuted,
+                    ),
                 prefixIcon: Icon(
                   Icons.search_rounded,
                   size: 16,

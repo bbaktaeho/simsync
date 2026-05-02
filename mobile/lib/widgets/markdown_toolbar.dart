@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
+import '../theme/app_text_styles.dart';
 
 /// Keyboard accessory toolbar that inserts markdown syntax into a
 /// [TextEditingController].
@@ -183,19 +183,19 @@ class MarkdownToolbar extends StatelessWidget {
 
             // Group 3: Block elements.
             _ToolbarButton(
-              label: '\u25CF', // bullet (●)
+              label: '●', // bullet (●)
               onTap: () => _insertAtLineStart('- '),
             ),
             _ToolbarButton(
-              label: '\u2611', // checkbox (☑)
+              label: '☑', // checkbox (☑)
               onTap: () => _insertAtLineStart('- [ ] '),
             ),
             _ToolbarButton(
-              label: '\u275D', // quote (❝)
+              label: '❝', // quote (❝)
               onTap: () => _insertAtLineStart('> '),
             ),
             _ToolbarButton(
-              label: '\uD83D\uDD17', // link (🔗)
+              label: '🔗', // link (🔗)
               onTap: _insertLink,
             ),
           ],
@@ -243,14 +243,12 @@ class _ToolbarButton extends StatelessWidget {
 
     TextStyle textStyle;
     if (isMonospace) {
-      textStyle = GoogleFonts.jetBrainsMono(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: c.textPrimary,
-      );
+      textStyle = AppTextStyles.codeMono(
+        size: 12,
+        weight: FontWeight.w500,
+      ).copyWith(color: c.textPrimary);
     } else {
-      textStyle = GoogleFonts.inter(
-        fontSize: 13,
+      textStyle = AppTextStyles.captionMedium.copyWith(
         fontWeight: isExtraBold
             ? FontWeight.w900
             : isBold

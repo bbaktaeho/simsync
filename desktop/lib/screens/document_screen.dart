@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
-
 import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
@@ -16,6 +14,7 @@ import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/note_list_section.dart';
@@ -512,15 +511,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
           actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingSm, AppDimensions.spacingXs, AppDimensions.spacingSm, 6),
           title: Text(
             '노트 삭제',
-            style: TextStyle(
-              color: c.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(ctx).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
           ),
           content: Text(
             "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-            style: TextStyle(color: c.textSecondary, fontSize: 12.5),
+            style: AppTextStyles.captionThin.copyWith(color: c.textSecondary),
           ),
           actions: [
             TextButton(
@@ -535,7 +530,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
               onPressed: () => Navigator.pop(ctx, false),
               child: Text(
                 '취소',
-                style: TextStyle(color: c.textMuted, fontSize: 12.5),
+                style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
               ),
             ),
             TextButton(
@@ -550,7 +545,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
               onPressed: () => Navigator.pop(ctx, true),
               child: Text(
                 '삭제',
-                style: TextStyle(color: c.error, fontSize: 12.5),
+                style: AppTextStyles.captionThin.copyWith(color: c.error),
               ),
             ),
           ],
@@ -1019,12 +1014,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             'SimSync',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-              letterSpacing: -0.3,
-            ),
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3),
           ),
           const Spacer(),
           SizedBox(
@@ -1059,10 +1049,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
             label: const Text('Logout'),
             style: TextButton.styleFrom(
               foregroundColor: c.textMuted,
-              textStyle: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              textStyle: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: AppDimensions.spacingXs),
@@ -1216,11 +1203,7 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 'Weekly View',
-                style: GoogleFonts.inter(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: widget.isActive ? c.accent : c.textSecondary,
-                ),
+                style: AppTextStyles.microSemibold.copyWith(color: widget.isActive ? c.accent : c.textSecondary),
               ),
             ],
           ),
