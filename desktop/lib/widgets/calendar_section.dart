@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class CalendarSection extends StatelessWidget {
   final DateTime displayedMonth;
@@ -77,12 +77,7 @@ class CalendarSection extends StatelessWidget {
                       const SizedBox(width: AppDimensions.spacingXs),
                       Text(
                         'Calendar',
-                        style: GoogleFonts.inter(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: c.textSecondary,
-                          letterSpacing: 0.5,
-                        ),
+                        style: AppTextStyles.microSemibold.copyWith(color: c.textSecondary, letterSpacing: 0.5),
                       ),
                     ],
                   ),
@@ -95,11 +90,7 @@ class CalendarSection extends StatelessWidget {
                 if (showMonthLabel) ...[
                   Text(
                     monthLabel,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: c.textPrimary,
-                    ),
+                    style: Theme.of(context).textTheme.labelMedium!.copyWith(color: c.textPrimary),
                   ),
                   const SizedBox(width: AppDimensions.spacingXs),
                 ],
@@ -145,11 +136,7 @@ class CalendarSection extends StatelessWidget {
                 child: Center(
                   child: Text(
                     d,
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: c.textMuted,
-                    ),
+                    style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
                   ),
                 ),
               ))
@@ -254,11 +241,10 @@ class _CalendarCell extends StatelessWidget {
           children: [
             Text(
               '$day',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: textColor,
-              ),
+              style: (isToday || isSelected
+                      ? AppTextStyles.microBold
+                      : AppTextStyles.microMedium)
+                  .copyWith(color: textColor),
             ),
             if (hasNotes)
               Container(

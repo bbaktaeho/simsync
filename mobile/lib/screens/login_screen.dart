@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../auth/github_oauth_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
+import '../theme/app_text_styles.dart';
 
 class LoginScreen extends StatefulWidget {
   final Future<void> Function() onGitHubLogin;
@@ -144,9 +144,7 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: AppDimensions.spacingLg),
         Text(
           'SimSync',
-          style: GoogleFonts.inter(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
+          style: AppTextStyles.pageTitle.copyWith(
             color: c.textPrimary,
             letterSpacing: -0.5,
           ),
@@ -154,7 +152,7 @@ class _LoginScreenState extends State<LoginScreen>
         const SizedBox(height: AppDimensions.spacingXs),
         Text(
           'Sign in to continue',
-          style: TextStyle(color: c.textSecondary, fontSize: 13),
+          style: AppTextStyles.caption.copyWith(color: c.textSecondary),
         ),
       ],
     );
@@ -164,9 +162,8 @@ class _LoginScreenState extends State<LoginScreen>
     return Text(
       'Use your GitHub account to access SimSync on this mobile device.',
       textAlign: TextAlign.center,
-      style: TextStyle(
+      style: AppTextStyles.caption.copyWith(
         color: c.textSecondary,
-        fontSize: 13,
         height: 1.5,
       ),
     );
@@ -187,7 +184,9 @@ class _LoginScreenState extends State<LoginScreen>
           Expanded(
             child: Text(
               _errorMessage!,
-              style: TextStyle(color: c.textPrimary, fontSize: 12),
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                color: c.textPrimary,
+              ),
             ),
           ),
         ],

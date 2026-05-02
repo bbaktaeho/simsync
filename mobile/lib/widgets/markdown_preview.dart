@@ -3,11 +3,11 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 /// Renders markdown content with theme-aware styling, syntax-highlighted code
 /// blocks, and pinch-zoom support via [Transform.scale].
@@ -33,10 +33,7 @@ class MarkdownPreview extends StatelessWidget {
       return Center(
         child: Text(
           'Nothing to preview',
-          style: GoogleFonts.inter(
-            fontSize: 14 * contentScale,
-            color: c.textMuted,
-          ),
+          style: AppTextStyles.mdBody(contentScale).copyWith(color: c.textMuted),
         ),
       );
     }
@@ -49,11 +46,7 @@ class MarkdownPreview extends StatelessWidget {
           if (hasTitle) ...[
             Text(
               title.trim(),
-              style: GoogleFonts.inter(
-                fontSize: 24 * contentScale,
-                fontWeight: FontWeight.w700,
-                color: c.textPrimary,
-              ),
+              style: AppTextStyles.scaledH1(contentScale).copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: AppDimensions.spacingLg),
           ],
@@ -67,10 +60,7 @@ class MarkdownPreview extends StatelessWidget {
           else
             Text(
               'Nothing to preview',
-              style: GoogleFonts.inter(
-                fontSize: 14 * contentScale,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.mdBody(contentScale).copyWith(color: c.textMuted),
             ),
         ],
       ),
@@ -78,67 +68,26 @@ class MarkdownPreview extends StatelessWidget {
   }
 
   MarkdownStyleSheet _buildStyleSheet(AppColorsExtension c) {
-    double scaled(double value) => value * contentScale;
-
     return MarkdownStyleSheet(
-      h1: GoogleFonts.inter(
-        fontSize: scaled(26),
-        fontWeight: FontWeight.w700,
-        color: c.textPrimary,
-        height: 1.4,
-      ),
-      h2: GoogleFonts.inter(
-        fontSize: scaled(21),
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-        height: 1.4,
-      ),
-      h3: GoogleFonts.inter(
-        fontSize: scaled(17),
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-        height: 1.4,
-      ),
-      h4: GoogleFonts.inter(
-        fontSize: scaled(15),
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-        height: 1.4,
-      ),
-      h5: GoogleFonts.inter(
-        fontSize: scaled(14),
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-        height: 1.4,
-      ),
-      h6: GoogleFonts.inter(
-        fontSize: scaled(13),
-        fontWeight: FontWeight.w600,
-        color: c.textSecondary,
-        height: 1.4,
-      ),
+      h1: AppTextStyles.mdH1(contentScale).copyWith(color: c.textPrimary),
+      h2: AppTextStyles.mdH2(contentScale).copyWith(color: c.textPrimary),
+      h3: AppTextStyles.mdH3(contentScale).copyWith(color: c.textPrimary),
+      h4: AppTextStyles.mdH4(contentScale).copyWith(color: c.textPrimary),
+      h5: AppTextStyles.mdH5(contentScale).copyWith(color: c.textPrimary),
+      h6: AppTextStyles.mdH6(contentScale).copyWith(color: c.textSecondary),
       h1Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
       h2Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
       h3Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
       h4Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
       h5Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
       h6Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
-      p: GoogleFonts.inter(
-        fontSize: scaled(14),
-        color: c.textPrimary,
-        height: 1.7,
-      ),
-      a: GoogleFonts.inter(
-        fontSize: scaled(14),
+      p: AppTextStyles.mdBody(contentScale).copyWith(color: c.textPrimary),
+      a: AppTextStyles.mdBody(contentScale).copyWith(
         color: c.accent,
         decoration: TextDecoration.underline,
       ),
-      listBullet: GoogleFonts.inter(
-        fontSize: scaled(14),
-        color: c.textSecondary,
-      ),
-      code: GoogleFonts.jetBrainsMono(
-        fontSize: scaled(13),
+      listBullet: AppTextStyles.mdBody(contentScale).copyWith(color: c.textSecondary),
+      code: AppTextStyles.codeMonoBlock(contentScale).copyWith(
         color: c.accent,
         backgroundColor: c.surfaceLight,
       ),
@@ -148,8 +97,7 @@ class MarkdownPreview extends StatelessWidget {
         border: Border.all(color: c.border),
       ),
       codeblockPadding: const EdgeInsets.all(AppDimensions.spacingMd),
-      blockquote: GoogleFonts.inter(
-        fontSize: scaled(14),
+      blockquote: AppTextStyles.mdBody(contentScale).copyWith(
         color: c.textSecondary,
         fontStyle: FontStyle.italic,
         height: 1.6,
@@ -161,16 +109,9 @@ class MarkdownPreview extends StatelessWidget {
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.border)),
       ),
-      checkbox: GoogleFonts.inter(fontSize: scaled(14), color: c.accent),
-      tableHead: GoogleFonts.inter(
-        fontSize: scaled(13),
-        fontWeight: FontWeight.w600,
-        color: c.textPrimary,
-      ),
-      tableBody: GoogleFonts.inter(
-        fontSize: scaled(13),
-        color: c.textSecondary,
-      ),
+      checkbox: AppTextStyles.mdBody(contentScale).copyWith(color: c.accent),
+      tableHead: AppTextStyles.mdTableHead(contentScale).copyWith(color: c.textPrimary),
+      tableBody: AppTextStyles.mdTableBody(contentScale).copyWith(color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
     );
@@ -223,7 +164,7 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
             : textContent,
         language: language,
         theme: transparentTheme,
-        textStyle: GoogleFonts.jetBrainsMono(fontSize: 13 * contentScale),
+        textStyle: AppTextStyles.codeMonoBlock(contentScale),
         padding: EdgeInsets.zero,
       ),
     );

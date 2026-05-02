@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 /// Reusable monthly calendar grid for mobile.
 ///
@@ -61,8 +61,7 @@ class CalendarWidget extends StatelessWidget {
           ),
           Text(
             monthLabel,
-            style: GoogleFonts.inter(
-              fontSize: 15,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               color: c.textPrimary,
             ),
@@ -101,11 +100,7 @@ class CalendarWidget extends StatelessWidget {
                 child: Center(
                   child: Text(
                     day,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: c.textMuted,
-                    ),
+                    style: AppTextStyles.microSemibold.copyWith(color: c.textMuted),
                   ),
                 ),
               ),
@@ -278,10 +273,8 @@ class _CalendarCell extends StatelessWidget {
               alignment: Alignment.center,
               child: Text(
                 '$day',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight:
-                      isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
+                style: AppTextStyles.captionMedium.copyWith(
+                  fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
                   color: textColor,
                 ),
               ),

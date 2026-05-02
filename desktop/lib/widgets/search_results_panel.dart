@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../search/search_result.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class SearchResultsPanel extends StatelessWidget {
   const SearchResultsPanel({
@@ -33,10 +33,7 @@ class SearchResultsPanel extends StatelessWidget {
             const SizedBox(height: AppDimensions.spacingSm),
             Text(
               'No results found',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.caption.copyWith(color: c.textMuted),
             ),
           ],
         ),
@@ -101,11 +98,7 @@ class _SearchResultCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     note.title.isEmpty ? 'Untitled' : note.title,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: c.textPrimary,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -113,10 +106,7 @@ class _SearchResultCard extends StatelessWidget {
                 const SizedBox(width: AppDimensions.spacingSm),
                 Text(
                   dateStr,
-                  style: GoogleFonts.inter(
-                    fontSize: 10,
-                    color: c.textMuted,
-                  ),
+                  style: AppTextStyles.nano.copyWith(color: c.textMuted),
                 ),
               ],
             ),
@@ -139,15 +129,9 @@ class _ContextLines extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final match = result.match;
-    final monoStyle = GoogleFonts.jetBrainsMono(
-      fontSize: 11,
-      height: 1.5,
-      color: c.textSecondary,
-    );
-    final lineNumStyle = GoogleFonts.jetBrainsMono(
-      fontSize: 10,
-      color: c.textMuted,
-    );
+    final monoStyle = AppTextStyles.codeMono(size: 11, height: 1.5)
+        .copyWith(color: c.textSecondary);
+    final lineNumStyle = AppTextStyles.codeMono(size: 10).copyWith(color: c.textMuted);
 
     final lines = <Widget>[];
 
@@ -212,11 +196,8 @@ class _ContextLines extends StatelessWidget {
     if (matchStart == matchEnd || matchStart >= line.length) {
       return Text(
         line,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 11,
-          height: 1.5,
-          color: c.textPrimary,
-        ),
+        style: AppTextStyles.codeMono(size: 11, height: 1.5)
+            .copyWith(color: c.textPrimary),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       );
@@ -228,11 +209,8 @@ class _ContextLines extends StatelessWidget {
 
     return Text.rich(
       TextSpan(
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 11,
-          height: 1.5,
-          color: c.textPrimary,
-        ),
+        style: AppTextStyles.codeMono(size: 11, height: 1.5)
+            .copyWith(color: c.textPrimary),
         children: [
           TextSpan(text: before),
           TextSpan(

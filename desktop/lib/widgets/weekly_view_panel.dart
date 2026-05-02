@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import 'markdown_preview.dart';
 
 /// Displays all notes for a given week (Mon–Sun) in a scrollable journal view.
@@ -27,18 +27,18 @@ class WeeklyViewPanel extends StatelessWidget {
 
     return Column(
       children: [
-        _buildHeader(c, weekEnd),
+        _buildHeader(context, c, weekEnd),
         Divider(height: 1, color: c.border),
         Expanded(
           child: weekNotes.isEmpty
-              ? _buildEmptyState(c)
+              ? _buildEmptyState(context, c)
               : _buildNotesFeed(c),
         ),
       ],
     );
   }
 
-  Widget _buildHeader(AppColorsExtension c, DateTime weekEnd) {
+  Widget _buildHeader(BuildContext context, AppColorsExtension c, DateTime weekEnd) {
     final startStr = DateFormat('MMM d').format(weekStart);
     final endStr = DateFormat('MMM d, yyyy').format(weekEnd);
     final noteCount = weekNotes.length;
@@ -57,11 +57,7 @@ class WeeklyViewPanel extends StatelessWidget {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             'Weekly View',
-            style: GoogleFonts.inter(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: c.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
           ),
           const SizedBox(width: AppDimensions.spacingMd),
           Container(
@@ -72,27 +68,20 @@ class WeeklyViewPanel extends StatelessWidget {
             ),
             child: Text(
               '$startStr – $endStr',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: c.accent,
-              ),
+              style: AppTextStyles.microMedium.copyWith(color: c.accent),
             ),
           ),
           const Spacer(),
           Text(
             '$noteCount note${noteCount != 1 ? 's' : ''}',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              color: c.textMuted,
-            ),
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState(AppColorsExtension c) {
+  Widget _buildEmptyState(BuildContext context, AppColorsExtension c) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -105,12 +94,12 @@ class WeeklyViewPanel extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingLg),
           Text(
             'No notes this week',
-            style: GoogleFonts.inter(fontSize: 15, color: c.textMuted),
+            style: Theme.of(context).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w400, color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'Select a date and start writing',
-            style: GoogleFonts.inter(fontSize: 13, color: c.textMuted),
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -197,19 +186,12 @@ class _DateGroup extends StatelessWidget {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 dayLabel,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: isToday ? c.accent : c.textPrimary,
-                ),
+                style: AppTextStyles.captionBold.copyWith(color: isToday ? c.accent : c.textPrimary),
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 dateLabel,
-                style: GoogleFonts.inter(
-                  fontSize: 12,
-                  color: c.textMuted,
-                ),
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textMuted),
               ),
               const SizedBox(width: AppDimensions.spacingMd),
               Expanded(
@@ -279,20 +261,13 @@ class _NoteCardState extends State<_NoteCard> {
                       widget.note.title.isEmpty
                           ? 'Untitled'
                           : widget.note.title,
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: c.textPrimary,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     ),
                   ),
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     timeStr,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      color: c.textMuted,
-                    ),
+                    style: AppTextStyles.micro.copyWith(color: c.textMuted),
                   ),
                   if (_isHovered) ...[
                     const SizedBox(width: AppDimensions.spacingSm),
@@ -369,11 +344,7 @@ class _WeeklyTagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-          color: c.accent,
-        ),
+        style: AppTextStyles.nanoMedium.copyWith(color: c.accent),
       ),
     );
   }

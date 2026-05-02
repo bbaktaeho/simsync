@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
@@ -12,6 +11,7 @@ import '../storage/note_storage.dart';
 import '../storage/sync_engine.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import 'editor_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
@@ -226,15 +226,15 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         title: Text(
           '노트 삭제',
-          style: GoogleFonts.inter(
+          style: Theme.of(ctx).textTheme.labelLarge!.copyWith(
             color: c.textPrimary,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
           ),
         ),
         content: Text(
           "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-          style: TextStyle(color: c.textSecondary, fontSize: 14),
+          style: Theme.of(ctx).textTheme.bodySmall!.copyWith(
+            color: c.textSecondary,
+          ),
         ),
         actions: [
           TextButton(
@@ -363,11 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       title: Text(
         _monthFmt.format(_displayedMonth),
-        style: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w700,
-          color: c.textPrimary,
-        ),
+        style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
       ),
       actions: [
         _buildSyncIndicator(c),
@@ -389,9 +385,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             child: Text(
               '오늘',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
+              style: Theme.of(context).textTheme.labelMedium!.copyWith(
                 color: c.textSecondary,
               ),
             ),
@@ -478,9 +472,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 child: Center(
                   child: Text(
                     day,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                    style: AppTextStyles.microSemibold.copyWith(
                       color: c.textMuted,
                     ),
                   ),
@@ -566,11 +558,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       alignment: Alignment.center,
                       child: Text(
                         '$day',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          fontWeight: isToday
-                              ? FontWeight.w700
-                              : FontWeight.w500,
+                        style: (isToday
+                                ? AppTextStyles.captionBold
+                                : AppTextStyles.captionMedium)
+                            .copyWith(
                           color: isToday
                               ? c.calendarToday
                               : isSelected
@@ -631,8 +622,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               children: [
                 Text(
                   '${_selectedDate.day}',
-                  style: GoogleFonts.inter(
-                    fontSize: 20,
+                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
                     fontWeight: FontWeight.w700,
                     color: c.accent,
                   ),
@@ -643,18 +633,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   children: [
                     Text(
                       weekdayName,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                      style: Theme.of(context).textTheme.labelMedium!.copyWith(
                         color: c.textPrimary,
                       ),
                     ),
                     Text(
                       '$noteCount개 노트',
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        color: c.textMuted,
-                      ),
+                      style: AppTextStyles.micro.copyWith(color: c.textMuted),
                     ),
                   ],
                 ),
@@ -678,8 +663,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           children: [
             Text(
               _calendarExpanded ? '접기' : '펼치기',
-              style: GoogleFonts.inter(
-                fontSize: 12,
+              style: Theme.of(context).textTheme.labelMedium!.copyWith(
                 fontWeight: FontWeight.w500,
                 color: c.textMuted,
               ),
@@ -711,8 +695,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           Expanded(
             child: Text(
               _dayHeaderFmt.format(_selectedDate),
-              style: GoogleFonts.inter(
-                fontSize: 16,
+              style: Theme.of(context).textTheme.labelLarge!.copyWith(
                 fontWeight: FontWeight.w700,
                 color: c.textPrimary,
               ),
@@ -723,11 +706,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             icon: Icon(Icons.add_rounded, size: 18, color: c.accent),
             label: Text(
               '새 노트',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: c.accent,
-              ),
+              style: AppTextStyles.captionSemibold.copyWith(color: c.accent),
             ),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(
@@ -755,7 +734,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
             const SizedBox(height: AppDimensions.spacingMd),
             Text(
               '이 날짜에 노트가 없습니다',
-              style: GoogleFonts.inter(fontSize: 14, color: c.textMuted),
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                color: c.textMuted,
+              ),
             ),
           ],
         ),
@@ -813,9 +794,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   Expanded(
                     child: Text(
                       note.title.isEmpty ? 'Untitled' : note.title,
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+                      style: Theme.of(context).textTheme.titleMedium!.copyWith(
                         color: c.textPrimary,
                       ),
                       maxLines: 1,
@@ -838,9 +817,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     child: Text(
                       isLocal ? 'local' : 'synced',
-                      style: GoogleFonts.inter(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
+                      style: AppTextStyles.nanoSemibold.copyWith(
                         color: isLocal ? c.localAccent : c.accent,
                       ),
                     ),
@@ -851,8 +828,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 const SizedBox(height: AppDimensions.spacingXs),
                 Text(
                   preview,
-                  style: TextStyle(
-                    fontSize: 13,
+                  style: AppTextStyles.caption.copyWith(
                     color: c.textSecondary,
                     height: 1.4,
                   ),
@@ -887,11 +863,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: Text(
         '#$tag',
-        style: GoogleFonts.inter(
-          fontSize: 11,
-          fontWeight: FontWeight.w500,
-          color: c.accent,
-        ),
+        style: AppTextStyles.microMedium.copyWith(color: c.accent),
       ),
     );
   }

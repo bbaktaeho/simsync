@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
@@ -13,6 +12,7 @@ import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
+import '../theme/app_text_styles.dart';
 
 enum _SettingsPane { storage, editor, sync, shortcuts }
 
@@ -266,20 +266,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Text(
             'Settings',
-            style: GoogleFonts.inter(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Workspace and editor preferences',
-            style: GoogleFonts.inter(
-              fontSize: 12,
-              height: 1.5,
-              color: c.textSecondary,
-            ),
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -338,10 +330,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             child: Text(
               'Done',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
+              style: Theme.of(context).textTheme.labelMedium,
             ),
           ),
         ],
@@ -399,11 +388,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: Text(
                     settings.syncEnabled ? 'Enabled' : 'Disabled',
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: c.textPrimary,
-                    ),
+                    style: AppTextStyles.captionBold.copyWith(color: c.textPrimary),
                   ),
                 ),
                 Switch.adaptive(
@@ -433,10 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 else if (recentRepos.isEmpty)
                   Text(
                     'No recent repositories',
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: c.textMuted,
-                    ),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textMuted),
                   )
                 else
                   Wrap(
@@ -499,7 +481,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: AppDimensions.spacingSm),
                   Text(
                     _repoError!,
-                    style: GoogleFonts.inter(fontSize: 12, color: c.error),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.error),
                   ),
                 ],
               ],
@@ -539,11 +521,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const SizedBox(width: AppDimensions.spacingMd),
                     Text(
                       '${(settings.contentScale * 100).round()}%',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: c.textPrimary,
-                      ),
+                      style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(width: AppDimensions.spacingMd),
                     _IconStepButton(
@@ -562,10 +540,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Text(
                   'Shortcuts: cmd + +, cmd + -, cmd + wheel, trackpad pinch',
-                  style: GoogleFonts.inter(
-                    fontSize: 12,
-                    color: c.textSecondary,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary),
                 ),
                 const SizedBox(height: AppDimensions.spacingLg),
                 _ZoomPreviewCard(contentScale: settings.contentScale),
@@ -588,11 +563,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(width: AppDimensions.spacingMd),
                 Text(
                   '${settings.searchContextLines}',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                  ),
+                  style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
                 ),
                 const SizedBox(width: AppDimensions.spacingMd),
                 _IconStepButton(
@@ -696,11 +667,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               title: Text(
                 '${binding.action.label} 단축키 변경',
-                style: GoogleFonts.inter(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: c.textPrimary,
-                ),
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary),
               ),
               content: SizedBox(
                 width: 320,
@@ -709,10 +676,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       '새 키 조합을 입력하세요',
-                      style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: c.textSecondary,
-                      ),
+                      style: AppTextStyles.caption.copyWith(color: c.textSecondary),
                     ),
                     const SizedBox(height: AppDimensions.spacingLg),
                     Focus(
@@ -750,11 +714,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         alignment: Alignment.center,
                         child: Text(
                           captured?.displayLabel ?? binding.displayLabel,
-                          style: GoogleFonts.jetBrainsMono(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: c.textPrimary,
-                          ),
+                          style: AppTextStyles.codeMono(
+                            size: 16,
+                            weight: FontWeight.w700,
+                          ).copyWith(color: c.textPrimary),
                         ),
                       ),
                     ),
@@ -870,20 +833,12 @@ class _NavigationItem extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: GoogleFonts.inter(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected ? c.textPrimary : c.textSecondary,
-                    ),
+                    style: AppTextStyles.captionBold.copyWith(color: isSelected ? c.textPrimary : c.textSecondary),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     description,
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      height: 1.4,
-                      color: c.textMuted,
-                    ),
+                    style: AppTextStyles.micro.copyWith(color: c.textMuted, height: 1.4),
                   ),
                 ],
               ),
@@ -909,20 +864,12 @@ class _PaneHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: GoogleFonts.inter(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            color: c.textPrimary,
-          ),
+          style: AppTextStyles.pageTitle.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: AppDimensions.spacingSm),
         Text(
           description,
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            height: 1.6,
-            color: c.textSecondary,
-          ),
+          style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.6),
         ),
       ],
     );
@@ -965,20 +912,12 @@ class _DetailCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: c.textPrimary,
-                      ),
+                      style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(height: AppDimensions.spacingXs),
                     Text(
                       description,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        height: 1.6,
-                        color: c.textSecondary,
-                      ),
+                      style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.6),
                     ),
                   ],
                 ),
@@ -1019,11 +958,7 @@ class _ActionButton extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: GoogleFonts.inter(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: c.textPrimary,
-        ),
+        style: Theme.of(context).textTheme.labelMedium!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary),
       ),
     );
   }
@@ -1047,11 +982,7 @@ class _PathPreview extends StatelessWidget {
       ),
       child: SelectableText(
         path,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 12,
-          color: c.textPrimary,
-          height: 1.6,
-        ),
+        style: AppTextStyles.codeMono(size: 12, height: 1.6).copyWith(color: c.textPrimary),
       ),
     );
   }
@@ -1078,30 +1009,18 @@ class _CurrentRepoCard extends StatelessWidget {
         children: [
           Text(
             'Current source',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-              color: c.textMuted,
-            ),
+            style: AppTextStyles.microBold.copyWith(letterSpacing: 0.4, color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             activeRepo?.fullName ?? 'Not connected',
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-            ),
+            style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
           ),
           if (activeRepo != null) ...[
             const SizedBox(height: 2),
             Text(
               'Branch ${activeRepo!.branch}',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 11,
-                color: c.textSecondary,
-              ),
+              style: AppTextStyles.codeMono(size: 11).copyWith(color: c.textSecondary),
             ),
           ],
         ],
@@ -1120,12 +1039,7 @@ class _SectionLabel extends StatelessWidget {
     final c = context.colors;
     return Text(
       label,
-      style: GoogleFonts.inter(
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.5,
-        color: c.textMuted,
-      ),
+      style: AppTextStyles.microBold.copyWith(letterSpacing: 0.5, color: c.textMuted),
     );
   }
 }
@@ -1157,8 +1071,7 @@ class _RepoChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 12,
+          style: AppTextStyles.codeMono(size: 12).copyWith(
             color: isActive ? c.accent : c.textPrimary,
           ),
         ),
@@ -1218,11 +1131,7 @@ class _ShortcutCard extends StatelessWidget {
               children: [
                 Text(
                   binding.action.label,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                  ),
+                  style: AppTextStyles.captionBold.copyWith(color: c.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Container(
@@ -1235,10 +1144,7 @@ class _ShortcutCard extends StatelessWidget {
                   ),
                   child: Text(
                     binding.displayLabel,
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 12,
-                      color: c.textPrimary,
-                    ),
+                    style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
                   ),
                 ),
               ],
@@ -1247,10 +1153,7 @@ class _ShortcutCard extends StatelessWidget {
           if (binding.isFixed)
             Text(
               'Fixed',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.micro.copyWith(color: c.textMuted),
             )
           else
             _ActionButton(
@@ -1288,29 +1191,17 @@ class _ZoomPreviewCard extends StatelessWidget {
         children: [
           Text(
             'Preview',
-            style: GoogleFonts.inter(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: c.textMuted,
-            ),
+            style: AppTextStyles.microBold.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             'Daily Note',
-            style: GoogleFonts.inter(
-              fontSize: 22 * contentScale,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-            ),
+            style: AppTextStyles.scaledHeadline(contentScale).copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'A compact preview makes zoom changes feel immediate even before you close settings.',
-            style: GoogleFonts.inter(
-              fontSize: 13 * contentScale,
-              height: 1.6,
-              color: c.textSecondary,
-            ),
+            style: AppTextStyles.scaledCaption(contentScale).copyWith(color: c.textSecondary),
           ),
         ],
       ),

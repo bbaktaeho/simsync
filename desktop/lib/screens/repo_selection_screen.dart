@@ -1,6 +1,5 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../settings/app_settings_controller.dart';
 import '../storage/github/github_api_client.dart';
@@ -8,6 +7,7 @@ import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
+import '../theme/app_text_styles.dart';
 
 class RepoSelectionScreen extends StatefulWidget {
   final String accessToken;
@@ -286,17 +286,12 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
         const SizedBox(height: AppDimensions.spacingMd),
         Text(
           widget.userLogin,
-          style: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: c.textPrimary,
-            letterSpacing: -0.3,
-          ),
+          style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary, letterSpacing: -0.3),
         ),
         const SizedBox(height: AppDimensions.spacingXs),
         Text(
           '저장소를 선택하세요',
-          style: TextStyle(color: c.textSecondary, fontSize: 13),
+          style: AppTextStyles.caption.copyWith(color: c.textSecondary),
         ),
       ],
     );
@@ -308,12 +303,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       children: [
         Text(
           '최근 연결',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: c.textMuted,
-            letterSpacing: 0.5,
-          ),
+          style: Theme.of(context).textTheme.labelMedium!.copyWith(color: c.textMuted, letterSpacing: 0.5),
         ),
         const SizedBox(height: AppDimensions.spacingSm),
         ..._cachedRepos.map((entry) => _buildCachedItem(c, entry)),
@@ -351,15 +341,11 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                     children: [
                       Text(
                         entry.fullName,
-                        style: TextStyle(
-                          color: c.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: AppTextStyles.captionMedium.copyWith(color: c.textPrimary),
                       ),
                       Text(
                         dateStr,
-                        style: TextStyle(color: c.textMuted, fontSize: 11),
+                        style: AppTextStyles.micro.copyWith(color: c.textMuted),
                       ),
                     ],
                   ),
@@ -398,7 +384,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
           Expanded(
             child: Text(
               _errorMessage!,
-              style: TextStyle(color: c.textPrimary, fontSize: 12),
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary),
             ),
           ),
         ],
@@ -474,11 +460,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                     Expanded(
                       child: Text(
                         label,
-                        style: TextStyle(
-                          color: c.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                        ),
+                        style: AppTextStyles.captionMedium.copyWith(color: c.textPrimary),
                       ),
                     ),
                     Icon(
@@ -514,10 +496,10 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
         TextField(
           controller: _createController,
           enabled: !_isLoading,
-          style: TextStyle(color: c.textPrimary, fontSize: 13),
+          style: AppTextStyles.caption.copyWith(color: c.textPrimary),
           decoration: InputDecoration(
             hintText: '저장소 이름',
-            hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+            hintStyle: AppTextStyles.caption.copyWith(color: c.textMuted),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: AppDimensions.spacingMd,
@@ -554,10 +536,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                 borderRadius:
                     BorderRadius.circular(AppDimensions.borderRadiusSm),
               ),
-              textStyle: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              textStyle: AppTextStyles.captionSemibold,
             ),
             child: _isLoading && _showCreateForm
                 ? SizedBox(
@@ -581,10 +560,10 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
         TextField(
           controller: _connectController,
           enabled: !_isLoading,
-          style: TextStyle(color: c.textPrimary, fontSize: 13),
+          style: AppTextStyles.caption.copyWith(color: c.textPrimary),
           decoration: InputDecoration(
             hintText: 'owner/repo',
-            hintStyle: TextStyle(color: c.textMuted, fontSize: 13),
+            hintStyle: AppTextStyles.caption.copyWith(color: c.textMuted),
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: AppDimensions.spacingMd,
@@ -621,10 +600,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                 borderRadius:
                     BorderRadius.circular(AppDimensions.borderRadiusSm),
               ),
-              textStyle: GoogleFonts.inter(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              textStyle: AppTextStyles.captionSemibold,
             ),
             child: _isLoading && _showConnectForm
                 ? SizedBox(
@@ -648,12 +624,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       children: [
         Text(
           '로컬 노트 저장 경로',
-          style: GoogleFonts.inter(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: c.textMuted,
-            letterSpacing: 0.5,
-          ),
+          style: Theme.of(context).textTheme.labelMedium!.copyWith(color: c.textMuted, letterSpacing: 0.5),
         ),
         const SizedBox(height: AppDimensions.spacingSm),
         Container(
@@ -672,7 +643,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               Expanded(
                 child: Text(
                   widget.settingsController.value.localNotePath,
-                  style: TextStyle(color: c.textSecondary, fontSize: 12),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -692,11 +663,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
                   ),
                   child: Text(
                     '변경',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: c.textSecondary,
-                    ),
+                    style: AppTextStyles.microMedium.copyWith(color: c.textSecondary),
                   ),
                 ),
               ),
