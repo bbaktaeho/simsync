@@ -174,42 +174,20 @@ class _DocumentScreenState extends State<DocumentScreen> {
   Future<void> _loadNotes() async {
     final loadGeneration = ++_loadGeneration;
 
-    // Load all notes from storage (GitHub or local, depending on wiring).
+    // Single call per backend. GitHubNoteStorage.listAllNotes hits the tree
+    // endpoint once and fans the missing blob fetches out in parallel via its
+    // worker pool — that work used to be serialized day-by-day here. Running
+    // synced + local concurrently also halves the wall-clock wait when both
+    // are present.
     final now = DateTime.now();
-    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-    final dates = await _storage.listDates(currentMonth);
-    final notes = <Note>[];
-    for (final date in dates) {
-      final dayNotes = await _storage.listNotes(date);
-      notes.addAll(dayNotes);
-    }
-    // Also load previous month if we're in the first week.
-    if (now.day <= 7) {
-      final prev = DateTime(now.year, now.month - 1);
-      final prevMonth = '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
-      final prevDates = await _storage.listDates(prevMonth);
-      for (final date in prevDates) {
-        final dayNotes = await _storage.listNotes(date);
-        notes.addAll(dayNotes);
-      }
-    }
-
-    // Load local notes.
-    if (widget.localStorage != null) {
-      final localDates = await widget.localStorage!.listDates(currentMonth);
-      for (final date in localDates) {
-        notes.addAll(await widget.localStorage!.listNotes(date));
-      }
-      if (now.day <= 7) {
-        final prev = DateTime(now.year, now.month - 1);
-        final prevMonth =
-            '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
-        final prevLocalDates = await widget.localStorage!.listDates(prevMonth);
-        for (final date in prevLocalDates) {
-          notes.addAll(await widget.localStorage!.listNotes(date));
-        }
-      }
-    }
+    final futures = <Future<List<Note>>>[
+      _storage.listAllNotes(),
+      if (widget.localStorage != null) widget.localStorage!.listAllNotes(),
+    ];
+    final results = await Future.wait(futures);
+    final notes = <Note>[
+      for (final list in results) ...list,
+    ];
 
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     if (!mounted || loadGeneration != _loadGeneration) return;
@@ -616,18 +594,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   Future<void> _rebuildSearchIndex() async {
     if (!mounted) return;
-
-    final notes = <Note>[
-      ...await _storage.listAllNotes(),
-      if (widget.localStorage != null)
-        ...await widget.localStorage!.listAllNotes(),
-    ];
-
-    _searchIndex.replaceAll(notes);
-    for (final note in _allNotes.where((note) => note.isDirty)) {
-      _searchIndex.upsert(note);
-    }
-
+    // _allNotes already reflects everything `_loadNotes` fetched (synced +
+    // local + dirty merge). Rebuilding from memory avoids a redundant
+    // listAllNotes round-trip on every sync tick.
+    _searchIndex.replaceAll(_allNotes);
     if (!mounted) return;
     _applySearchQuery(_searchQuery, resetPage: false);
   }
