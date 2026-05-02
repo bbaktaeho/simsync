@@ -69,6 +69,13 @@ class _EditorPanelState extends State<EditorPanel> {
   void didUpdateWidget(EditorPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.note?.id != _loadedNoteId) {
+      // Flush any pending edit for the previous note before swapping the
+      // controllers — otherwise the edited text only ever lived in the
+      // controllers and would be discarded by `_syncControllers`.
+      final previousNote = oldWidget.note;
+      if (previousNote != null) {
+        _flushPending(previousNote);
+      }
       _syncControllers();
     }
   }
@@ -82,9 +89,34 @@ class _EditorPanelState extends State<EditorPanel> {
     _lastSaved = note?.updatedAt;
   }
 
+  /// Flushes the current controller text into [note] via [onNoteChanged] if
+  /// the note has unsaved edits. Cancels the pending auto-save timer to avoid
+  /// it firing later against a stale note reference.
+  void _flushPending(Note note) {
+    if (widget.isReadOnly || !note.isDirty) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = null;
+    final updated = note.copyWith(
+      title: _titleController.text,
+      content: _contentController.text,
+      updatedAt: DateTime.now(),
+    );
+    widget.onNoteChanged?.call(updated);
+  }
+
   @override
   void dispose() {
     _autoSaveTimer?.cancel();
+    final note = widget.note;
+    if (note != null && note.isDirty && !widget.isReadOnly) {
+      // Last-chance flush before controllers are torn down.
+      final updated = note.copyWith(
+        title: _titleController.text,
+        content: _contentController.text,
+        updatedAt: DateTime.now(),
+      );
+      widget.onNoteChanged?.call(updated);
+    }
     _titleController.dispose();
     _contentController.dispose();
     _tagController.dispose();
@@ -99,9 +131,12 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   void _save() {
-    if (widget.note == null || widget.isReadOnly) return;
+    final note = widget.note;
+    if (note == null || widget.isReadOnly) return;
+    // Guard against a stale timer firing after the user switched notes.
+    if (note.id != _loadedNoteId) return;
     final now = DateTime.now();
-    final updated = widget.note!.copyWith(
+    final updated = note.copyWith(
       title: _titleController.text,
       content: _contentController.text,
       updatedAt: now,
