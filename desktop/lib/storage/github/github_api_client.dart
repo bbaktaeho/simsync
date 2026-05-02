@@ -37,6 +37,31 @@ class GitHubFile {
   }
 }
 
+/// One entry in a recursive Git tree listing.
+class GitHubTreeEntry {
+  final String path;
+  final String sha;
+  final String type; // 'blob' or 'tree'
+  final int? size;
+
+  GitHubTreeEntry({
+    required this.path,
+    required this.sha,
+    required this.type,
+    this.size,
+  });
+}
+
+/// Result of a recursive tree fetch. [truncated] = true means GitHub did not
+/// return the full tree (very large repos). Callers must fall back to the
+/// legacy directory-listing path in that case.
+class GitHubTreeResult {
+  final List<GitHubTreeEntry> entries;
+  final bool truncated;
+
+  GitHubTreeResult({required this.entries, required this.truncated});
+}
+
 // --- Exceptions ---
 
 class GitHubApiException implements Exception {
@@ -225,6 +250,51 @@ class GitHubApiClient {
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     return json['full_name'] as String;
+  }
+
+  /// Returns the entire repo tree for [branch] in a single recursive call.
+  ///
+  /// Two HTTP round-trips:
+  ///   1. `/repos/{owner}/{repo}/branches/{branch}` → root tree SHA
+  ///   2. `/repos/{owner}/{repo}/git/trees/{tree_sha}?recursive=1` → flat list
+  ///
+  /// Replaces the per-directory `listDirectory` traversal used by the legacy
+  /// listing path. If the response is `truncated: true` (very large repos),
+  /// callers must fall back to the legacy traversal — partial trees are not
+  /// safe to rely on for completeness.
+  Future<GitHubTreeResult> listRepoTree({required String branch}) async {
+    final branchUri =
+        Uri.parse('$_baseUrl/repos/$_owner/$_repo/branches/$branch');
+    final branchResp = await _httpClient.get(branchUri, headers: _headers);
+    if (branchResp.statusCode != 200) {
+      throw GitHubApiException(branchResp.statusCode, branchResp.body);
+    }
+    final branchJson = jsonDecode(branchResp.body) as Map<String, dynamic>;
+    final commit = branchJson['commit'] as Map<String, dynamic>;
+    final commitDetail = commit['commit'] as Map<String, dynamic>;
+    final tree = commitDetail['tree'] as Map<String, dynamic>;
+    final treeSha = tree['sha'] as String;
+
+    final treeUri = Uri.parse(
+      '$_baseUrl/repos/$_owner/$_repo/git/trees/$treeSha?recursive=1',
+    );
+    final treeResp = await _httpClient.get(treeUri, headers: _headers);
+    if (treeResp.statusCode != 200) {
+      throw GitHubApiException(treeResp.statusCode, treeResp.body);
+    }
+    final treeJson = jsonDecode(treeResp.body) as Map<String, dynamic>;
+    final list = (treeJson['tree'] as List<dynamic>? ?? const []);
+    final truncated = treeJson['truncated'] as bool? ?? false;
+    final entries = list.map((e) {
+      final m = e as Map<String, dynamic>;
+      return GitHubTreeEntry(
+        path: m['path'] as String,
+        sha: m['sha'] as String,
+        type: m['type'] as String,
+        size: (m['size'] as num?)?.toInt(),
+      );
+    }).toList();
+    return GitHubTreeResult(entries: entries, truncated: truncated);
   }
 
   /// Checks whether a repo exists. Returns true on 200, false on 404.
