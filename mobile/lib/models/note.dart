@@ -19,6 +19,10 @@ class Note {
   /// Whether this note is synced to remote or stored locally.
   final StorageType storageType;
 
+  /// True for memo notes — date-independent quick notes. Mobile preserves the
+  /// flag on round-trip; dedicated memo UI is desktop-only for now.
+  final bool isMemo;
+
   Note({
     required this.id,
     required this.noteDate,
@@ -30,6 +34,7 @@ class Note {
     required this.updatedAt,
     this.isDirty = false,
     this.storageType = StorageType.synced,
+    this.isMemo = false,
   });
 
   Note copyWith({
@@ -38,6 +43,7 @@ class Note {
     List<String>? tags,
     DateTime? updatedAt,
     bool? isDirty,
+    bool? isMemo,
   }) {
     return Note(
       id: id,
@@ -50,6 +56,7 @@ class Note {
       updatedAt: updatedAt ?? this.updatedAt,
       isDirty: isDirty ?? this.isDirty,
       storageType: storageType,
+      isMemo: isMemo ?? this.isMemo,
     );
   }
 }

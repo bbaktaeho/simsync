@@ -85,6 +85,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _sidebarOpen = true;
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
+  bool _memoTabActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
   bool _isSyncing = false;
@@ -282,6 +283,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   List<Note> get _notesForSelectedDate {
     if (_selectedDate == null) return [];
     return _allNotes.where((n) {
+      if (n.isMemo) return false;
       return n.noteDate.year == _selectedDate!.year &&
           n.noteDate.month == _selectedDate!.month &&
           n.noteDate.day == _selectedDate!.day;
@@ -292,8 +294,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  List<Note> get _memoNotes {
+    return _allNotes.where((n) => n.isMemo).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
   List<Note> get _visibleNotes {
     if (_isSearchActive) return _searchResults.map((r) => r.note).toList();
+    if (_memoTabActive) return _memoNotes;
     return _notesForSelectedDate;
   }
 
@@ -367,6 +375,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
+      if (_memoTabActive) {
+        _memoTabActive = false;
+        _currentPage = 0;
+      }
       if (!_weeklyViewActive && !_isSearchActive) {
         _currentPage = 0;
         final notes = _notesForSelectedDate;
@@ -443,6 +455,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _allNotes.add(newNote);
       _selectedNote = newNote;
       _weeklyViewActive = false;
+      _memoTabActive = false;
     });
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
@@ -467,6 +480,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _allNotes.add(newNote);
       _selectedNote = newNote;
       _weeklyViewActive = false;
+      _memoTabActive = false;
     });
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
@@ -576,7 +590,74 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _toggleWeeklyView() {
-    setState(() => _weeklyViewActive = !_weeklyViewActive);
+    setState(() {
+      _weeklyViewActive = !_weeklyViewActive;
+      if (_weeklyViewActive) _memoTabActive = false;
+    });
+  }
+
+  void _onMemoTabChanged(bool active) {
+    if (_memoTabActive == active) return;
+    setState(() {
+      _memoTabActive = active;
+      _currentPage = 0;
+      if (active) {
+        _weeklyViewActive = false;
+      }
+      if (_searchController.text.isNotEmpty || !_searchQuery.isEmpty) {
+        _searchController.clear();
+        _searchQuery = const NoteSearchQuery();
+        _searchResults = [];
+      }
+      final notes = _visibleNotes;
+      _selectedNote = notes.isNotEmpty ? notes.first : null;
+    });
+  }
+
+  Future<void> _onMoveToMemo(Note note) async {
+    await _setMemoFlag(note, true);
+  }
+
+  Future<void> _onMoveToDailyNote(Note note) async {
+    await _setMemoFlag(note, false);
+  }
+
+  Future<void> _setMemoFlag(Note note, bool isMemo) async {
+    if (note.isMemo == isMemo) return;
+    if (!_canMutateNote(note)) {
+      _showSyncDisabledMessage(
+        isMemo
+            ? '동기화가 꺼져 있어 동기화 노트를 메모로 이동할 수 없습니다.'
+            : '동기화가 꺼져 있어 동기화 노트를 daily로 이동할 수 없습니다.',
+      );
+      return;
+    }
+    final updated = note.copyWith(
+      isMemo: isMemo,
+      updatedAt: DateTime.now(),
+    );
+    try {
+      await _storageFor(updated).saveNote(updated);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이동 실패: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      final idx = _allNotes.indexWhere((n) => n.id == updated.id);
+      if (idx != -1) {
+        _allNotes[idx] = updated;
+      }
+      if (_selectedNote?.id == updated.id) {
+        _selectedNote = updated;
+      }
+    });
+    _searchIndex.upsert(updated);
+    _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   Future<void> _openSettings() async {
@@ -1098,6 +1179,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
                   : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
               onDeleteNote: _deleteNote,
+              memoTabActive: _memoTabActive,
+              onMemoTabChanged: _onMemoTabChanged,
+              onMoveToMemo: _onMoveToMemo,
+              onMoveToDailyNote: _onMoveToDailyNote,
             ),
           ),
         ],

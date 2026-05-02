@@ -626,4 +626,48 @@ Indexed content''';
           '/repos/$owner/$repo/contents/notes/2026-03/10/note-123.md');
     });
   });
+
+  group('serializeNote / parseNote isMemo round-trip', () {
+    test('isMemo true survives serialize -> parse', () {
+      final note = Note(
+        id: 'memo-1',
+        noteDate: DateTime(2026, 3, 10),
+        title: 'Quick memo',
+        content: 'jot',
+        isDefault: false,
+        tags: ['idea'],
+        createdAt: DateTime.utc(2026, 3, 10, 9),
+        updatedAt: DateTime.utc(2026, 3, 10, 10),
+        isMemo: true,
+      );
+
+      final markdown = GitHubNoteStorage.serializeNote(note);
+      expect(markdown, contains('is_memo: true'));
+
+      final parsed = GitHubNoteStorage.parseNote(markdown);
+      expect(parsed, isNotNull);
+      expect(parsed!.isMemo, isTrue);
+      expect(parsed.id, 'memo-1');
+      expect(parsed.title, 'Quick memo');
+    });
+
+    test('parseNote defaults isMemo to false when frontmatter omits the field',
+        () {
+      const markdown = '''---
+id: "legacy-1"
+title: "Old note"
+note_date: 2026-03-10
+is_default: false
+tags: []
+created_at: 2026-03-10T09:00:00+0000
+updated_at: 2026-03-10T10:00:00+0000
+---
+body
+''';
+
+      final parsed = GitHubNoteStorage.parseNote(markdown);
+      expect(parsed, isNotNull);
+      expect(parsed!.isMemo, isFalse);
+    });
+  });
 }
