@@ -3,6 +3,7 @@ import 'package:yaml/yaml.dart';
 import '../../models/note.dart';
 import '../note_storage.dart';
 import 'github_api_client.dart';
+import 'github_note_cache.dart';
 
 /// NoteStorage implementation backed by GitHub Contents API.
 ///
@@ -17,6 +18,7 @@ import 'github_api_client.dart';
 class GitHubNoteStorage implements NoteStorage {
   final GitHubApiClient _client;
   final String _branch;
+  final GitHubNoteCache? _cache;
 
   /// SHA cache: file path → SHA (required for PUT/DELETE operations).
   final Map<String, String> _shaCache = {};
@@ -26,6 +28,11 @@ class GitHubNoteStorage implements NoteStorage {
 
   /// ID-to-path index: noteId → file path (for fast getNote lookups).
   final Map<String, String> _idToPath = {};
+
+  /// Raw markdown cache for persistence: file path → markdown source.
+  /// We keep markdown verbatim (not the parsed Note) so the on-disk format
+  /// survives Note model evolution.
+  final Map<String, String> _markdownCache = {};
 
   /// Snapshot of `notes/**/*.md` paths → blob SHA from the latest tree fetch.
   /// `null` means "no snapshot loaded" (next listing call will populate).
@@ -37,13 +44,85 @@ class GitHubNoteStorage implements NoteStorage {
   /// While true, listing operations bypass [_ensureTree] entirely.
   bool _treeTruncated = false;
 
-  GitHubNoteStorage(this._client, {String branch = 'main'}) : _branch = branch;
+  GitHubNoteStorage(
+    this._client, {
+    String branch = 'main',
+    GitHubNoteCache? cache,
+  })  : _branch = branch,
+        _cache = cache;
+
+  // --- Persistent cache integration ---
+
+  /// Loads the persistent cache (if one was provided) into memory. Hydrates
+  /// `_shaCache`, `_noteCache`, `_idToPath`, `_markdownCache`, and primes
+  /// `_treeMap` from the same path→sha map so the next `listAllNotes` does not
+  /// need to hit GitHub when the recorded `lastCommitSha` still matches HEAD.
+  Future<void> loadCache() async {
+    final cache = _cache;
+    if (cache == null) return;
+    await cache.load();
+    if (cache.files.isEmpty) return;
+    final tree = <String, String>{};
+    cache.files.forEach((path, entry) {
+      _shaCache[path] = entry.sha;
+      _markdownCache[path] = entry.markdown;
+      tree[path] = entry.sha;
+      final note = parseNote(entry.markdown);
+      if (note != null) {
+        _noteCache[path] = note;
+        _idToPath[note.id] = path;
+      }
+    });
+    _treeMap = tree;
+  }
+
+  /// Last commit SHA the storage has reconciled against. Used by the sync
+  /// engine to skip unnecessary tree fetches on cold start.
+  String? get lastCommitSha => _cache?.lastCommitSha;
+
+  /// Records the latest commit SHA seen on the tracked branch. Persists.
+  void setLastCommitSha(String? sha) {
+    final cache = _cache;
+    if (cache == null) return;
+    if (cache.lastCommitSha == sha) return;
+    cache.lastCommitSha = sha;
+    cache.scheduleSave();
+  }
+
+  /// Forces any pending debounced cache write to disk. Useful in tests and
+  /// before app shutdown.
+  Future<void> flushCache() async {
+    await _cache?.flush();
+  }
+
+  void _persistEntry(String path, String sha, String markdown) {
+    _shaCache[path] = sha;
+    _markdownCache[path] = markdown;
+    final cache = _cache;
+    if (cache == null) return;
+    cache.files[path] = GitHubNoteCacheEntry(sha: sha, markdown: markdown);
+    cache.scheduleSave();
+  }
+
+  void _persistRemove(String path) {
+    _shaCache.remove(path);
+    _markdownCache.remove(path);
+    final cache = _cache;
+    if (cache == null) return;
+    if (cache.files.remove(path) != null) {
+      cache.scheduleSave();
+    }
+  }
 
   // --- Tree cache ---
 
   /// Invalidates the cached tree snapshot. The next listing call will perform
   /// a fresh `git/trees` fetch. Call this when the underlying repository has
   /// likely changed (sync engine commit-SHA polling, manual refresh).
+  ///
+  /// `_shaCache` / `_noteCache` are intentionally **not** cleared: the next
+  /// tree fetch will reuse them when the blob SHA hasn't moved, which is the
+  /// whole point of the persistent cache.
   void invalidateTreeCache() {
     _treeMap = null;
     _treeTruncated = false;
@@ -333,17 +412,18 @@ class GitHubNoteStorage implements NoteStorage {
       }
 
       final fullFile = await _client.getFile(path);
-      _shaCache[fullFile.path] = fullFile.sha;
-
       final decoded = fullFile.decodedContent;
-      if (decoded == null) continue;
-
+      if (decoded == null) {
+        _shaCache[fullFile.path] = fullFile.sha;
+        continue;
+      }
       final note = parseNote(decoded);
       if (note != null) {
         notes.add(note);
         _noteCache[path] = note;
         _idToPath[note.id] = path;
       }
+      _persistEntry(fullFile.path, fullFile.sha, decoded);
     }
 
     final dirPrefix = '$dirPath/';
@@ -371,14 +451,17 @@ class GitHubNoteStorage implements NoteStorage {
     await _parallelMap<String, void>(missing, (path) async {
       try {
         final file = await _client.getFile(path);
-        _shaCache[file.path] = file.sha;
         final decoded = file.decodedContent;
-        if (decoded == null) return;
+        if (decoded == null) {
+          _shaCache[file.path] = file.sha;
+          return;
+        }
         final note = parseNote(decoded);
         if (note != null) {
           _noteCache[file.path] = note;
           _idToPath[note.id] = file.path;
         }
+        _persistEntry(file.path, file.sha, decoded);
       } on GitHubApiException {
         // Skip a single file failure; the remaining notes are still usable.
       } on GitHubNotFoundException {
@@ -400,10 +483,10 @@ class GitHubNoteStorage implements NoteStorage {
     }).toList();
     for (final stalePath in stalePaths) {
       final staleNote = _noteCache.remove(stalePath);
-      _shaCache.remove(stalePath);
       if (staleNote != null) {
         _idToPath.remove(staleNote.id);
       }
+      _persistRemove(stalePath);
     }
   }
 
@@ -519,10 +602,10 @@ class GitHubNoteStorage implements NoteStorage {
           // Ignore 404/409 — file may already be gone or SHA stale.
         }
       }
-      _shaCache.remove(oldPath);
       _noteCache.remove(oldPath);
       _idToPath.remove(note.id);
       _treeMap?.remove(oldPath);
+      _persistRemove(oldPath);
     }
 
     final cachedSha = _shaCache[path];
@@ -546,12 +629,12 @@ class GitHubNoteStorage implements NoteStorage {
       );
     }
 
-    _shaCache[path] = savedSha;
     _noteCache[path] = note;
     _idToPath[note.id] = path;
     // Keep the tree snapshot consistent with the local mutation so the next
     // listing call doesn't miss this newly written file.
     _treeMap?[path] = savedSha;
+    _persistEntry(path, savedSha, markdown);
   }
 
   @override
@@ -581,9 +664,9 @@ class GitHubNoteStorage implements NoteStorage {
       );
     }
 
-    _shaCache.remove(path);
     _noteCache.remove(path);
     _idToPath.remove(note.id);
     _treeMap?.remove(path);
+    _persistRemove(path);
   }
 }
