@@ -72,14 +72,26 @@ class _EditorScreenState extends State<EditorScreen>
   void dispose() {
     widget.refreshSignal?.removeListener(_handleRefreshSignal);
     _saveDebounce?.cancel();
+    // Save pending changes on exit. Must be dispose-safe: no setState calls
+    // (State is unmounting) and snapshots of storage/note/callback so the
+    // in-flight save survives teardown. _saveImmediately is unsafe here because
+    // it calls setState in its body and after await.
+    if (_isDirty) {
+      final noteToSave = _note;
+      final storage = widget.storage;
+      final notify = widget.onNoteChanged;
+      storage
+          .saveNote(noteToSave)
+          .then((_) => notify(noteToSave))
+          .catchError((_) {
+        // Silent: widget unmounted; persisted state remains in-memory and on
+        // the next mount the note will be reloaded from storage.
+      });
+    }
     _tabController.dispose();
     _titleController.dispose();
     _contentController.dispose();
     _tagsController.dispose();
-    // Save any pending changes on exit.
-    if (_isDirty) {
-      _saveImmediately();
-    }
     super.dispose();
   }
 
