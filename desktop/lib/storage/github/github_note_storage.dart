@@ -8,8 +8,15 @@ import 'github_api_client.dart';
 ///
 /// Notes are stored as markdown files with YAML frontmatter at:
 ///   `notes/{YYYY-MM}/{DD}/{title}.md`
+///
+/// Listing operations (`listDates`, `listNotes`, `listAllNotes`) consult a
+/// recursive tree snapshot (single round-trip via `git/trees`) and fetch
+/// missing blob contents in parallel. The tree snapshot is invalidated by
+/// [invalidateTreeCache], typically called when the sync engine detects a new
+/// commit on the tracked branch.
 class GitHubNoteStorage implements NoteStorage {
   final GitHubApiClient _client;
+  final String _branch;
 
   /// SHA cache: file path → SHA (required for PUT/DELETE operations).
   final Map<String, String> _shaCache = {};
@@ -20,7 +27,85 @@ class GitHubNoteStorage implements NoteStorage {
   /// ID-to-path index: noteId → file path (for fast getNote lookups).
   final Map<String, String> _idToPath = {};
 
-  GitHubNoteStorage(this._client);
+  /// Snapshot of `notes/**/*.md` paths → blob SHA from the latest tree fetch.
+  /// `null` means "no snapshot loaded" (next listing call will populate).
+  /// Empty map means "loaded, no notes yet". Truncated responses set this to
+  /// `null` and callers fall back to legacy per-directory listing.
+  Map<String, String>? _treeMap;
+
+  /// Set when the tree snapshot for the current branch came back truncated.
+  /// While true, listing operations bypass [_ensureTree] entirely.
+  bool _treeTruncated = false;
+
+  GitHubNoteStorage(this._client, {String branch = 'main'}) : _branch = branch;
+
+  // --- Tree cache ---
+
+  /// Invalidates the cached tree snapshot. The next listing call will perform
+  /// a fresh `git/trees` fetch. Call this when the underlying repository has
+  /// likely changed (sync engine commit-SHA polling, manual refresh).
+  void invalidateTreeCache() {
+    _treeMap = null;
+    _treeTruncated = false;
+  }
+
+  /// Ensures `_treeMap` is populated. Returns the current snapshot, or `null`
+  /// if the tree was truncated / unavailable — callers must fall back to the
+  /// legacy directory-listing path.
+  Future<Map<String, String>?> _ensureTree() async {
+    if (_treeTruncated) return null;
+    if (_treeMap != null) return _treeMap;
+    try {
+      final result = await _client.listRepoTree(branch: _branch);
+      if (result.truncated) {
+        _treeTruncated = true;
+        _treeMap = null;
+        return null;
+      }
+      final map = <String, String>{};
+      for (final e in result.entries) {
+        if (e.type == 'blob' &&
+            e.path.startsWith('notes/') &&
+            e.path.endsWith('.md')) {
+          map[e.path] = e.sha;
+        }
+      }
+      _treeMap = map;
+      return map;
+    } on GitHubApiException {
+      // 4xx/5xx from tree endpoints (permissions, server errors). Fall back to
+      // legacy listing on this call; do not poison the cache so the next call
+      // can retry.
+      return null;
+    }
+  }
+
+  /// Bounded-concurrency parallel map for blob fetches. Default of 10 keeps us
+  /// well under GitHub's secondary rate limit while still hiding latency.
+  static Future<List<R>> _parallelMap<T, R>(
+    Iterable<T> items,
+    Future<R> Function(T) fn, {
+    int concurrency = 10,
+  }) async {
+    final list = items.toList();
+    final results = List<R?>.filled(list.length, null);
+    var index = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = index++;
+        if (i >= list.length) return;
+        results[i] = await fn(list[i]);
+      }
+    }
+
+    await Future.wait(
+      List.generate(
+        list.length < concurrency ? list.length : concurrency,
+        (_) => worker(),
+      ),
+    );
+    return results.cast<R>();
+  }
 
   // --- Path helpers ---
 
@@ -166,6 +251,26 @@ class GitHubNoteStorage implements NoteStorage {
 
   @override
   Future<List<Note>> listAllNotes() async {
+    final tree = await _ensureTree();
+    if (tree != null) {
+      return _listAllNotesFromTree(tree);
+    }
+    return _listAllNotesLegacy();
+  }
+
+  Future<List<Note>> _listAllNotesFromTree(Map<String, String> tree) async {
+    final paths = tree.keys.toList();
+    await _hydrateNotesFromTree(paths: paths, tree: tree);
+    _pruneStaleEntries(currentPaths: paths.toSet());
+    final notes = paths
+        .map((p) => _noteCache[p])
+        .whereType<Note>()
+        .toList();
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return notes;
+  }
+
+  Future<List<Note>> _listAllNotesLegacy() async {
     final monthEntries = await _client.listDirectory('notes');
     final notes = <Note>[];
 
@@ -185,6 +290,29 @@ class GitHubNoteStorage implements NoteStorage {
 
   @override
   Future<List<Note>> listNotes(DateTime date) async {
+    final tree = await _ensureTree();
+    if (tree != null) {
+      return _listNotesFromTree(date, tree);
+    }
+    return _listNotesLegacy(date);
+  }
+
+  Future<List<Note>> _listNotesFromTree(
+    DateTime date,
+    Map<String, String> tree,
+  ) async {
+    final dirPath = _dayDirPath(date);
+    final dirPrefix = '$dirPath/';
+    final paths = tree.keys.where((p) => p.startsWith(dirPrefix)).toList();
+    await _hydrateNotesFromTree(paths: paths, tree: tree);
+    _pruneStaleEntries(
+      currentPaths: paths.toSet(),
+      pathPrefix: dirPrefix,
+    );
+    return paths.map((p) => _noteCache[p]).whereType<Note>().toList();
+  }
+
+  Future<List<Note>> _listNotesLegacy(DateTime date) async {
     final dirPath = _dayDirPath(date);
     final files = await _client.listDirectory(dirPath);
 
@@ -218,11 +346,58 @@ class GitHubNoteStorage implements NoteStorage {
       }
     }
 
-    // Prune cache entries for files no longer in the directory.
     final dirPrefix = '$dirPath/';
-    final stalePaths = _noteCache.keys
-        .where((p) => p.startsWith(dirPrefix) && !currentPaths.contains(p))
-        .toList();
+    _pruneStaleEntries(currentPaths: currentPaths, pathPrefix: dirPrefix);
+
+    return notes;
+  }
+
+  /// Fetches blob contents for any `paths` whose SHA has changed (or that have
+  /// no cached entry yet) in parallel. Updates `_shaCache`, `_noteCache`, and
+  /// `_idToPath` as files are decoded.
+  Future<void> _hydrateNotesFromTree({
+    required List<String> paths,
+    required Map<String, String> tree,
+  }) async {
+    final missing = <String>[];
+    for (final path in paths) {
+      final treeSha = tree[path];
+      if (treeSha == null) continue;
+      if (_shaCache[path] == treeSha && _noteCache.containsKey(path)) continue;
+      missing.add(path);
+    }
+    if (missing.isEmpty) return;
+
+    await _parallelMap<String, void>(missing, (path) async {
+      try {
+        final file = await _client.getFile(path);
+        _shaCache[file.path] = file.sha;
+        final decoded = file.decodedContent;
+        if (decoded == null) return;
+        final note = parseNote(decoded);
+        if (note != null) {
+          _noteCache[file.path] = note;
+          _idToPath[note.id] = file.path;
+        }
+      } on GitHubApiException {
+        // Skip a single file failure; the remaining notes are still usable.
+      } on GitHubNotFoundException {
+        // File disappeared between tree fetch and blob fetch; ignore.
+      }
+    });
+  }
+
+  /// Removes cached entries whose path is no longer in [currentPaths]. When
+  /// [pathPrefix] is provided, pruning is scoped to that prefix; otherwise the
+  /// entire `_noteCache` is considered.
+  void _pruneStaleEntries({
+    required Set<String> currentPaths,
+    String? pathPrefix,
+  }) {
+    final stalePaths = _noteCache.keys.where((p) {
+      if (pathPrefix != null && !p.startsWith(pathPrefix)) return false;
+      return !currentPaths.contains(p);
+    }).toList();
     for (final stalePath in stalePaths) {
       final staleNote = _noteCache.remove(stalePath);
       _shaCache.remove(stalePath);
@@ -230,12 +405,42 @@ class GitHubNoteStorage implements NoteStorage {
         _idToPath.remove(staleNote.id);
       }
     }
-
-    return notes;
   }
 
   @override
   Future<List<DateTime>> listDates(String yearMonth) async {
+    final tree = await _ensureTree();
+    if (tree != null) {
+      return _listDatesFromTree(yearMonth, tree);
+    }
+    return _listDatesLegacy(yearMonth);
+  }
+
+  List<DateTime> _listDatesFromTree(
+    String yearMonth,
+    Map<String, String> tree,
+  ) {
+    final parts = yearMonth.split('-');
+    if (parts.length != 2) return const [];
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    if (year == null || month == null) return const [];
+
+    final monthPrefix = 'notes/$yearMonth/';
+    final days = <int>{};
+    for (final path in tree.keys) {
+      if (!path.startsWith(monthPrefix)) continue;
+      final rest = path.substring(monthPrefix.length);
+      final dayStr = rest.split('/').first;
+      final day = int.tryParse(dayStr);
+      if (day != null) days.add(day);
+    }
+    final dates = days.map((d) => DateTime(year, month, d)).toList()
+      ..sort((a, b) => a.compareTo(b));
+    return dates;
+  }
+
+  Future<List<DateTime>> _listDatesLegacy(String yearMonth) async {
     final dirPath = _monthDirPath(yearMonth);
     final entries = await _client.listDirectory(dirPath);
 
@@ -317,32 +522,36 @@ class GitHubNoteStorage implements NoteStorage {
       _shaCache.remove(oldPath);
       _noteCache.remove(oldPath);
       _idToPath.remove(note.id);
+      _treeMap?.remove(oldPath);
     }
 
     final cachedSha = _shaCache[path];
 
+    String savedSha;
     try {
-      final newSha = await _client.putFile(
+      savedSha = await _client.putFile(
         path: path,
         content: markdown,
         message: 'Save note: ${note.title}',
         sha: cachedSha,
       );
-      _shaCache[path] = newSha;
     } on GitHubConflictException {
       // Last-Write-Wins: fetch latest SHA and retry.
       final latest = await _client.getFile(path);
-      final newSha = await _client.putFile(
+      savedSha = await _client.putFile(
         path: path,
         content: markdown,
         message: 'Save note: ${note.title}',
         sha: latest.sha,
       );
-      _shaCache[path] = newSha;
     }
 
+    _shaCache[path] = savedSha;
     _noteCache[path] = note;
     _idToPath[note.id] = path;
+    // Keep the tree snapshot consistent with the local mutation so the next
+    // listing call doesn't miss this newly written file.
+    _treeMap?[path] = savedSha;
   }
 
   @override
@@ -375,5 +584,6 @@ class GitHubNoteStorage implements NoteStorage {
     _shaCache.remove(path);
     _noteCache.remove(path);
     _idToPath.remove(note.id);
+    _treeMap?.remove(path);
   }
 }

@@ -433,8 +433,10 @@ Future<StorageBundle> _defaultStorageFactory(
   final syncIntervalSeconds =
       prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
+  final githubStorage = GitHubNoteStorage(apiClient, branch: branch);
+
   return StorageBundle(
-    storage: GitHubNoteStorage(apiClient),
+    storage: githubStorage,
     localStorage: LocalNoteStorage(basePath: localPath),
     noteService: localService,
     syncEngine: GitHubSyncEngine(
@@ -448,7 +450,14 @@ Future<StorageBundle> _defaultStorageFactory(
           AppSettings.maxSyncIntervalSeconds,
         ),
       ),
-      onRemoteChanged: onRemoteChanged,
+      onRemoteChanged: () async {
+        // A new commit on the tracked branch invalidates the cached tree
+        // snapshot; the next listing call will refetch it.
+        githubStorage.invalidateTreeCache();
+        if (onRemoteChanged != null) {
+          await onRemoteChanged();
+        }
+      },
     ),
   );
 }
