@@ -227,6 +227,7 @@ class GitHubNoteStorage implements NoteStorage {
       'note_date: ${note.noteDate.year}-${note.noteDate.month.toString().padLeft(2, '0')}-${note.noteDate.day.toString().padLeft(2, '0')}',
     );
     buf.writeln('is_default: ${note.isDefault}');
+    buf.writeln('is_memo: ${note.isMemo}');
     buf.writeln('tags: [${note.tags.map((t) => '"$t"').join(', ')}]');
     buf.writeln('created_at: ${_formatDateTime(note.createdAt)}');
     buf.writeln('updated_at: ${_formatDateTime(note.updatedAt)}');
@@ -273,6 +274,7 @@ class GitHubNoteStorage implements NoteStorage {
 
     final title = yaml['title']?.toString() ?? '';
     final isDefault = yaml['is_default'] == true;
+    final isMemo = yaml['is_memo'] == true;
 
     final tagsList = <String>[];
     final tagsRaw = yaml['tags'];
@@ -299,6 +301,7 @@ class GitHubNoteStorage implements NoteStorage {
       tags: tagsList,
       createdAt: createdAt,
       updatedAt: updatedAt,
+      isMemo: isMemo,
     );
   }
 

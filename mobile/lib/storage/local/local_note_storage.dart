@@ -85,6 +85,7 @@ class LocalNoteStorage implements NoteStorage {
           createdAt: note.createdAt,
           updatedAt: note.updatedAt,
           storageType: StorageType.local,
+          isMemo: note.isMemo,
         );
         notes.add(localNote);
         _noteCache[entity.path] = localNote;

@@ -171,4 +171,93 @@ void main() {
       expect(find.text('Markdown 110%'), findsOneWidget);
     },
   );
+
+  testWidgets(
+    'memo tab filters notes to memos only',
+    (WidgetTester tester) async {
+      final today = DateTime.now();
+      final dailyNote = Note(
+        id: 'daily-1',
+        noteDate: DateTime(today.year, today.month, today.day),
+        title: 'Daily one',
+        content: '',
+        isDefault: true,
+        tags: const [],
+        createdAt: today,
+        updatedAt: today,
+      );
+      final memoNote = Note(
+        id: 'memo-1',
+        noteDate: DateTime(today.year, today.month, today.day),
+        title: 'Memo one',
+        content: '',
+        isDefault: false,
+        tags: const [],
+        createdAt: today,
+        updatedAt: today.add(const Duration(seconds: 1)),
+        isMemo: true,
+      );
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        final service = NoteService();
+        return StorageBundle(
+          storage: _FakeNoteStorage([dailyNote, memoNote]),
+          noteService: service,
+        );
+      }
+
+      final repoCache = _InMemoryRepoCache([
+        RepoEntry(owner: 'octocat', repo: 'notes'),
+      ]);
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(
+            restoreResult: AuthSession(
+              provider: 'github',
+              accessToken: 'token',
+              tokenType: 'bearer',
+              scope: 'read:user',
+              issuedAt: DateTime.utc(2026, 3, 10, 9),
+              expiresAt: DateTime.utc(2026, 3, 11, 9),
+              user: const AuthUser(
+                id: '1',
+                login: 'octocat',
+                name: null,
+                avatarUrl: '',
+              ),
+            ),
+          ),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Daily tab: memo not in the list.
+      expect(find.text('Daily one'), findsWidgets);
+      expect(find.text('Memo one'), findsNothing);
+
+      // Switch to memo tab.
+      await tester.tap(find.text('memo'));
+      await tester.pumpAndSettle();
+
+      // Memo tab: memo visible, daily filtered out.
+      expect(find.text('Memo one'), findsWidgets);
+      expect(find.text('Daily one'), findsNothing);
+
+      // Back to daily.
+      await tester.tap(find.text('daily'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Daily one'), findsWidgets);
+      expect(find.text('Memo one'), findsNothing);
+    },
+  );
 }

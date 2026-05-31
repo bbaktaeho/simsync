@@ -204,6 +204,7 @@ class NoteService implements NoteStorage {
         tags: tags,
         createdAt: _parseDateTime(fm['created_at']),
         updatedAt: _parseDateTime(fm['updated_at']),
+        isMemo: fm['is_memo'] == true,
       );
     } catch (_) {
       return null;
@@ -229,6 +230,7 @@ class NoteService implements NoteStorage {
 title: "${_escapeYaml(note.title)}"
 note_date: ${_dirDateFmt.format(note.noteDate)}
 is_default: ${note.isDefault}
+is_memo: ${note.isMemo}
 tags: $tagsLine
 created_at: ${_isoFmt.format(note.createdAt)}
 updated_at: ${_isoFmt.format(note.updatedAt)}
