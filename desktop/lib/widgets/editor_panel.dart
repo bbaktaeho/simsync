@@ -9,10 +9,14 @@ import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import '../services/markdown_editing.dart';
 import 'markdown_preview.dart';
 
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
+
+/// Editor display mode: edit only, side-by-side split, or preview only.
+enum EditorViewMode { edit, split, preview }
 
 class EditorPanel extends StatefulWidget {
   final Note? note;
@@ -27,6 +31,11 @@ class EditorPanel extends StatefulWidget {
   final Future<void> Function()? onDecreaseContentScale;
   final Future<void> Function(double value)? onSetContentScale;
 
+  /// Whether the side-by-side split view is permitted. Disabled when the
+  /// surrounding layout is already space-constrained (e.g. the search results
+  /// panel is showing), in which case split falls back to edit.
+  final bool allowSplit;
+
   const EditorPanel({
     super.key,
     this.note,
@@ -40,6 +49,7 @@ class EditorPanel extends StatefulWidget {
     this.onIncreaseContentScale,
     this.onDecreaseContentScale,
     this.onSetContentScale,
+    this.allowSplit = true,
   });
 
   @override
@@ -50,7 +60,7 @@ class _EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   late TextEditingController _tagController;
-  bool _showPreview = false;
+  EditorViewMode _viewMode = EditorViewMode.split;
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
@@ -162,6 +172,42 @@ class _EditorPanelState extends State<EditorPanel> {
     _save();
   }
 
+  void _renumberList() {
+    if (widget.isReadOnly || widget.note == null) return;
+    final updated = renumberOrderedListAtCursor(_contentController.value);
+    if (updated.text == _contentController.text) return;
+    _contentController.value = updated;
+    _onContentChanged();
+  }
+
+  /// Inserts [block] at the cursor, ensuring it starts on its own line and is
+  /// followed by a trailing newline.
+  void _insertBlock(String block) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final start = (selection.isValid ? selection.baseOffset : text.length)
+        .clamp(0, text.length);
+    final needsLeadingNewline = start > 0 && text[start - 1] != '\n';
+    final insertion = '${needsLeadingNewline ? '\n' : ''}$block\n';
+    final newText = text.replaceRange(start, start, insertion);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+    _onContentChanged();
+  }
+
+  Future<void> _insertTable() async {
+    if (widget.isReadOnly || widget.note == null) return;
+    final spec = await showDialog<_TableSpec>(
+      context: context,
+      builder: (_) => const _InsertTableDialog(),
+    );
+    if (spec == null) return;
+    _insertBlock(buildMarkdownTable(columns: spec.columns, rows: spec.rows));
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.note == null) {
@@ -176,7 +222,7 @@ class _EditorPanelState extends State<EditorPanel> {
         Divider(height: 1, color: c.border),
         _buildMetaHeader(c),
         Divider(height: 1, color: c.border),
-        Expanded(child: _showPreview ? _buildPreview(c) : _buildEditor(c)),
+        Expanded(child: _buildBody(c)),
         _buildStatusBar(c),
       ],
     );
@@ -271,10 +317,24 @@ class _EditorPanelState extends State<EditorPanel> {
             ),
           ),
           const SizedBox(width: AppDimensions.spacingMd),
-          _ToggleButton(
-            icon: _showPreview ? Icons.edit_rounded : Icons.visibility_rounded,
-            label: _showPreview ? 'Edit' : 'Preview',
-            onTap: () => setState(() => _showPreview = !_showPreview),
+          if (!widget.isReadOnly) ...[
+            _ToolbarIconButton(
+              icon: Icons.table_chart_outlined,
+              tooltip: 'Insert table',
+              onTap: () => unawaited(_insertTable()),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.format_list_numbered_rounded,
+              tooltip: 'Renumber list',
+              onTap: _renumberList,
+            ),
+            const SizedBox(width: AppDimensions.spacingMd),
+          ],
+          _ViewModeControl(
+            mode: _effectiveViewMode,
+            allowSplit: widget.allowSplit,
+            onChanged: (mode) => setState(() => _viewMode = mode),
           ),
         ],
       ),
@@ -353,6 +413,8 @@ class _EditorPanelState extends State<EditorPanel> {
           controller: _contentController,
           onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
           readOnly: widget.isReadOnly,
+          inputFormatters:
+              widget.isReadOnly ? null : [MarkdownListInputFormatter()],
           maxLines: null,
           expands: true,
           textAlignVertical: TextAlignVertical.top,
@@ -371,13 +433,45 @@ class _EditorPanelState extends State<EditorPanel> {
     );
   }
 
-  Widget _buildPreview(AppColorsExtension c) {
+  EditorViewMode get _effectiveViewMode {
+    if (_viewMode == EditorViewMode.split && !widget.allowSplit) {
+      return EditorViewMode.edit;
+    }
+    return _viewMode;
+  }
+
+  Widget _buildBody(AppColorsExtension c) {
+    switch (_effectiveViewMode) {
+      case EditorViewMode.edit:
+        return _buildEditor(c);
+      case EditorViewMode.preview:
+        return _buildLivePreview(c);
+      case EditorViewMode.split:
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(child: _buildEditor(c)),
+            VerticalDivider(width: 1, thickness: 1, color: c.border),
+            Expanded(child: _buildLivePreview(c)),
+          ],
+        );
+    }
+  }
+
+  Widget _buildLivePreview(AppColorsExtension c) {
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _contentController,
+      builder: (context, value, _) => _buildPreviewSurface(c, value.text),
+    );
+  }
+
+  Widget _buildPreviewSurface(AppColorsExtension c, String content) {
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
         padding: const EdgeInsets.all(AppDimensions.spacingLg),
         child: MarkdownPreviewWidget(
-          content: _contentController.text,
+          content: content,
           contentScale: widget.contentScale,
         ),
       ),
@@ -459,54 +553,260 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 }
 
-class _ToggleButton extends StatefulWidget {
+/// Compact hover icon button used for editor toolbar actions.
+class _ToolbarIconButton extends StatefulWidget {
   final IconData icon;
-  final String label;
+  final String tooltip;
   final VoidCallback onTap;
 
-  const _ToggleButton({
+  const _ToolbarIconButton({
     required this.icon,
-    required this.label,
+    required this.tooltip,
     required this.onTap,
   });
 
   @override
-  State<_ToggleButton> createState() => _ToggleButtonState();
+  State<_ToolbarIconButton> createState() => _ToolbarIconButtonState();
 }
 
-class _ToggleButtonState extends State<_ToggleButton> {
+class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
   bool _isHovered = false;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(
-            color: _isHovered ? c.surfaceHover : c.surfaceLight,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-            border: Border.all(color: c.border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(widget.icon, size: 14, color: c.textSecondary),
-              const SizedBox(width: 4),
-              Text(
-                widget.label,
-                style: AppTextStyles.microMedium.copyWith(color: c.textSecondary),
-              ),
-            ],
+    return Tooltip(
+      message: widget.tooltip,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: AppDimensions.animFast,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _isHovered ? c.surfaceHover : c.surfaceLight,
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              border: Border.all(color: c.border),
+            ),
+            child: Icon(widget.icon, size: 16, color: c.textSecondary),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Segmented control switching between Edit / Split / Preview view modes.
+/// The Split segment is omitted when [allowSplit] is false.
+class _ViewModeControl extends StatelessWidget {
+  final EditorViewMode mode;
+  final bool allowSplit;
+  final ValueChanged<EditorViewMode> onChanged;
+
+  const _ViewModeControl({
+    required this.mode,
+    required this.allowSplit,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ViewModeSegment(
+            label: 'Edit',
+            active: mode == EditorViewMode.edit,
+            onTap: () => onChanged(EditorViewMode.edit),
+          ),
+          if (allowSplit)
+            _ViewModeSegment(
+              label: 'Split',
+              active: mode == EditorViewMode.split,
+              onTap: () => onChanged(EditorViewMode.split),
+            ),
+          _ViewModeSegment(
+            label: 'Preview',
+            active: mode == EditorViewMode.preview,
+            onTap: () => onChanged(EditorViewMode.preview),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ViewModeSegment extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _ViewModeSegment({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: AppDimensions.animFast,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: active ? c.accentMuted : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          ),
+          child: Text(
+            label,
+            style: AppTextStyles.microMedium.copyWith(
+              color: active ? c.accent : c.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Column/row count returned by [_InsertTableDialog].
+class _TableSpec {
+  const _TableSpec(this.columns, this.rows);
+  final int columns;
+  final int rows;
+}
+
+/// Dialog to choose the dimensions of a markdown table to insert.
+class _InsertTableDialog extends StatefulWidget {
+  const _InsertTableDialog();
+
+  @override
+  State<_InsertTableDialog> createState() => _InsertTableDialogState();
+}
+
+class _InsertTableDialogState extends State<_InsertTableDialog> {
+  int _columns = 2;
+  int _rows = 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return AlertDialog(
+      backgroundColor: c.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+        side: BorderSide(color: c.border),
+      ),
+      title: Text(
+        'Insert table',
+        style: Theme.of(context).textTheme.titleSmall!.copyWith(
+          fontWeight: FontWeight.w600,
+          color: c.textPrimary,
+        ),
+      ),
+      content: SizedBox(
+        width: 240,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _StepperRow(
+              label: 'Columns',
+              value: _columns,
+              onChanged: (v) => setState(() => _columns = v),
+            ),
+            const SizedBox(height: AppDimensions.spacingMd),
+            _StepperRow(
+              label: 'Rows',
+              value: _rows,
+              onChanged: (v) => setState(() => _rows = v),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            'Cancel',
+            style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
+          ),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, _TableSpec(_columns, _rows)),
+          child: const Text('Insert'),
+        ),
+      ],
+    );
+  }
+}
+
+class _StepperRow extends StatelessWidget {
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  const _StepperRow({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  static const int _min = 1;
+  static const int _max = 10;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
+          color: c.textSecondary,
+          splashRadius: 14,
+          onPressed: value > _min ? () => onChanged(value - 1) : null,
+        ),
+        SizedBox(
+          width: 24,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.caption.copyWith(color: c.textPrimary),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+          color: c.textSecondary,
+          splashRadius: 14,
+          onPressed: value < _max ? () => onChanged(value + 1) : null,
+        ),
+      ],
     );
   }
 }
