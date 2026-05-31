@@ -48,7 +48,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     DateTime.now().day,
   );
   bool _calendarExpanded = true;
+  bool _memoTabActive = false;
   List<Note> _notes = [];
+  List<Note> _memoNotes = [];
+  bool _memoLoaded = false;
   Set<DateTime> _datesWithNotes = {};
   bool _isLoading = true;
   StreamSubscription<SyncStatus>? _syncSub;
@@ -110,6 +113,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
   void _onRefresh() {
     _loadNotes();
     _loadDatesWithNotes();
+    if (_memoTabActive) _loadMemoNotes();
   }
 
   Future<void> _loadNotes() async {
@@ -123,6 +127,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         );
         notes.addAll(localDayNotes);
       }
+      // Memos are date-independent: they keep their date folder but only
+      // surface in the memo tab. Exclude them from the daily list.
+      notes.removeWhere((n) => n.isMemo);
       notes.sort((a, b) {
         if (a.isDefault && !b.isDefault) return -1;
         if (!a.isDefault && b.isDefault) return 1;
@@ -160,6 +167,87 @@ class _CalendarScreenState extends State<CalendarScreen> {
     } catch (e) {
       debugPrint('_loadDatesWithNotes error: $e');
     }
+  }
+
+  Future<void> _loadMemoNotes() async {
+    try {
+      final all = <Note>[];
+      all.addAll(await widget.storage.listAllNotes());
+      if (widget.localStorage != null) {
+        all.addAll(await widget.localStorage!.listAllNotes());
+      }
+      final memos = all.where((n) => n.isMemo).toList()
+        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      if (!mounted) return;
+      setState(() {
+        _memoNotes = memos;
+        _memoLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('_loadMemoNotes error: $e');
+    }
+  }
+
+  void _onMemoTabChanged(bool memo) {
+    if (_memoTabActive == memo) return;
+    setState(() => _memoTabActive = memo);
+    if (memo && !_memoLoaded) {
+      _loadMemoNotes();
+    }
+  }
+
+  Future<void> _setMemoFlag(Note note, bool isMemo) async {
+    if (note.isMemo == isMemo) return;
+    final updated = note.copyWith(isMemo: isMemo, updatedAt: DateTime.now());
+    try {
+      await _storageFor(note).saveNote(updated);
+      await _loadNotes();
+      if (_memoLoaded) await _loadMemoNotes();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('이동 실패: $e')));
+    }
+  }
+
+  void _showNoteActions(Note note) {
+    final c = context.colors;
+    final toMemo = !note.isMemo;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: c.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppDimensions.borderRadiusLg),
+        ),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                toMemo
+                    ? Icons.sticky_note_2_outlined
+                    : Icons.calendar_today_outlined,
+                color: c.textSecondary,
+              ),
+              title: Text(
+                toMemo ? '메모로 이동' : 'daily로 이동',
+                style: Theme.of(
+                  ctx,
+                ).textTheme.titleSmall?.copyWith(color: c.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _setMemoFlag(note, toMemo);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _createNote() async {
@@ -332,12 +420,78 @@ class _CalendarScreenState extends State<CalendarScreen> {
           ? Center(child: CircularProgressIndicator(color: c.accent))
           : Column(
               children: [
-                _buildCalendarSection(c),
+                _buildTabBar(c),
                 Divider(height: 1, color: c.border),
-                _buildDateHeader(c),
-                Expanded(child: _buildNoteList(c)),
+                if (_memoTabActive)
+                  Expanded(child: _buildMemoList(c))
+                else ...[
+                  _buildCalendarSection(c),
+                  Divider(height: 1, color: c.border),
+                  _buildDateHeader(c),
+                  Expanded(child: _buildNoteList(c)),
+                ],
               ],
             ),
+    );
+  }
+
+  Widget _buildTabBar(AppColorsExtension c) {
+    return Container(
+      color: c.surface,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingLg,
+        vertical: AppDimensions.spacingSm,
+      ),
+      child: Row(
+        children: [
+          _buildTabItem(
+            c,
+            label: 'daily',
+            active: !_memoTabActive,
+            onTap: () => _onMemoTabChanged(false),
+          ),
+          const SizedBox(width: AppDimensions.spacingLg),
+          _buildTabItem(
+            c,
+            label: 'memo',
+            active: _memoTabActive,
+            onTap: () => _onMemoTabChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabItem(
+    AppColorsExtension c, {
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: AppTextStyles.captionSemibold.copyWith(
+              color: active ? c.accent : c.textMuted,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Container(
+            width: 20,
+            height: 2,
+            decoration: BoxDecoration(
+              color: active ? c.accent : Colors.transparent,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -362,40 +516,44 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
       ),
       title: Text(
-        _monthFmt.format(_displayedMonth),
+        _memoTabActive ? '메모' : _monthFmt.format(_displayedMonth),
         style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
       ),
       actions: [
         _buildSyncIndicator(c),
-        IconButton(
-          icon: Icon(Icons.chevron_left_rounded, color: c.textSecondary),
-          onPressed: _previousMonth,
-          splashRadius: 20,
-        ),
-        GestureDetector(
-          onTap: _goToToday,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.spacingSm,
-              vertical: AppDimensions.spacingXs,
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-              border: Border.all(color: c.border),
-            ),
-            child: Text(
-              '오늘',
-              style: Theme.of(context).textTheme.labelMedium!.copyWith(
-                color: c.textSecondary,
+        if (!_memoTabActive) ...[
+          IconButton(
+            icon: Icon(Icons.chevron_left_rounded, color: c.textSecondary),
+            onPressed: _previousMonth,
+            splashRadius: 20,
+          ),
+          GestureDetector(
+            onTap: _goToToday,
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spacingSm,
+                vertical: AppDimensions.spacingXs,
+              ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(
+                  AppDimensions.borderRadiusSm,
+                ),
+                border: Border.all(color: c.border),
+              ),
+              child: Text(
+                '오늘',
+                style: Theme.of(context).textTheme.labelMedium!.copyWith(
+                  color: c.textSecondary,
+                ),
               ),
             ),
           ),
-        ),
-        IconButton(
-          icon: Icon(Icons.chevron_right_rounded, color: c.textSecondary),
-          onPressed: _nextMonth,
-          splashRadius: 20,
-        ),
+          IconButton(
+            icon: Icon(Icons.chevron_right_rounded, color: c.textSecondary),
+            onPressed: _nextMonth,
+            splashRadius: 20,
+          ),
+        ],
         const SizedBox(width: AppDimensions.spacingSm),
       ],
     );
@@ -724,10 +882,58 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
+  /// Centers [child] but lets it scroll instead of overflowing when the
+  /// available height is small (e.g. memo/daily empty state under the tab bar
+  /// on short viewports).
+  Widget _scrollableCenter(Widget child) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMemoList(AppColorsExtension c) {
+    if (_memoNotes.isEmpty) {
+      return _scrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sticky_note_2_outlined, size: 48, color: c.textMuted),
+            const SizedBox(height: AppDimensions.spacingMd),
+            Text(
+              '메모가 없습니다',
+              style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                color: c.textMuted,
+              ),
+            ),
+            const SizedBox(height: AppDimensions.spacingXs),
+            Text(
+              '노트를 길게 눌러 메모로 옮기세요',
+              style: AppTextStyles.micro.copyWith(color: c.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingLg,
+        vertical: AppDimensions.spacingSm,
+      ),
+      itemCount: _memoNotes.length,
+      itemBuilder: (context, index) => _buildNoteCard(c, _memoNotes[index]),
+    );
+  }
+
   Widget _buildNoteList(AppColorsExtension c) {
     if (_notes.isEmpty) {
-      return Center(
-        child: Column(
+      return _scrollableCenter(
+        Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.note_alt_outlined, size: 48, color: c.textMuted),
@@ -778,6 +984,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       ),
       child: GestureDetector(
         onTap: () => _openEditor(note),
+        onLongPress: () => _showNoteActions(note),
         child: Container(
           margin: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
           padding: const EdgeInsets.all(AppDimensions.spacingMd),
