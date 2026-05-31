@@ -32,13 +32,19 @@ class GitHubSyncEngine implements SyncEngine {
     Duration interval = const Duration(seconds: 5),
     http.Client? httpClient,
     Future<void> Function()? onRemoteChanged,
+    String? initialCommitSha,
   }) : _token = token,
        _owner = owner,
        _repo = repo,
        _branch = branch,
        _interval = interval,
        _httpClient = httpClient ?? http.Client(),
-       _onRemoteChanged = onRemoteChanged;
+       _onRemoteChanged = onRemoteChanged,
+       _lastCommitSha = initialCommitSha;
+
+  /// Latest commit SHA observed on the tracked branch. Exposed so callers can
+  /// persist it across app launches (see `GitHubNoteCache.lastCommitSha`).
+  String? get lastCommitSha => _lastCommitSha;
 
   Duration get _currentInterval {
     if (_consecutiveErrors == 0) return _interval;

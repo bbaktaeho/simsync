@@ -18,6 +18,7 @@ import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
+import 'storage/github/github_note_cache.dart';
 import 'storage/github/github_note_storage.dart';
 import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
@@ -433,32 +434,50 @@ Future<StorageBundle> _defaultStorageFactory(
   final syncIntervalSeconds =
       prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
-  final githubStorage = GitHubNoteStorage(apiClient, branch: branch);
+  // Persistent storage cache: per-repo file under app support dir. Loading it
+  // hydrates _shaCache / _noteCache from disk, so when the recorded commit SHA
+  // still matches HEAD the next listAllNotes call needs zero GitHub round-trips.
+  final supportDir = await getApplicationSupportDirectory();
+  final cacheFile = File(
+    '${supportDir.path}/simsync_cache/${owner}__${repo}__$branch.json',
+  );
+  final cache = GitHubNoteCache(path: cacheFile.path);
+  final githubStorage = GitHubNoteStorage(
+    apiClient,
+    branch: branch,
+    cache: cache,
+  );
+  await githubStorage.loadCache();
+
+  late final GitHubSyncEngine syncEngine;
+  syncEngine = GitHubSyncEngine(
+    token: accessToken,
+    owner: owner,
+    repo: repo,
+    branch: branch,
+    interval: Duration(
+      seconds: syncIntervalSeconds.clamp(
+        AppSettings.minSyncIntervalSeconds,
+        AppSettings.maxSyncIntervalSeconds,
+      ),
+    ),
+    initialCommitSha: githubStorage.lastCommitSha,
+    onRemoteChanged: () async {
+      // A new commit on the tracked branch: persist the new SHA, drop the tree
+      // snapshot so the next listing refetches it, and notify the app.
+      githubStorage.setLastCommitSha(syncEngine.lastCommitSha);
+      githubStorage.invalidateTreeCache();
+      if (onRemoteChanged != null) {
+        await onRemoteChanged();
+      }
+    },
+  );
 
   return StorageBundle(
     storage: githubStorage,
     localStorage: LocalNoteStorage(basePath: localPath),
     noteService: localService,
-    syncEngine: GitHubSyncEngine(
-      token: accessToken,
-      owner: owner,
-      repo: repo,
-      branch: branch,
-      interval: Duration(
-        seconds: syncIntervalSeconds.clamp(
-          AppSettings.minSyncIntervalSeconds,
-          AppSettings.maxSyncIntervalSeconds,
-        ),
-      ),
-      onRemoteChanged: () async {
-        // A new commit on the tracked branch invalidates the cached tree
-        // snapshot; the next listing call will refetch it.
-        githubStorage.invalidateTreeCache();
-        if (onRemoteChanged != null) {
-          await onRemoteChanged();
-        }
-      },
-    ),
+    syncEngine: syncEngine,
   );
 }
 
