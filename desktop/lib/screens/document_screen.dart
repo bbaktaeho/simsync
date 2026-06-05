@@ -1021,6 +1021,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,
       onSetContentScale: _setContentScale,
+      allowSplit: !_isSearchActive,
     );
 
     if (!_isSearchActive) return editor;
