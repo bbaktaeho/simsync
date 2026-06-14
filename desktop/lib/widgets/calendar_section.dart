@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class CalendarSection extends StatelessWidget {
   final DateTime displayedMonth;
@@ -49,59 +49,57 @@ class CalendarSection extends StatelessWidget {
     final c = context.colors;
     final monthLabel = DateFormat('MMM yyyy').format(displayedMonth);
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.spacingMd,
-        vertical: AppDimensions.spacingSm,
-      ),
-      child: Row(
-        children: [
-          InkWell(
-            onTap: onToggleExpand,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-            child: Padding(
-              padding: const EdgeInsets.all(AppDimensions.spacingXs),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isExpanded
-                        ? Icons.keyboard_arrow_down_rounded
-                        : Icons.keyboard_arrow_right_rounded,
-                    size: 18,
-                    color: c.textSecondary,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showMonthLabel = constraints.maxWidth > 250;
+        return Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingMd,
+            vertical: AppDimensions.spacingSm,
+          ),
+          child: Row(
+            children: [
+              InkWell(
+                onTap: onToggleExpand,
+                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+                child: Padding(
+                  padding: const EdgeInsets.all(AppDimensions.spacingXs),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isExpanded
+                            ? Icons.keyboard_arrow_down_rounded
+                            : Icons.keyboard_arrow_right_rounded,
+                        size: 18,
+                        color: c.textSecondary,
+                      ),
+                      const SizedBox(width: AppDimensions.spacingXs),
+                      Text(
+                        'Calendar',
+                        style: AppTextStyles.microSemibold.copyWith(color: c.textSecondary, letterSpacing: 0.5),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const Spacer(),
+              if (isExpanded) ...[
+                _MonthNavButton(icon: Icons.chevron_left_rounded, onTap: onPreviousMonth),
+                const SizedBox(width: AppDimensions.spacingXs),
+                if (showMonthLabel) ...[
+                  Text(
+                    monthLabel,
+                    style: Theme.of(context).textTheme.labelMedium!.copyWith(color: c.textPrimary),
                   ),
                   const SizedBox(width: AppDimensions.spacingXs),
-                  Text(
-                    'Calendar',
-                    style: GoogleFonts.manrope(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: c.textSecondary,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
                 ],
-              ),
-            ),
+                _MonthNavButton(icon: Icons.chevron_right_rounded, onTap: onNextMonth),
+              ],
+            ],
           ),
-          const Spacer(),
-          if (isExpanded) ...[
-            _MonthNavButton(icon: Icons.chevron_left_rounded, onTap: onPreviousMonth),
-            const SizedBox(width: AppDimensions.spacingXs),
-            Text(
-              monthLabel,
-              style: GoogleFonts.manrope(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: c.textPrimary,
-              ),
-            ),
-            const SizedBox(width: AppDimensions.spacingXs),
-            _MonthNavButton(icon: Icons.chevron_right_rounded, onTap: onNextMonth),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -138,11 +136,7 @@ class CalendarSection extends StatelessWidget {
                 child: Center(
                   child: Text(
                     d,
-                    style: GoogleFonts.manrope(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: c.textMuted,
-                    ),
+                    style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
                   ),
                 ),
               ))
@@ -247,11 +241,10 @@ class _CalendarCell extends StatelessWidget {
           children: [
             Text(
               '$day',
-              style: GoogleFonts.manrope(
-                fontSize: 11,
-                fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: textColor,
-              ),
+              style: (isToday || isSelected
+                      ? AppTextStyles.microBold
+                      : AppTextStyles.microMedium)
+                  .copyWith(color: textColor),
             ),
             if (hasNotes)
               Container(

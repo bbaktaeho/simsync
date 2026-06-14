@@ -1,18 +1,27 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-
-import '../main.dart';
+import 'package:flutter/services.dart';
 import '../models/note.dart';
+import '../search/note_search_index.dart';
+import '../search/note_search_query.dart';
+import '../search/search_result.dart';
+import '../settings/app_settings_controller.dart';
+import '../settings/shortcut_binding.dart';
 import '../services/note_service.dart';
+import '../storage/github/github_sync_engine.dart';
+import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/note_list_section.dart';
+import '../widgets/note_search_section.dart';
+import '../widgets/search_results_panel.dart';
 import '../widgets/weekly_view_panel.dart';
+import 'settings_screen.dart';
 
 class DocumentScreen extends StatefulWidget {
   final Future<void> Function() onLogout;
@@ -20,6 +29,15 @@ class DocumentScreen extends StatefulWidget {
   final NoteStorage? localStorage;
   final NoteService noteService;
   final String? avatarUrl;
+  final RepoEntry? activeRepo;
+  final AppSettingsController settingsController;
+  final GitHubSyncEngine? syncEngine;
+  final Future<List<RepoEntry>> Function()? loadCachedRepos;
+  final Future<void> Function(String path)? onLocalNotePathChanged;
+  final ValueChanged<bool>? onSyncEnabledChanged;
+  final Future<void> Function(RepoEntry entry)? onRepoSelected;
+  final Future<RepoEntry> Function(String name)? onCreateRepo;
+  final Future<RepoEntry> Function(String owner, String repo)? onConnectRepo;
 
   /// Optional notifier that signals when remote data has changed.
   /// Each value change triggers a full reload of notes from storage.
@@ -33,6 +51,15 @@ class DocumentScreen extends StatefulWidget {
     this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
+    required this.settingsController,
+    this.activeRepo,
+    this.syncEngine,
+    this.loadCachedRepos,
+    this.onLocalNotePathChanged,
+    this.onSyncEnabledChanged,
+    this.onRepoSelected,
+    this.onCreateRepo,
+    this.onConnectRepo,
   });
 
   @override
@@ -42,7 +69,6 @@ class DocumentScreen extends StatefulWidget {
 class _DocumentScreenState extends State<DocumentScreen> {
   // ── State ──
   NoteStorage get _storage => widget.storage;
-  NoteService get _noteService => widget.noteService;
 
   /// Returns the appropriate storage for the given note based on its storageType.
   NoteStorage _storageFor(Note note) {
@@ -51,6 +77,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
     return _storage;
   }
+
   List<Note> _allNotes = [];
   Note? _selectedNote;
   DateTime _displayedMonth = DateTime.now();
@@ -58,18 +85,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _sidebarOpen = true;
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
+  bool _memoTabActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
   bool _isSyncing = false;
   bool _savePending = false;
   int _currentPage = 0;
   double _sidebarWidth = AppDimensions.sidebarDefaultWidth;
+  late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
+  final NoteSearchIndex _searchIndex = NoteSearchIndex();
+  NoteSearchQuery _searchQuery = const NoteSearchQuery();
+  List<SearchResult> _searchResults = [];
+  int _loadGeneration = 0;
+
+  void _handleSettingsChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
+    _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.settingsController.addListener(_handleSettingsChanged);
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
 
   @override
@@ -79,12 +121,36 @@ class _DocumentScreenState extends State<DocumentScreen> {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
     }
+    if (oldWidget.settingsController != widget.settingsController) {
+      oldWidget.settingsController.removeListener(_handleSettingsChanged);
+      widget.settingsController.addListener(_handleSettingsChanged);
+    }
+    if (oldWidget.storage != widget.storage ||
+        oldWidget.localStorage != widget.localStorage) {
+      // Immediately remove stale local notes before async reload so the UI
+      // never shows notes from the previous local path.
+      if (oldWidget.localStorage != widget.localStorage) {
+        setState(() {
+          _allNotes = _allNotes
+              .where((n) => n.storageType != StorageType.local)
+              .toList();
+          if (_selectedNote?.storageType == StorageType.local) {
+            _selectedNote = null;
+          }
+        });
+      }
+      unawaited(_loadNotes());
+    }
   }
 
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.settingsController.removeListener(_handleSettingsChanged);
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     super.dispose();
   }
 
@@ -107,45 +173,25 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Future<void> _loadNotes() async {
-    // Load all notes from storage (GitHub or local, depending on wiring).
-    final now = DateTime.now();
-    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-    final dates = await _storage.listDates(currentMonth);
-    final notes = <Note>[];
-    for (final date in dates) {
-      final dayNotes = await _storage.listNotes(date);
-      notes.addAll(dayNotes);
-    }
-    // Also load previous month if we're in the first week.
-    if (now.day <= 7) {
-      final prev = DateTime(now.year, now.month - 1);
-      final prevMonth = '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
-      final prevDates = await _storage.listDates(prevMonth);
-      for (final date in prevDates) {
-        final dayNotes = await _storage.listNotes(date);
-        notes.addAll(dayNotes);
-      }
-    }
+    final loadGeneration = ++_loadGeneration;
 
-    // Load local notes.
-    if (widget.localStorage != null) {
-      final localDates = await widget.localStorage!.listDates(currentMonth);
-      for (final date in localDates) {
-        notes.addAll(await widget.localStorage!.listNotes(date));
-      }
-      if (now.day <= 7) {
-        final prev = DateTime(now.year, now.month - 1);
-        final prevMonth =
-            '${prev.year}-${prev.month.toString().padLeft(2, '0')}';
-        final prevLocalDates = await widget.localStorage!.listDates(prevMonth);
-        for (final date in prevLocalDates) {
-          notes.addAll(await widget.localStorage!.listNotes(date));
-        }
-      }
-    }
+    // Single call per backend. GitHubNoteStorage.listAllNotes hits the tree
+    // endpoint once and fans the missing blob fetches out in parallel via its
+    // worker pool — that work used to be serialized day-by-day here. Running
+    // synced + local concurrently also halves the wall-clock wait when both
+    // are present.
+    final now = DateTime.now();
+    final futures = <Future<List<Note>>>[
+      _storage.listAllNotes(),
+      if (widget.localStorage != null) widget.localStorage!.listAllNotes(),
+    ];
+    final results = await Future.wait(futures);
+    final notes = <Note>[
+      for (final list in results) ...list,
+    ];
 
     notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    if (!mounted) return;
+    if (!mounted || loadGeneration != _loadGeneration) return;
     final previousSelectedId = _selectedNote?.id;
 
     // Merge remote notes with local dirty notes to prevent overwriting
@@ -185,9 +231,26 @@ class _DocumentScreenState extends State<DocumentScreen> {
         }
       }
     });
+
+    unawaited(_rebuildSearchIndex());
+  }
+
+  bool get _syncEnabled => widget.settingsController.value.syncEnabled;
+
+  bool _canMutateNote(Note note) {
+    return note.storageType == StorageType.local || _syncEnabled;
+  }
+
+  void _showSyncDisabledMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ── Derived data ──
+
+  bool get _isSearchActive => !_searchQuery.isEmpty;
 
   Set<DateTime> get _datesWithNotes {
     return _allNotes
@@ -198,19 +261,30 @@ class _DocumentScreenState extends State<DocumentScreen> {
   List<Note> get _notesForSelectedDate {
     if (_selectedDate == null) return [];
     return _allNotes.where((n) {
+      if (n.isMemo) return false;
       return n.noteDate.year == _selectedDate!.year &&
           n.noteDate.month == _selectedDate!.month &&
           n.noteDate.day == _selectedDate!.day;
-    }).toList()
-      ..sort((a, b) {
-        if (a.isDefault && !b.isDefault) return -1;
-        if (!a.isDefault && b.isDefault) return 1;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    }).toList()..sort((a, b) {
+      if (a.isDefault && !b.isDefault) return -1;
+      if (!a.isDefault && b.isDefault) return 1;
+      return a.createdAt.compareTo(b.createdAt);
+    });
+  }
+
+  List<Note> get _memoNotes {
+    return _allNotes.where((n) => n.isMemo).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
+  List<Note> get _visibleNotes {
+    if (_isSearchActive) return _searchResults.map((r) => r.note).toList();
+    if (_memoTabActive) return _memoNotes;
+    return _notesForSelectedDate;
   }
 
   List<Note> get _paginatedNotes {
-    final notes = _notesForSelectedDate;
+    final notes = _visibleNotes;
     final start = _currentPage * AppDimensions.notesPerPage;
     final end = (start + AppDimensions.notesPerPage).clamp(0, notes.length);
     if (start >= notes.length) return [];
@@ -218,7 +292,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   int get _totalPages {
-    final count = _notesForSelectedDate.length;
+    final count = _visibleNotes.length;
     return (count / AppDimensions.notesPerPage).ceil().clamp(1, 999);
   }
 
@@ -234,12 +308,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return _allNotes.where((n) {
       final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
       return !d.isBefore(start) && d.isBefore(end);
-    }).toList()
-      ..sort((a, b) {
-        final cmp = a.noteDate.compareTo(b.noteDate);
-        if (cmp != 0) return cmp;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    }).toList()..sort((a, b) {
+      final cmp = a.noteDate.compareTo(b.noteDate);
+      if (cmp != 0) return cmp;
+      return a.createdAt.compareTo(b.createdAt);
+    });
   }
 
   // ── Sidebar resize ──
@@ -257,7 +330,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
       if (newWidth < AppDimensions.sidebarCollapseThreshold) {
         // Auto-collapse
         _sidebarOpen = false;
-        _sidebarWidth = AppDimensions.sidebarDefaultWidth; // remember for re-open
+        _sidebarWidth =
+            AppDimensions.sidebarDefaultWidth; // remember for re-open
       } else {
         _sidebarOpen = true;
         _sidebarWidth = newWidth.clamp(AppDimensions.sidebarMinWidth, maxWidth);
@@ -279,8 +353,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
-      _currentPage = 0;
-      if (!_weeklyViewActive) {
+      if (_memoTabActive) {
+        _memoTabActive = false;
+        _currentPage = 0;
+      }
+      if (!_weeklyViewActive && !_isSearchActive) {
+        _currentPage = 0;
         final notes = _notesForSelectedDate;
         _selectedNote = notes.isNotEmpty ? notes.first : null;
       }
@@ -290,11 +368,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onNoteSelected(Note note) {
     setState(() {
       _selectedNote = note;
+      _selectedDate = DateTime(
+        note.noteDate.year,
+        note.noteDate.month,
+        note.noteDate.day,
+      );
       _weeklyViewActive = false;
     });
   }
 
   void _onNoteChanged(Note updatedNote) {
+    if (!_canMutateNote(updatedNote)) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 현재 동기화 노트는 읽기 전용입니다.');
+      return;
+    }
+
     setState(() {
       final idx = _allNotes.indexWhere((n) => n.id == updatedNote.id);
       if (idx != -1) {
@@ -302,6 +390,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _selectedNote = updatedNote;
       }
     });
+    _searchIndex.upsert(updatedNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
     // Debounce: 타이핑이 멈춘 후 2초 뒤에 저장하여 커밋 폭주 방지.
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(seconds: 2), () async {
@@ -321,6 +411,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   Future<void> _createNote() async {
     if (_selectedDate == null) return;
+    if (!_syncEnabled) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트를 생성할 수 없습니다.');
+      return;
+    }
     final existingNotes = _notesForSelectedDate;
     final isDefault = existingNotes.isEmpty;
     final now = DateTime.now();
@@ -339,7 +433,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _allNotes.add(newNote);
       _selectedNote = newNote;
       _weeklyViewActive = false;
+      _memoTabActive = false;
     });
+    _searchIndex.upsert(newNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   Future<void> _createLocalNote() async {
@@ -361,7 +458,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _allNotes.add(newNote);
       _selectedNote = newNote;
       _weeklyViewActive = false;
+      _memoTabActive = false;
     });
+    _searchIndex.upsert(newNote);
+    _applySearchQuery(_searchQuery, resetPage: false);
   }
 
   void _previousMonth() {
@@ -383,6 +483,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   Future<void> _deleteNote(Note note) async {
+    if (!_canMutateNote(note)) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트를 삭제할 수 없습니다.');
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -390,41 +495,50 @@ class _DocumentScreenState extends State<DocumentScreen> {
         return AlertDialog(
           backgroundColor: c.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             side: BorderSide(color: c.border),
           ),
-          titlePadding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-          title: Text('노트 삭제',
-              style: TextStyle(
-                  color: c.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600)),
+          titlePadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, 14, AppDimensions.spacingLg, 0),
+          contentPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, AppDimensions.spacingSm, AppDimensions.spacingLg, 0),
+          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingSm, AppDimensions.spacingXs, AppDimensions.spacingSm, 6),
+          title: Text(
+            '노트 삭제',
+            style: Theme.of(ctx).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
+          ),
           content: Text(
             "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-            style: TextStyle(color: c.textSecondary, fontSize: 12.5),
+            style: AppTextStyles.captionThin.copyWith(color: c.textSecondary),
           ),
           actions: [
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimensions.spacingMd,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text('취소',
-                  style: TextStyle(color: c.textMuted, fontSize: 12.5)),
+              child: Text(
+                '취소',
+                style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
+              ),
             ),
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppDimensions.spacingMd,
+                  vertical: 6,
+                ),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text('삭제',
-                  style: TextStyle(color: c.error, fontSize: 12.5)),
+              child: Text(
+                '삭제',
+                style: AppTextStyles.captionThin.copyWith(color: c.error),
+              ),
             ),
           ],
         );
@@ -438,21 +552,392 @@ class _DocumentScreenState extends State<DocumentScreen> {
       setState(() {
         _allNotes.removeWhere((n) => n.id == note.id);
         if (_selectedNote?.id == note.id) {
-          final remaining = _notesForSelectedDate;
+          final remaining = _visibleNotes.where((n) => n.id != note.id);
           _selectedNote = remaining.isNotEmpty ? remaining.first : null;
         }
       });
+      _searchIndex.remove(note.id);
+      _applySearchQuery(_searchQuery, resetPage: false);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('삭제 실패: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
       }
     }
   }
 
   void _toggleWeeklyView() {
-    setState(() => _weeklyViewActive = !_weeklyViewActive);
+    setState(() {
+      _weeklyViewActive = !_weeklyViewActive;
+      if (_weeklyViewActive) _memoTabActive = false;
+    });
+  }
+
+  void _onMemoTabChanged(bool active) {
+    if (_memoTabActive == active) return;
+    setState(() {
+      _memoTabActive = active;
+      _currentPage = 0;
+      if (active) {
+        _weeklyViewActive = false;
+      }
+      if (_searchController.text.isNotEmpty || !_searchQuery.isEmpty) {
+        _searchController.clear();
+        _searchQuery = const NoteSearchQuery();
+        _searchResults = [];
+      }
+      final notes = _visibleNotes;
+      _selectedNote = notes.isNotEmpty ? notes.first : null;
+    });
+  }
+
+  Future<void> _onMoveToMemo(Note note) async {
+    await _setMemoFlag(note, true);
+  }
+
+  Future<void> _onMoveToDailyNote(Note note) async {
+    await _setMemoFlag(note, false);
+  }
+
+  Future<void> _setMemoFlag(Note note, bool isMemo) async {
+    if (note.isMemo == isMemo) return;
+    if (!_canMutateNote(note)) {
+      _showSyncDisabledMessage(
+        isMemo
+            ? '동기화가 꺼져 있어 동기화 노트를 메모로 이동할 수 없습니다.'
+            : '동기화가 꺼져 있어 동기화 노트를 daily로 이동할 수 없습니다.',
+      );
+      return;
+    }
+    final updated = note.copyWith(
+      isMemo: isMemo,
+      updatedAt: DateTime.now(),
+    );
+    try {
+      await _storageFor(updated).saveNote(updated);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이동 실패: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      final idx = _allNotes.indexWhere((n) => n.id == updated.id);
+      if (idx != -1) {
+        _allNotes[idx] = updated;
+      }
+      if (_selectedNote?.id == updated.id) {
+        _selectedNote = updated;
+      }
+    });
+    _searchIndex.upsert(updated);
+    _applySearchQuery(_searchQuery, resetPage: false);
+  }
+
+  Future<void> _openSettings() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return SettingsScreen(
+          settingsController: widget.settingsController,
+          activeRepo: widget.activeRepo,
+          loadCachedRepos: widget.loadCachedRepos,
+          onLocalNotePathChanged: widget.onLocalNotePathChanged,
+          onSyncEnabledChanged: widget.onSyncEnabledChanged,
+          onRepoSelected: widget.onRepoSelected,
+          onCreateRepo: widget.onCreateRepo,
+          onConnectRepo: widget.onConnectRepo,
+          onSyncIntervalChanged: _applySyncInterval,
+        );
+      },
+    );
+  }
+
+  Future<void> _increaseContentScale() async {
+    await widget.settingsController.increaseContentScale();
+  }
+
+  Future<void> _decreaseContentScale() async {
+    await widget.settingsController.decreaseContentScale();
+  }
+
+  Future<void> _setContentScale(double scale) async {
+    await widget.settingsController.setContentScale(scale);
+  }
+
+  void _applySyncInterval(int seconds) {
+    widget.syncEngine?.updateInterval(Duration(seconds: seconds));
+  }
+
+  Future<void> _rebuildSearchIndex() async {
+    if (!mounted) return;
+    // _allNotes already reflects everything `_loadNotes` fetched (synced +
+    // local + dirty merge). Rebuilding from memory avoids a redundant
+    // listAllNotes round-trip on every sync tick.
+    _searchIndex.replaceAll(_allNotes);
+    if (!mounted) return;
+    _applySearchQuery(_searchQuery, resetPage: false);
+  }
+
+  void _applySearchQuery(NoteSearchQuery query, {bool resetPage = true}) {
+    final contextLines =
+        widget.settingsController.value.searchContextLines;
+    final results = query.isEmpty
+        ? <SearchResult>[]
+        : _searchIndex.searchWithContext(query, contextLines: contextLines);
+
+    setState(() {
+      _searchQuery = query;
+      _searchResults = results;
+
+      if (resetPage) {
+        _currentPage = 0;
+      }
+
+      final maxPage =
+          ((_visibleNotes.length / AppDimensions.notesPerPage).ceil().clamp(
+            1,
+            999,
+          )) -
+          1;
+      if (_currentPage > maxPage) {
+        _currentPage = maxPage;
+      }
+
+      if (_isSearchActive) {
+        final selected =
+            results.where((r) => r.note.id == _selectedNote?.id);
+        _selectedNote = selected.isNotEmpty
+            ? selected.first.note
+            : results.firstOrNull?.note;
+        if (_selectedNote != null) {
+          _selectedDate = DateTime(
+            _selectedNote!.noteDate.year,
+            _selectedNote!.noteDate.month,
+            _selectedNote!.noteDate.day,
+          );
+        }
+      }
+    });
+  }
+
+  void _onSearchTextChanged(String value) {
+    _applySearchQuery(_searchQuery.copyWith(text: value));
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _applySearchQuery(const NoteSearchQuery());
+  }
+
+  void _activateSearch() {
+    _searchFocusNode.requestFocus();
+  }
+
+  void _onSearchResultTap(SearchResult result) {
+    setState(() {
+      _selectedNote = result.note;
+      _selectedDate = DateTime(
+        result.note.noteDate.year,
+        result.note.noteDate.month,
+        result.note.noteDate.day,
+      );
+    });
+  }
+
+  Future<void> _openSearchFilters() async {
+    final tagController = TextEditingController(text: _searchQuery.tag);
+    DateTime? startDate = _searchQuery.startDate;
+    DateTime? endDate = _searchQuery.endDate;
+
+    final result = await showDialog<NoteSearchQuery>(
+      context: context,
+      builder: (context) {
+        final c = context.colors;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> pickStartDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: startDate ?? _selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+
+              setState(() {
+                startDate = DateTime(picked.year, picked.month, picked.day);
+                if (endDate != null && endDate!.isBefore(startDate!)) {
+                  endDate = startDate;
+                }
+              });
+            }
+
+            Future<void> pickEndDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate:
+                    endDate ?? startDate ?? _selectedDate ?? DateTime.now(),
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+              );
+              if (picked == null) return;
+
+              setState(() {
+                endDate = DateTime(picked.year, picked.month, picked.day);
+                if (startDate != null && startDate!.isAfter(endDate!)) {
+                  startDate = endDate;
+                }
+              });
+            }
+
+            return AlertDialog(
+              backgroundColor: c.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
+                side: BorderSide(color: c.border),
+              ),
+              title: const Text('Search Filters'),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: tagController,
+                      decoration: const InputDecoration(
+                        labelText: 'Tag',
+                        hintText: 'work',
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.spacingMd),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: pickStartDate,
+                            child: Text(
+                              startDate == null
+                                  ? 'Start date'
+                                  : _formatDate(startDate),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: AppDimensions.spacingSm),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: pickEndDate,
+                            child: Text(
+                              endDate == null
+                                  ? 'End date'
+                                  : _formatDate(endDate),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    tagController.clear();
+                    Navigator.of(context).pop(
+                      _searchQuery.copyWith(
+                        tag: '',
+                        startDate: null,
+                        endDate: null,
+                      ),
+                    );
+                  },
+                  child: const Text('Clear'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(context).pop(
+                      _searchQuery.copyWith(
+                        tag: tagController.text.trim(),
+                        startDate: startDate,
+                        endDate: endDate,
+                      ),
+                    );
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    tagController.dispose();
+
+    if (result != null) {
+      _applySearchQuery(result);
+    }
+  }
+
+  String _formatDate(DateTime? value) {
+    if (value == null) return '...';
+
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  bool _handleHardwareKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+
+    final hw = HardwareKeyboard.instance;
+    final isMetaPressed = hw.isMetaPressed;
+    final isShiftPressed = hw.isShiftPressed;
+
+    for (final binding in widget.settingsController.bindings) {
+      if (binding.matches(
+        event,
+        isMetaPressed: isMetaPressed,
+        isShiftPressed: isShiftPressed,
+      )) {
+        switch (binding.action) {
+          case ShortcutAction.openSettings:
+            unawaited(_openSettings());
+          case ShortcutAction.zoomIn:
+            unawaited(_increaseContentScale());
+          case ShortcutAction.zoomOut:
+            unawaited(_decreaseContentScale());
+          case ShortcutAction.search:
+            _activateSearch();
+        }
+        return true;
+      }
+    }
+
+    // Also handle numpad variants for zoom (not configurable).
+    if (isMetaPressed) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.numpadAdd) {
+        unawaited(_increaseContentScale());
+        return true;
+      }
+      if (key == LogicalKeyboardKey.numpadSubtract) {
+        unawaited(_decreaseContentScale());
+        return true;
+      }
+    }
+
+    return false;
   }
 
   void _onWeeklyNoteTap(Note note) {
@@ -475,44 +960,45 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (_isLoading) {
       return Scaffold(
         backgroundColor: c.scaffold,
-        body: Center(
-          child: CircularProgressIndicator(color: c.accent),
-        ),
+        body: Center(child: CircularProgressIndicator(color: c.accent)),
       );
     }
 
-    return Scaffold(
-      backgroundColor: c.scaffold,
-      body: Column(
-        children: [
-          _buildTitleBar(c),
-          Divider(height: 1, color: c.border),
-          Expanded(
-            child: Row(
-              children: [
-                // Sidebar
-                if (_sidebarOpen)
-                  SizedBox(
-                    width: _clampSidebarWidth(_sidebarWidth, screenWidth),
-                    child: _buildSidebarContent(c),
+    return Focus(
+      autofocus: true,
+      child: Scaffold(
+        backgroundColor: c.scaffold,
+        body: Column(
+          children: [
+            _buildTitleBar(c),
+            Divider(height: 1, color: c.border),
+            Expanded(
+              child: Row(
+                children: [
+                  if (_sidebarOpen)
+                    SizedBox(
+                      width: _clampSidebarWidth(_sidebarWidth, screenWidth),
+                      child: _buildSidebarContent(c),
+                    ),
+                  _ResizeHandle(
+                    isVisible: _sidebarOpen,
+                    onDragUpdate: (details) =>
+                        _onResizeUpdate(details, screenWidth),
                   ),
-                // Resize handle
-                _ResizeHandle(
-                  isVisible: _sidebarOpen,
-                  onDragUpdate: (details) =>
-                      _onResizeUpdate(details, screenWidth),
-                ),
-                // Right panel
-                Expanded(child: _buildRightPanel()),
-              ],
+                  Expanded(child: _buildRightPanel()),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildRightPanel() {
+    final selectedNoteIsReadOnly =
+        _selectedNote != null && !_canMutateNote(_selectedNote!);
+
     if (_weeklyViewActive) {
       return WeeklyViewPanel(
         weekStart: _weekStart,
@@ -520,17 +1006,46 @@ class _DocumentScreenState extends State<DocumentScreen> {
         onNoteTap: _onWeeklyNoteTap,
       );
     }
-    return EditorPanel(
+
+    final editor = EditorPanel(
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,
       onCreateNote: _createNote,
       onCreateLocalNote: widget.localStorage != null ? _createLocalNote : null,
+      isReadOnly: selectedNoteIsReadOnly,
+      readOnlyReason: selectedNoteIsReadOnly
+          ? '동기화가 꺼져 있어 현재 동기화 노트는 읽기 전용입니다.'
+          : null,
+      contentScale: widget.settingsController.value.contentScale,
+      onIncreaseContentScale: _increaseContentScale,
+      onDecreaseContentScale: _decreaseContentScale,
+      onSetContentScale: _setContentScale,
+      allowSplit: !_isSearchActive,
+    );
+
+    if (!_isSearchActive) return editor;
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 320,
+          child: SearchResultsPanel(
+            results: _searchResults,
+            query: _searchQuery.text,
+            selectedNoteId: _selectedNote?.id,
+            onResultTap: _onSearchResultTap,
+          ),
+        ),
+        VerticalDivider(width: 1, thickness: 1, color: context.colors.border),
+        Expanded(child: editor),
+      ],
     );
   }
 
   Widget _buildTitleBar(AppColorsExtension c) {
-    final isDark = SimSyncApp.of(context).themeMode == ThemeMode.dark;
+    final avatarUrl = widget.avatarUrl?.trim();
+    final hasAvatar = avatarUrl != null && avatarUrl.isNotEmpty;
 
     return Container(
       height: 44,
@@ -551,22 +1066,32 @@ class _DocumentScreenState extends State<DocumentScreen> {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             'SimSync',
-            style: GoogleFonts.manrope(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: c.textPrimary,
-              letterSpacing: -0.3,
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3),
+          ),
+          const Spacer(),
+          SizedBox(
+            width: 320,
+            child: NoteSearchSection(
+              controller: _searchController,
+              focusNode: _searchFocusNode,
+              query: _searchQuery.text,
+              tag: _searchQuery.tag,
+              startDate: _searchQuery.startDate,
+              endDate: _searchQuery.endDate,
+              onQueryChanged: _onSearchTextChanged,
+              onClear: _clearSearch,
+              onOpenFilters: () => unawaited(_openSearchFilters()),
             ),
           ),
           const Spacer(),
           IconButton(
             icon: Icon(
-              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+              Icons.settings_outlined,
               size: 18,
               color: c.textSecondary,
             ),
-            onPressed: () => SimSyncApp.of(context).toggleTheme(),
-            tooltip: isDark ? 'Light mode' : 'Dark mode',
+            onPressed: () => unawaited(_openSettings()),
+            tooltip: 'Settings',
             splashRadius: 16,
           ),
           const SizedBox(width: AppDimensions.spacingXs),
@@ -576,21 +1101,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
             label: const Text('Logout'),
             style: TextButton.styleFrom(
               foregroundColor: c.textMuted,
-              textStyle: GoogleFonts.manrope(
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+              textStyle: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: AppDimensions.spacingXs),
           CircleAvatar(
             radius: 16,
-            backgroundImage: widget.avatarUrl != null
-                ? NetworkImage(widget.avatarUrl!)
-                : null,
-            child: widget.avatarUrl == null
-                ? const Icon(Icons.person, size: 16)
-                : null,
+            backgroundImage: hasAvatar ? NetworkImage(avatarUrl) : null,
+            child: !hasAvatar ? const Icon(Icons.person, size: 16) : null,
           ),
         ],
       ),
@@ -624,13 +1142,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
               selectedNoteId: _weeklyViewActive ? null : _selectedNote?.id,
               currentPage: _currentPage,
               totalPages: _totalPages,
-              totalCount: _notesForSelectedDate.length,
+              totalCount: _visibleNotes.length,
               onNoteSelected: _onNoteSelected,
               onCreateSyncNote: _createNote,
-              onCreateLocalNote:
-                  widget.localStorage != null ? _createLocalNote : null,
+              onCreateLocalNote: widget.localStorage != null
+                  ? _createLocalNote
+                  : null,
               onPageChanged: (page) => setState(() => _currentPage = page),
               onDeleteNote: _deleteNote,
+              memoTabActive: _memoTabActive,
+              onMemoTabChanged: _onMemoTabChanged,
+              onMoveToMemo: _onMoveToMemo,
+              onMoveToDailyNote: _onMoveToDailyNote,
             ),
           ),
         ],
@@ -644,10 +1167,7 @@ class _ResizeHandle extends StatefulWidget {
   final bool isVisible;
   final ValueChanged<DragUpdateDetails> onDragUpdate;
 
-  const _ResizeHandle({
-    required this.isVisible,
-    required this.onDragUpdate,
-  });
+  const _ResizeHandle({required this.isVisible, required this.onDragUpdate});
 
   @override
   State<_ResizeHandle> createState() => _ResizeHandleState();
@@ -674,9 +1194,7 @@ class _ResizeHandleState extends State<_ResizeHandle> {
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           width: AppDimensions.resizeHandleWidth,
-          color: _showHighlight
-              ? c.accent.withValues(alpha: 0.5)
-              : c.border,
+          color: _showHighlight ? c.accent.withValues(alpha: 0.5) : c.border,
         ),
       ),
     );
@@ -720,15 +1238,15 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
             color: widget.isActive
                 ? c.accentMuted
                 : _isHovered
-                    ? c.surfaceHover
-                    : Colors.transparent,
+                ? c.surfaceHover
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
             border: Border.all(
               color: widget.isActive
                   ? c.accent.withValues(alpha: 0.4)
                   : _isHovered
-                      ? c.border
-                      : Colors.transparent,
+                  ? c.border
+                  : Colors.transparent,
             ),
           ),
           child: Row(
@@ -741,11 +1259,7 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 'Weekly View',
-                style: GoogleFonts.manrope(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: widget.isActive ? c.accent : c.textSecondary,
-                ),
+                style: AppTextStyles.microSemibold.copyWith(color: widget.isActive ? c.accent : c.textSecondary),
               ),
             ],
           ),

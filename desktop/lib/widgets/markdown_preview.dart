@@ -3,16 +3,22 @@ import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 /// Renders markdown content with theme-aware styling.
 class MarkdownPreviewWidget extends StatelessWidget {
   final String content;
+  final double contentScale;
 
-  const MarkdownPreviewWidget({super.key, required this.content});
+  const MarkdownPreviewWidget({
+    super.key,
+    required this.content,
+    this.contentScale = 1.0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +28,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
       return Center(
         child: Text(
           'Nothing to preview',
-          style: GoogleFonts.manrope(fontSize: 14, color: c.textMuted),
+          style: AppTextStyles.mdBody(contentScale).copyWith(color: c.textMuted),
         ),
       );
     }
@@ -32,69 +38,55 @@ class MarkdownPreviewWidget extends StatelessWidget {
       selectable: true,
       padding: EdgeInsets.zero,
       styleSheet: _buildStyleSheet(c),
-      builders: {
-        'pre': _CodeBlockBuilder(),
-      },
+      builders: {'pre': _CodeBlockBuilder(contentScale: contentScale)},
     );
   }
 
   MarkdownStyleSheet _buildStyleSheet(AppColorsExtension c) {
     return MarkdownStyleSheet(
-      h1: GoogleFonts.manrope(
-        fontSize: 26, fontWeight: FontWeight.w700, color: c.textPrimary, height: 1.4,
+      h1: AppTextStyles.mdH1(contentScale).copyWith(color: c.textPrimary),
+      h2: AppTextStyles.mdH2(contentScale).copyWith(color: c.textPrimary),
+      h3: AppTextStyles.mdH3(contentScale).copyWith(color: c.textPrimary),
+      h4: AppTextStyles.mdH4(contentScale).copyWith(color: c.textPrimary),
+      h5: AppTextStyles.mdH5(contentScale).copyWith(color: c.textPrimary),
+      h6: AppTextStyles.mdH6(contentScale).copyWith(color: c.textSecondary),
+      h1Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h2Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h3Padding: const EdgeInsets.only(top: AppDimensions.spacingXl, bottom: AppDimensions.spacingLg),
+      h4Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
+      h5Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
+      h6Padding: const EdgeInsets.only(top: AppDimensions.spacingLg, bottom: AppDimensions.spacingSm),
+      p: AppTextStyles.mdBody(contentScale).copyWith(color: c.textPrimary),
+      a: AppTextStyles.mdBody(contentScale).copyWith(
+        color: c.accent,
+        decoration: TextDecoration.underline,
       ),
-      h2: GoogleFonts.manrope(
-        fontSize: 21, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
-      ),
-      h3: GoogleFonts.manrope(
-        fontSize: 17, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
-      ),
-      h4: GoogleFonts.manrope(
-        fontSize: 15, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
-      ),
-      h5: GoogleFonts.manrope(
-        fontSize: 14, fontWeight: FontWeight.w600, color: c.textPrimary, height: 1.4,
-      ),
-      h6: GoogleFonts.manrope(
-        fontSize: 13, fontWeight: FontWeight.w600, color: c.textSecondary, height: 1.4,
-      ),
-      h1Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h2Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h3Padding: const EdgeInsets.only(top: 24, bottom: 16),
-      h4Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h5Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      h6Padding: const EdgeInsets.only(top: 16, bottom: 8),
-      p: GoogleFonts.manrope(
-        fontSize: 14, color: c.textPrimary, height: 1.7,
-      ),
-      a: GoogleFonts.manrope(
-        fontSize: 14, color: c.accent, decoration: TextDecoration.underline,
-      ),
-      listBullet: GoogleFonts.manrope(fontSize: 14, color: c.textSecondary),
-      code: GoogleFonts.jetBrainsMono(
-        fontSize: 13, color: c.accent, backgroundColor: c.surfaceLight,
+      listBullet: AppTextStyles.mdBody(contentScale).copyWith(color: c.textSecondary),
+      code: AppTextStyles.codeMonoBlock(contentScale).copyWith(
+        color: c.accent,
+        backgroundColor: c.surfaceLight,
       ),
       codeblockDecoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
         border: Border.all(color: c.border),
       ),
-      codeblockPadding: const EdgeInsets.all(12),
-      blockquote: GoogleFonts.manrope(
-        fontSize: 14, color: c.textSecondary, fontStyle: FontStyle.italic, height: 1.6,
+      codeblockPadding: const EdgeInsets.all(AppDimensions.spacingMd),
+      blockquote: AppTextStyles.mdBody(contentScale).copyWith(
+        color: c.textSecondary,
+        fontStyle: FontStyle.italic,
+        height: 1.6,
       ),
       blockquoteDecoration: BoxDecoration(
         border: Border(left: BorderSide(color: c.accent, width: 3)),
       ),
-      blockquotePadding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+      blockquotePadding: const EdgeInsets.only(left: AppDimensions.spacingLg, top: AppDimensions.spacingXs, bottom: AppDimensions.spacingXs),
       horizontalRuleDecoration: BoxDecoration(
         border: Border(top: BorderSide(color: c.border)),
       ),
-      checkbox: GoogleFonts.manrope(fontSize: 14, color: c.accent),
-      tableHead: GoogleFonts.manrope(
-        fontSize: 13, fontWeight: FontWeight.w600, color: c.textPrimary,
-      ),
-      tableBody: GoogleFonts.manrope(fontSize: 13, color: c.textSecondary),
+      checkbox: AppTextStyles.mdBody(contentScale).copyWith(color: c.accent),
+      tableHead: AppTextStyles.mdTableHead(contentScale).copyWith(color: c.textPrimary),
+      tableBody: AppTextStyles.mdTableBody(contentScale).copyWith(color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
     );
@@ -104,6 +96,10 @@ class MarkdownPreviewWidget extends StatelessWidget {
 /// Custom builder that applies syntax highlighting to fenced code blocks.
 /// Registered under the 'pre' key so it only fires for fenced code blocks.
 class _CodeBlockBuilder extends MarkdownElementBuilder {
+  _CodeBlockBuilder({required this.contentScale});
+
+  final double contentScale;
+
   @override
   Widget? visitElementAfterWithContext(
     BuildContext context,
@@ -134,17 +130,17 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
       width: double.infinity,
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
         border: Border.all(color: c.border),
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
       child: HighlightView(
         textContent.endsWith('\n')
             ? textContent.substring(0, textContent.length - 1)
             : textContent,
         language: language,
         theme: transparentTheme,
-        textStyle: GoogleFonts.jetBrainsMono(fontSize: 13),
+        textStyle: AppTextStyles.codeMonoBlock(contentScale),
         padding: EdgeInsets.zero,
       ),
     );

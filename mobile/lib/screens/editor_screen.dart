@@ -1,0 +1,674 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../theme/app_text_styles.dart';
+
+import '../models/note.dart';
+import '../settings/app_settings_controller.dart';
+import '../storage/note_storage.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
+import '../widgets/markdown_preview.dart';
+
+class EditorScreen extends StatefulWidget {
+  final Note note;
+  final NoteStorage storage;
+  final AppSettingsController settingsController;
+  final ValueNotifier<int>? refreshSignal;
+  final void Function(Note updatedNote) onNoteChanged;
+  final void Function(Note deletedNote) onNoteDeleted;
+
+  const EditorScreen({
+    super.key,
+    required this.note,
+    required this.storage,
+    required this.settingsController,
+    this.refreshSignal,
+    required this.onNoteChanged,
+    required this.onNoteDeleted,
+  });
+
+  @override
+  State<EditorScreen> createState() => _EditorScreenState();
+}
+
+class _EditorScreenState extends State<EditorScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  late TextEditingController _titleController;
+  late TextEditingController _contentController;
+  late TextEditingController _tagsController;
+  late Note _note;
+  Timer? _saveDebounce;
+  bool _isSaving = false;
+  bool _isDirty = false;
+  double _previewScale = 1.0;
+
+  static final DateFormat _dateFmt = DateFormat('M월 d일 EEEE', 'ko');
+
+  @override
+  void initState() {
+    super.initState();
+    _note = widget.note;
+    _tabController = TabController(length: 3, vsync: this);
+    _titleController = TextEditingController(text: _note.title);
+    _contentController = TextEditingController(text: _note.content);
+    _tagsController = TextEditingController(text: _note.tags.join(', '));
+    _previewScale = widget.settingsController.value.contentScale;
+    widget.refreshSignal?.addListener(_handleRefreshSignal);
+  }
+
+  @override
+  void didUpdateWidget(covariant EditorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshSignal != widget.refreshSignal) {
+      oldWidget.refreshSignal?.removeListener(_handleRefreshSignal);
+      widget.refreshSignal?.addListener(_handleRefreshSignal);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.refreshSignal?.removeListener(_handleRefreshSignal);
+    _saveDebounce?.cancel();
+    // Save pending changes on exit. Must be dispose-safe: no setState calls
+    // (State is unmounting) and snapshots of storage/note/callback so the
+    // in-flight save survives teardown. _saveImmediately is unsafe here because
+    // it calls setState in its body and after await.
+    if (_isDirty) {
+      final noteToSave = _note;
+      final storage = widget.storage;
+      final notify = widget.onNoteChanged;
+      storage
+          .saveNote(noteToSave)
+          .then((_) => notify(noteToSave))
+          .catchError((_) {
+        // Silent: widget unmounted; persisted state remains in-memory and on
+        // the next mount the note will be reloaded from storage.
+      });
+    }
+    _tabController.dispose();
+    _titleController.dispose();
+    _contentController.dispose();
+    _tagsController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleRefreshSignal() async {
+    if (_isDirty || _isSaving) return;
+
+    final latestNotes = await widget.storage.listNotes(_note.noteDate);
+    final matches = latestNotes.where((note) => note.id == _note.id);
+    if (matches.isEmpty || !mounted) return;
+
+    final latest = matches.first;
+    if (latest.title == _note.title &&
+        latest.content == _note.content &&
+        latest.tags.join(',') == _note.tags.join(',')) {
+      return;
+    }
+
+    setState(() {
+      _note = latest;
+      _titleController.text = latest.title;
+      _contentController.text = latest.content;
+      _tagsController.text = latest.tags.join(', ');
+    });
+  }
+
+  void _onTitleChanged(String value) {
+    _note.title = value;
+    _note.updatedAt = DateTime.now();
+    _isDirty = true;
+    _scheduleSave();
+  }
+
+  void _onContentChanged(String value) {
+    _note.content = value;
+    _note.updatedAt = DateTime.now();
+    _isDirty = true;
+    _scheduleSave();
+  }
+
+  void _onTagsChanged(String value) {
+    final tags = value
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    _note.tags = tags;
+    _note.updatedAt = DateTime.now();
+    _isDirty = true;
+    _scheduleSave();
+  }
+
+  void _scheduleSave() {
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(seconds: 1), () {
+      _saveImmediately();
+    });
+  }
+
+  Future<void> _saveImmediately() async {
+    if (!_isDirty) return;
+    setState(() => _isSaving = true);
+    try {
+      await widget.storage.saveNote(_note);
+      _isDirty = false;
+      widget.onNoteChanged(_note);
+    } catch (_) {
+      // Silently fail; note stays dirty.
+    }
+    if (mounted) {
+      setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _deleteNote() async {
+    final c = context.colors;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: c.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+          side: BorderSide(color: c.border),
+        ),
+        title: Text(
+          '노트 삭제',
+          style: Theme.of(context).textTheme.labelLarge!.copyWith(
+            color: c.textPrimary,
+          ),
+        ),
+        content: Text(
+          "'${_note.title.isEmpty ? 'Untitled' : _note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+          style: Theme.of(context).textTheme.bodySmall!.copyWith(
+            color: c.textSecondary,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('취소', style: TextStyle(color: c.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('삭제', style: TextStyle(color: c.error)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await widget.storage.deleteNote(_note);
+      widget.onNoteDeleted(_note);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
+      }
+    }
+  }
+
+  // ── Markdown toolbar actions ──
+
+  void _insertMarkdown(String before, [String after = '']) {
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final start = selection.baseOffset.clamp(0, text.length);
+    final end = selection.extentOffset.clamp(0, text.length);
+    final selectedText = text.substring(start, end);
+
+    final newText = text.replaceRange(start, end, '$before$selectedText$after');
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: start + before.length + selectedText.length,
+      ),
+    );
+    _onContentChanged(newText);
+  }
+
+  void _insertAtLineStart(String prefix) {
+    final text = _contentController.text;
+    final cursorPos = _contentController.selection.baseOffset.clamp(
+      0,
+      text.length,
+    );
+    // Find the start of the current line.
+    var lineStart = cursorPos;
+    while (lineStart > 0 && text[lineStart - 1] != '\n') {
+      lineStart--;
+    }
+    final newText = text.replaceRange(lineStart, lineStart, prefix);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: cursorPos + prefix.length),
+    );
+    _onContentChanged(newText);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+
+    return Scaffold(
+      backgroundColor: c.scaffold,
+      appBar: _buildAppBar(c),
+      body: Column(
+        children: [
+          _buildTabBar(c),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildEditorTab(c),
+                _buildPreviewTab(c),
+                _buildTagsTab(c),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(AppColorsExtension c) {
+    return AppBar(
+      backgroundColor: c.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      leading: IconButton(
+        icon: Icon(Icons.arrow_back_rounded, color: c.textPrimary),
+        onPressed: () {
+          if (_isDirty) {
+            _saveImmediately();
+          }
+          Navigator.pop(context);
+        },
+      ),
+      title: Text(
+        _dateFmt.format(_note.noteDate),
+        style: Theme.of(context).textTheme.titleMedium!.copyWith(
+          color: c.textPrimary,
+        ),
+      ),
+      actions: [
+        // Save status
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppDimensions.spacingSm,
+          ),
+          child: Center(
+            child: _isSaving
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: c.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '저장 중...',
+                        style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                          color: c.textMuted,
+                        ),
+                      ),
+                    ],
+                  )
+                : Text(
+                    _isDirty ? '' : '저장됨',
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: c.success,
+                    ),
+                  ),
+          ),
+        ),
+        // More menu
+        PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert_rounded, color: c.textSecondary),
+          color: c.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            side: BorderSide(color: c.border),
+          ),
+          onSelected: (value) {
+            if (value == 'delete') {
+              _deleteNote();
+            }
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'delete',
+              child: Row(
+                children: [
+                  Icon(Icons.delete_outline_rounded, size: 18, color: c.error),
+                  const SizedBox(width: AppDimensions.spacingSm),
+                  Text(
+                    '삭제',
+                    style: Theme.of(ctx).textTheme.bodySmall!.copyWith(
+                      color: c.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabBar(AppColorsExtension c) {
+    return Container(
+      color: c.surface,
+      child: TabBar(
+        controller: _tabController,
+        labelColor: c.accent,
+        unselectedLabelColor: c.textMuted,
+        indicatorColor: c.accent,
+        indicatorWeight: 2,
+        labelStyle: Theme.of(context).textTheme.labelLarge,
+        unselectedLabelStyle: Theme.of(context).textTheme.titleSmall,
+        tabs: const [
+          Tab(text: 'Editor'),
+          Tab(text: 'Preview'),
+          Tab(text: 'Tags'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditorTab(AppColorsExtension c) {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppDimensions.spacingLg),
+            child: Column(
+              children: [
+                // Title field
+                TextField(
+                  controller: _titleController,
+                  onChanged: _onTitleChanged,
+                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: c.textPrimary,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: '제목',
+                    hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: c.textMuted,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.spacingSm),
+                Divider(height: 1, color: c.borderSubtle),
+                const SizedBox(height: AppDimensions.spacingSm),
+                // Content field
+                TextField(
+                  controller: _contentController,
+                  onChanged: _onContentChanged,
+                  maxLines: null,
+                  keyboardType: TextInputType.multiline,
+                  style: AppTextStyles.codeMono(size: 14, height: 1.6).copyWith(color: c.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: '마크다운으로 작성하세요...',
+                    hintStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
+                      color: c.textMuted,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    filled: false,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Markdown toolbar
+        _buildMarkdownToolbar(c),
+      ],
+    );
+  }
+
+  Widget _buildMarkdownToolbar(AppColorsExtension c) {
+    return Container(
+      height: AppDimensions.toolbarHeight,
+      decoration: BoxDecoration(
+        color: c.surface,
+        border: Border(top: BorderSide(color: c.border)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingSm,
+        ),
+        child: Row(
+          children: [
+            _ToolbarButton(
+              label: 'H1',
+              onTap: () => _insertAtLineStart('# '),
+              colors: c,
+            ),
+            _ToolbarButton(
+              label: 'H2',
+              onTap: () => _insertAtLineStart('## '),
+              colors: c,
+            ),
+            _ToolbarButton(
+              label: 'H3',
+              onTap: () => _insertAtLineStart('### '),
+              colors: c,
+            ),
+            _ToolbarDivider(colors: c),
+            _ToolbarButton(
+              label: 'B',
+              fontWeight: FontWeight.w800,
+              onTap: () => _insertMarkdown('**', '**'),
+              colors: c,
+            ),
+            _ToolbarButton(
+              label: 'I',
+              fontStyle: FontStyle.italic,
+              onTap: () => _insertMarkdown('*', '*'),
+              colors: c,
+            ),
+            _ToolbarButton(
+              icon: Icons.code_rounded,
+              onTap: () => _insertMarkdown('`', '`'),
+              colors: c,
+            ),
+            _ToolbarDivider(colors: c),
+            _ToolbarButton(
+              icon: Icons.format_list_bulleted_rounded,
+              onTap: () => _insertAtLineStart('- '),
+              colors: c,
+            ),
+            _ToolbarButton(
+              icon: Icons.check_box_outlined,
+              onTap: () => _insertAtLineStart('- [ ] '),
+              colors: c,
+            ),
+            _ToolbarButton(
+              icon: Icons.format_quote_rounded,
+              onTap: () => _insertAtLineStart('> '),
+              colors: c,
+            ),
+            _ToolbarButton(
+              icon: Icons.link_rounded,
+              onTap: () => _insertMarkdown('[', '](url)'),
+              colors: c,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewTab(AppColorsExtension c) {
+    final scale = _previewScale.clamp(0.8, 2.0);
+
+    return GestureDetector(
+      onScaleUpdate: (details) {
+        setState(() {
+          _previewScale = (_previewScale * details.scale).clamp(0.8, 2.0);
+        });
+      },
+      child: Container(
+        width: double.infinity,
+        color: c.scaffold,
+        child: MarkdownPreview(
+          title: _titleController.text.trim(),
+          content: _contentController.text.isEmpty
+              ? '_미리보기할 내용이 없습니다_'
+              : _contentController.text,
+          contentScale: scale,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTagsTab(AppColorsExtension c) {
+    return Padding(
+      padding: const EdgeInsets.all(AppDimensions.spacingLg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '태그',
+            style: Theme.of(context).textTheme.labelLarge!.copyWith(
+              color: c.textPrimary,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingSm),
+          Text(
+            '쉼표(,)로 태그를 구분하세요',
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
+          ),
+          const SizedBox(height: AppDimensions.spacingMd),
+          TextField(
+            controller: _tagsController,
+            onChanged: _onTagsChanged,
+            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+              color: c.textPrimary,
+            ),
+            decoration: InputDecoration(
+              hintText: 'work, daily, idea',
+              hintStyle: TextStyle(color: c.textMuted),
+              prefixIcon: Icon(Icons.tag_rounded, size: 18, color: c.textMuted),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          if (_note.tags.isNotEmpty)
+            Wrap(
+              spacing: AppDimensions.spacingSm,
+              runSpacing: AppDimensions.spacingSm,
+              children: _note.tags.map((tag) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.spacingMd,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.accentSubtle,
+                    borderRadius: BorderRadius.circular(
+                      AppDimensions.borderRadius,
+                    ),
+                    border: Border.all(color: c.accent.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    '#$tag',
+                    style: AppTextStyles.captionMedium.copyWith(
+                      color: c.accent,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Toolbar Widgets ──
+
+class _ToolbarButton extends StatelessWidget {
+  final String? label;
+  final IconData? icon;
+  final VoidCallback onTap;
+  final AppColorsExtension colors;
+  final FontWeight? fontWeight;
+  final FontStyle? fontStyle;
+
+  const _ToolbarButton({
+    this.label,
+    this.icon,
+    required this.onTap,
+    required this.colors,
+    this.fontWeight,
+    this.fontStyle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 36,
+        alignment: Alignment.center,
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        ),
+        child: icon != null
+            ? Icon(icon, size: 18, color: colors.textSecondary)
+            : Text(
+                label ?? '',
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                  fontWeight: fontWeight ?? FontWeight.w600,
+                  fontStyle: fontStyle,
+                  color: colors.textSecondary,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _ToolbarDivider extends StatelessWidget {
+  final AppColorsExtension colors;
+
+  const _ToolbarDivider({required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 20,
+      margin: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingXs),
+      color: colors.borderSubtle,
+    );
+  }
+}

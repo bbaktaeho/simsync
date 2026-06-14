@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_text_styles.dart';
 
 class NoteListSection extends StatelessWidget {
   final List<Note> notes;
@@ -17,6 +17,10 @@ class NoteListSection extends StatelessWidget {
   final VoidCallback? onCreateLocalNote;
   final ValueChanged<int> onPageChanged;
   final Future<void> Function(Note note)? onDeleteNote;
+  final bool memoTabActive;
+  final ValueChanged<bool>? onMemoTabChanged;
+  final Future<void> Function(Note note)? onMoveToMemo;
+  final Future<void> Function(Note note)? onMoveToDailyNote;
 
   const NoteListSection({
     super.key,
@@ -30,6 +34,10 @@ class NoteListSection extends StatelessWidget {
     this.onCreateLocalNote,
     required this.onPageChanged,
     this.onDeleteNote,
+    this.memoTabActive = false,
+    this.onMemoTabChanged,
+    this.onMoveToMemo,
+    this.onMoveToDailyNote,
   });
 
   @override
@@ -38,12 +46,37 @@ class NoteListSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildHeader(context),
+        if (onMemoTabChanged != null) _buildTabBar(context),
         Divider(height: 1, color: context.colors.border),
         Expanded(
           child: notes.isEmpty ? _buildEmptyState(context) : _buildList(),
         ),
         if (totalPages > 1) _buildPagination(context),
       ],
+    );
+  }
+
+  Widget _buildTabBar(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingMd,
+        vertical: AppDimensions.spacingXs,
+      ),
+      child: Row(
+        children: [
+          _TabItem(
+            label: 'daily',
+            isActive: !memoTabActive,
+            onTap: () => onMemoTabChanged?.call(false),
+          ),
+          const SizedBox(width: AppDimensions.spacingMd),
+          _TabItem(
+            label: 'memo',
+            isActive: memoTabActive,
+            onTap: () => onMemoTabChanged?.call(true),
+          ),
+        ],
+      ),
     );
   }
 
@@ -59,12 +92,7 @@ class NoteListSection extends StatelessWidget {
         children: [
           Text(
             'Notes',
-            style: GoogleFonts.manrope(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: c.textSecondary,
-              letterSpacing: 0.5,
-            ),
+            style: AppTextStyles.microSemibold.copyWith(color: c.textSecondary, letterSpacing: 0.5),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
           Container(
@@ -75,11 +103,7 @@ class NoteListSection extends StatelessWidget {
             ),
             child: Text(
               '$totalCount',
-              style: GoogleFonts.manrope(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
             ),
           ),
           const Spacer(),
@@ -94,21 +118,28 @@ class NoteListSection extends StatelessWidget {
 
   Widget _buildEmptyState(BuildContext context) {
     final c = context.colors;
+    final iconData = memoTabActive
+        ? Icons.sticky_note_2_outlined
+        : Icons.article_outlined;
+    final primary = memoTabActive ? 'No memos yet' : 'No notes yet';
+    final secondary = memoTabActive
+        ? 'Right-click a daily note to move it here'
+        : 'Select a date and create one';
 
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.article_outlined, size: 32, color: c.textMuted),
+          Icon(iconData, size: 32, color: c.textMuted),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
-            'No notes yet',
-            style: GoogleFonts.manrope(fontSize: 13, color: c.textMuted),
+            primary,
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
-            'Select a date and create one',
-            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+            secondary,
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
         ],
       ),
@@ -127,6 +158,10 @@ class NoteListSection extends StatelessWidget {
           isSelected: isSelected,
           onTap: () => onNoteSelected(note),
           onDelete: onDeleteNote != null ? () => onDeleteNote!(note) : null,
+          onMoveToMemo: onMoveToMemo != null ? () => onMoveToMemo!(note) : null,
+          onMoveToDailyNote: onMoveToDailyNote != null
+              ? () => onMoveToDailyNote!(note)
+              : null,
         );
       },
     );
@@ -148,7 +183,7 @@ class NoteListSection extends StatelessWidget {
           const SizedBox(width: AppDimensions.spacingSm),
           Text(
             '${currentPage + 1} / $totalPages',
-            style: GoogleFonts.manrope(fontSize: 11, color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
           _PaginationButton(
@@ -167,12 +202,16 @@ class _NoteListItem extends StatefulWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final VoidCallback? onDelete;
+  final VoidCallback? onMoveToMemo;
+  final VoidCallback? onMoveToDailyNote;
 
   const _NoteListItem({
     required this.note,
     required this.isSelected,
     required this.onTap,
     this.onDelete,
+    this.onMoveToMemo,
+    this.onMoveToDailyNote,
   });
 
   @override
@@ -243,11 +282,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                   children: [
                     Text(
                       widget.note.title.isEmpty ? 'Untitled' : widget.note.title,
-                      style: GoogleFonts.manrope(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: widget.isSelected ? c.textPrimary : c.textSecondary,
-                      ),
+                      style: AppTextStyles.captionMedium.copyWith(color: widget.isSelected ? c.textPrimary : c.textSecondary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -261,7 +296,7 @@ class _NoteListItemState extends State<_NoteListItem> {
                         ],
                         Text(
                           dateStr,
-                          style: GoogleFonts.manrope(fontSize: 10, color: c.textMuted),
+                          style: AppTextStyles.nano.copyWith(color: c.textMuted),
                         ),
                       ],
                     ),
@@ -278,34 +313,72 @@ class _NoteListItemState extends State<_NoteListItem> {
 
   void _showContextMenu(BuildContext context, Offset position) {
     final c = context.colors;
+    final items = <PopupMenuEntry<String>>[];
+
+    if (!widget.note.isMemo && widget.onMoveToMemo != null) {
+      items.add(PopupMenuItem(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        value: 'move_to_memo',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.sticky_note_2_outlined, size: 14, color: c.textSecondary),
+            const SizedBox(width: 6),
+            Text('메모로 이동',
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
+          ],
+        ),
+      ));
+    }
+
+    if (widget.note.isMemo && widget.onMoveToDailyNote != null) {
+      items.add(PopupMenuItem(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        value: 'move_to_daily',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.calendar_today_outlined, size: 14, color: c.textSecondary),
+            const SizedBox(width: 6),
+            Text('daily로 이동',
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
+          ],
+        ),
+      ));
+    }
+
+    items.add(PopupMenuItem(
+      height: 32,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      value: 'delete',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
+          const SizedBox(width: 6),
+          Text('삭제', style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.error)),
+        ],
+      ),
+    ));
+
     showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(
           position.dx, position.dy, position.dx, position.dy),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         side: BorderSide(color: c.border),
       ),
       color: c.surface,
       menuPadding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 100),
-      items: [
-        PopupMenuItem(
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          value: 'delete',
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
-              const SizedBox(width: 6),
-              Text('삭제', style: TextStyle(color: c.error, fontSize: 12)),
-            ],
-          ),
-        ),
-      ],
+      constraints: const BoxConstraints(minWidth: 120),
+      items: items,
     ).then((value) {
       if (value == 'delete') widget.onDelete?.call();
+      if (value == 'move_to_memo') widget.onMoveToMemo?.call();
+      if (value == 'move_to_daily') widget.onMoveToDailyNote?.call();
     });
   }
 
@@ -322,11 +395,7 @@ class _NoteListItemState extends State<_NoteListItem> {
             padding: const EdgeInsets.only(left: 2),
             child: Text(
               '+$overflow',
-              style: GoogleFonts.manrope(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: c.textMuted,
-              ),
+              style: AppTextStyles.attoBold.copyWith(color: c.textMuted),
             ),
           ),
       ],
@@ -337,11 +406,7 @@ class _NoteListItemState extends State<_NoteListItem> {
     return Tooltip(
       message: tags.join(', '),
       waitDuration: const Duration(milliseconds: 300),
-      textStyle: GoogleFonts.manrope(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: c.textPrimary,
-      ),
+      textStyle: AppTextStyles.microMedium.copyWith(color: c.textPrimary),
       decoration: BoxDecoration(
         color: c.surfaceHover,
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
@@ -366,15 +431,11 @@ class _TagChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(3),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         label,
-        style: GoogleFonts.manrope(
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-          color: c.accent,
-        ),
+        style: AppTextStyles.atto.copyWith(fontWeight: FontWeight.w500, color: c.accent),
       ),
     );
   }
@@ -409,8 +470,7 @@ class _AddNoteButton extends StatelessWidget {
               Icon(Icons.cloud_outlined, size: 14, color: c.accent),
               const SizedBox(width: 8),
               Text('동기화 노트',
-                  style: GoogleFonts.manrope(
-                      fontSize: 12, color: c.textPrimary)),
+                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
             ],
           ),
         ),
@@ -423,8 +483,7 @@ class _AddNoteButton extends StatelessWidget {
                     size: 14, color: c.localAccent),
                 const SizedBox(width: 8),
                 Text('로컬 노트',
-                    style: GoogleFonts.manrope(
-                        fontSize: 12, color: c.textPrimary)),
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
               ],
             ),
           ),
@@ -465,6 +524,70 @@ class _PaginationButton extends StatelessWidget {
           icon,
           size: 16,
           color: enabled ? c.textSecondary : c.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _TabItem extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _TabItem({
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  State<_TabItem> createState() => _TabItemState();
+}
+
+class _TabItemState extends State<_TabItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final color = widget.isActive
+        ? c.accent
+        : _isHovered
+            ? c.textPrimary
+            : c.textMuted;
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: AppDimensions.spacingXs),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                widget.label,
+                style: AppTextStyles.microSemibold.copyWith(
+                  color: color,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Container(
+                width: 18,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: widget.isActive ? c.accent : Colors.transparent,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

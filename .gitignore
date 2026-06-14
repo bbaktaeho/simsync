@@ -1,11 +1,23 @@
 # Worktrees
 .worktrees/
 
+# Superpowers brainstorm sessions
+.superpowers/
+
+# Local secrets (OAuth client id/secret 등) — 절대 커밋 금지
+.env.local
+.env.*.local
+*.local.sh
+
 # Flutter / Dart
 desktop/build/
 desktop/.dart_tool/
 desktop/.packages
 desktop/pubspec.lock
+mobile/build/
+mobile/.dart_tool/
+mobile/.packages
+mobile/pubspec.lock
 
 # IDE
 .idea/
@@ -22,3 +34,8 @@ desktop/ios/
 desktop/android/
 desktop/windows/
 desktop/linux/
+
+# Mobile platform caches
+mobile/android/.gradle/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
