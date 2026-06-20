@@ -280,7 +280,8 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
                 style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
                 children: [
                   const TextSpan(
-                    text: '설정 > Weekly에서 Claude Code 연동을 켜면 이번 주 노트를 요약할 수 있습니다. ',
+                    text: '설정 > Weekly에서 주간 요약을 켜고 provider(Anthropic API 키 또는 Claude Code CLI)를 '
+                        '설정하면 이번 주 노트를 요약할 수 있습니다. ',
                   ),
                   if (widget.onOpenSettings != null)
                     TextSpan(
@@ -315,18 +316,28 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
     }
 
     if (_error != null) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.error_outline_rounded, size: 14, color: c.error),
-          const SizedBox(width: AppDimensions.spacingSm),
-          Expanded(
-            child: Text(
-              _error!,
-              style: AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(AppDimensions.spacingMd),
+        decoration: BoxDecoration(
+          color: c.error.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+          border: Border.all(color: c.error.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 16, color: c.error),
+            const SizedBox(width: AppDimensions.spacingSm),
+            Expanded(
+              child: Text(
+                _error!,
+                style:
+                    AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     }
 
@@ -380,7 +391,7 @@ class _GenerateButton extends StatelessWidget {
       onPressed: loading ? null : onTap,
       icon: Icon(
         hasResult ? Icons.refresh_rounded : Icons.auto_awesome_rounded,
-        size: 14,
+        size: 16,
       ),
       label: Text(loading
           ? 'Generating...'
@@ -390,14 +401,9 @@ class _GenerateButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         backgroundColor: c.accent,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.spacingMd,
-          vertical: AppDimensions.spacingSm,
-        ),
-        textStyle: Theme.of(context).textTheme.labelSmall!.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-        minimumSize: Size.zero,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        textStyle: AppTextStyles.captionSemibold,
+        minimumSize: const Size(0, 36),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );

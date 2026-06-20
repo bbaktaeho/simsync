@@ -87,6 +87,11 @@ void main() {
     expect(find.text('Edit'), findsNothing);
     // The content field renders markdown inline via the custom controller.
     expect(_contentController(tester), isA<MarkdownEditingController>());
+
+    // The strut floor matches the body font (mdBody = 14 at scale 1.0) so the
+    // caret lines up with the text — guards against a too-small strut.
+    final field = tester.widget<TextField>(_contentFinder);
+    expect(field.strutStyle?.fontSize, 14.0);
   });
 
   testWidgets('reveals the caret line markers and collapses inactive lines', (

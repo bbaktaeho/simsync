@@ -110,9 +110,10 @@ class MarkdownEditingController extends TextEditingController {
       final active = hasActive && selStart <= lineEnd && selEnd >= lineStart;
 
       if (_fence.hasMatch(line)) {
-        // Collapse the fence line (```), like other inline markers, so the
-        // code box wraps just the content instead of two full-height blank rows.
-        spans.add(TextSpan(text: line, style: _marker(fenceStyle, c, active)));
+        // Fence lines stay full-height (so the caret can land on them) but go
+        // transparent when inactive; the decoration box wraps only the content.
+        spans.add(
+            TextSpan(text: line, style: _hideKeepHeight(fenceStyle, c, active)));
         if (inFence) {
           inFence = false;
           fenceLang = 'plaintext';

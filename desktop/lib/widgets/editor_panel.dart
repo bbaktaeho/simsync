@@ -448,11 +448,8 @@ class _EditorPanelState extends State<EditorPanel> {
         AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
     // The decoration painter lays out an identical TextPainter, so the field and
     // the painter must share strut + text scaler + width for the boxes to align.
-    // A minimal strut floor lets hidden fence lines collapse to ~0 (so a code
-    // box wraps its content tightly) while real content lines keep their natural
-    // height. Verified: normal/blank lines stay full height; only the 0.1px
-    // fence lines collapse.
-    const strut = StrutStyle(fontSize: 1, height: 1.0, forceStrutHeight: false);
+    // The strut mirrors the body style so the caret lines up with the text.
+    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
     final textScaler = MediaQuery.textScalerOf(context);
 
     final field = TextField(

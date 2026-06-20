@@ -616,7 +616,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           ),
           titlePadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, 14, AppDimensions.spacingLg, 0),
           contentPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, AppDimensions.spacingSm, AppDimensions.spacingLg, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingSm, AppDimensions.spacingXs, AppDimensions.spacingSm, 6),
+          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingMd, AppDimensions.spacingSm, AppDimensions.spacingMd, AppDimensions.spacingMd),
           title: Text(
             '노트 삭제',
             style: Theme.of(ctx).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
@@ -628,33 +628,26 @@ class _DocumentScreenState extends State<DocumentScreen> {
           actions: [
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.spacingMd,
-                  vertical: 6,
-                ),
-                minimumSize: Size.zero,
+                foregroundColor: c.textSecondary,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(0, 36),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: AppTextStyles.captionMedium,
               ),
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text(
-                '취소',
-                style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
-              ),
+              child: const Text('취소'),
             ),
-            TextButton(
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.spacingMd,
-                  vertical: 6,
-                ),
-                minimumSize: Size.zero,
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: c.error,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(0, 36),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: AppTextStyles.captionSemibold,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(
-                '삭제',
-                style: AppTextStyles.captionThin.copyWith(color: c.error),
-              ),
+              child: const Text('삭제'),
             ),
           ],
         );

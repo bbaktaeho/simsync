@@ -462,21 +462,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Wrap(
                     spacing: AppDimensions.spacingSm,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Anthropic API'),
+                      _providerChip(
+                        c,
+                        label: 'Anthropic API',
                         selected:
                             settings.weeklyProvider == AppSettings.providerApi,
-                        onSelected: (_) {
+                        onSelected: () {
                           widget.settingsController
                               .setWeeklyProvider(AppSettings.providerApi);
                           setState(() => _claudeProbe = _ClaudeProbe.idle);
                         },
                       ),
-                      ChoiceChip(
-                        label: const Text('Claude Code CLI'),
+                      _providerChip(
+                        c,
+                        label: 'Claude Code CLI',
                         selected:
                             settings.weeklyProvider == AppSettings.providerCli,
-                        onSelected: (_) {
+                        onSelected: () {
                           widget.settingsController
                               .setWeeklyProvider(AppSettings.providerCli);
                           setState(() => _claudeProbe = _ClaudeProbe.idle);
@@ -618,6 +620,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _providerChip(
+    AppColorsExtension c, {
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      showCheckmark: false,
+      backgroundColor: c.surface,
+      selectedColor: c.accent,
+      side: BorderSide(color: selected ? c.accent : c.border),
+      labelStyle: AppTextStyles.captionSemibold.copyWith(
+        color: selected ? Colors.white : c.textSecondary,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       ),
     );
   }

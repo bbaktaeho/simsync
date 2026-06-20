@@ -145,3 +145,12 @@ related:
 - 근본 원인: 종료되지 않은(unterminated) 코드 펜스(여는 ```만 있고 닫는 ``` 없음) → 박스가 문서 끝까지 확장, Enter마다 안에서 줄 추가. 닫는 펜스가 collapse 렌더라 인지·탈출 어려움.
 - 수정: `markdown_editing.dart`에 `_exitUnterminatedCodeFence` — 미종료 코드블록 안의 **빈 줄에서 Enter** 시 그 자리에 닫는 펜스를 넣고 커서를 블록 밖 아래 줄로 이동(Typora식). 여는 마커(```/~~~)와 동일하게 닫음. 종료된 블록·비빈 줄·블록 밖은 영향 없음.
 - 검증: 포매터 테스트 5(미종료 빈 줄 닫고 탈출, ~~~ 동일 마커, 비빈 줄 일반 개행, 종료 블록 무영향, 일반 텍스트 무영향), analyze clean, 전체 197 통과, macOS 빌드+스모크.
+
+## 후속: UI 다듬기 (커서 정렬/버튼 대비·크기/위클리 표시)
+
+- 커서-텍스트 불일치: 직전 minimal strut(fontSize 1)이 빈 필드 커서 정렬을 깨뜨림 → `StrutStyle.fromTextStyle(bodyStyle)`로 복원(TextField·painter 동일). fence는 `_marker`(collapse)→`_hideKeepHeight`(투명 full-height)로 복원하되, 코드 박스 region을 **콘텐츠 라인만**으로(`parseEditorBlockRegions`) 바꿔 박스가 안 길어지고 다음 줄을 침범하지 않게.
+- 버튼 파란 selected 대비: 설정 provider 선택을 `_providerChip`로 — 선택 시 accent 배경+흰 텍스트(또렷), 미선택 surface+muted(ChoiceChip 기본 저대비 해소).
+- 버튼 크기: 위클리 Generate(아이콘 16/13px/패딩↑/min 36), 삭제·취소 다이얼로그(취소 TextButton, 삭제 FilledButton error+흰 텍스트, 13px/패딩↑).
+- 위클리 Generate 표시: 에러를 테두리 박스로 prominent하게, 안내 메시지를 provider-무관하게. **표시 자체는 정상**(위젯 테스트: 성공→요약, 실패→에러, 게이팅). "아무것도 안 나옴"은 provider 미설정/라이브 호출 문제 — 마스터 토글+provider 설정 필요.
+- 설정 Claude 테스트: 앞서 node-PATH(buildPathEnv)+방어 try/catch 수정으로 죽지 않고 결과 표시. 로직 정상, 결과는 사용자 claude 설치/API 키에 의존.
+- 검증(6회): 전체 201 테스트, analyze clean, strut 가드 테스트, 위클리 표시 테스트 3, macOS 빌드+스모크, 독립 적대 리뷰(critical 0). 픽셀 정합은 스크린샷 불가로 로직으로 검증.

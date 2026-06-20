@@ -3,13 +3,19 @@ import 'package:simsync/widgets/editor_block_decorations.dart';
 
 void main() {
   group('parseEditorBlockRegions', () {
-    test('finds a fenced code block spanning both fences', () {
+    test('wraps a fenced code block\'s content (not the fence lines)', () {
       const text = 'before\n```go\nx := 1\n```\nafter';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
       expect(regions.first.kind, EditorBlockKind.code);
-      expect(text.substring(regions.first.start, regions.first.end),
-          '```go\nx := 1\n```');
+      expect(text.substring(regions.first.start, regions.first.end), 'x := 1');
+    });
+
+    test('an empty code block falls back to the fence line', () {
+      const text = '```\n```';
+      final regions = parseEditorBlockRegions(text);
+      expect(regions.length, 1);
+      expect(regions.first.kind, EditorBlockKind.code);
     });
 
     test('finds a --- thematic break', () {
@@ -35,12 +41,12 @@ void main() {
       expect(regions.where((r) => r.kind == EditorBlockKind.quote).length, 2);
     });
 
-    test('treats an unterminated fence as a code block to end of text', () {
+    test('an unterminated fence wraps content to the end of text', () {
       const text = 'a\n```\ncode';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
       expect(regions.first.kind, EditorBlockKind.code);
-      expect(text.substring(regions.first.start, regions.first.end), '```\ncode');
+      expect(text.substring(regions.first.start, regions.first.end), 'code');
     });
 
     test('--- and > inside a fence are part of the code block', () {

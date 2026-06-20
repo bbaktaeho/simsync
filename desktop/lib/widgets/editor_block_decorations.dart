@@ -40,16 +40,19 @@ final RegExp _rule = RegExp(r'^\s*(?:-{3,}|\*{3,}|_{3,})\s*$');
 final RegExp _quote = RegExp(r'^\s*>');
 
 /// Scans [text] for fenced code blocks, `---` rules and `>` blockquotes,
-/// returning their exact character ranges. A code block spans both fence lines
-/// (or to end-of-text if unterminated); a blockquote groups consecutive `>`
-/// lines.
+/// returning their character ranges. A code block's range is its CONTENT lines
+/// (between the fences) so the painted box wraps just the code — the fence lines
+/// stay full-height but outside the box. An empty block falls back to the fence
+/// line. A blockquote groups consecutive `>` lines.
 List<EditorBlockRegion> parseEditorBlockRegions(String text) {
   if (text.isEmpty) return const [];
   final regions = <EditorBlockRegion>[];
   final lines = text.split('\n');
   var offset = 0;
   var inFence = false;
-  var codeStart = 0;
+  var fenceStart = 0; // open-fence line start (fallback for an empty block)
+  var contentStart = 0; // first content line start
+  var contentEnd = -1; // last content line end (-1 = no content seen yet)
   int? quoteStart;
   var quoteEnd = 0;
 
@@ -61,21 +64,31 @@ List<EditorBlockRegion> parseEditorBlockRegions(String text) {
     }
   }
 
+  void closeCode(int fallbackEnd) {
+    final hasContent = contentEnd >= contentStart;
+    regions.add(EditorBlockRegion(
+      start: hasContent ? contentStart : fenceStart,
+      end: hasContent ? contentEnd : fallbackEnd,
+      kind: EditorBlockKind.code,
+    ));
+  }
+
   for (final line in lines) {
     final lineStart = offset;
     final lineEnd = offset + line.length;
     if (_fence.hasMatch(line)) {
       flushQuote();
       if (inFence) {
-        regions.add(EditorBlockRegion(
-            start: codeStart, end: lineEnd, kind: EditorBlockKind.code));
+        closeCode(lineEnd);
         inFence = false;
       } else {
         inFence = true;
-        codeStart = lineStart;
+        fenceStart = lineStart;
+        contentStart = lineEnd + 1; // the line after the open fence
+        contentEnd = -1;
       }
     } else if (inFence) {
-      // code content — part of the open code block
+      contentEnd = lineEnd; // extend the content range
     } else if (_quote.hasMatch(line)) {
       quoteStart ??= lineStart;
       quoteEnd = lineEnd;
@@ -90,10 +103,7 @@ List<EditorBlockRegion> parseEditorBlockRegions(String text) {
   }
 
   flushQuote();
-  if (inFence) {
-    regions.add(EditorBlockRegion(
-        start: codeStart, end: text.length, kind: EditorBlockKind.code));
-  }
+  if (inFence) closeCode(text.length); // unterminated: content runs to the end
   return regions;
 }
 
