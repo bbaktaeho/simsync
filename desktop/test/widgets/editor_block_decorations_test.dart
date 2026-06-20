@@ -7,7 +7,7 @@ void main() {
       const text = 'before\n```go\nx := 1\n```\nafter';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
-      expect(regions.first.isCode, isTrue);
+      expect(regions.first.kind, EditorBlockKind.code);
       expect(text.substring(regions.first.start, regions.first.end),
           '```go\nx := 1\n```');
     });
@@ -16,30 +16,46 @@ void main() {
       const text = 'a\n---\nb';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
-      expect(regions.first.isCode, isFalse);
+      expect(regions.first.kind, EditorBlockKind.rule);
       expect(text.substring(regions.first.start, regions.first.end), '---');
+    });
+
+    test('groups consecutive blockquote lines into one region', () {
+      const text = 'intro\n> quote one\n> quote two\nafter';
+      final regions = parseEditorBlockRegions(text);
+      expect(regions.length, 1);
+      expect(regions.first.kind, EditorBlockKind.quote);
+      expect(text.substring(regions.first.start, regions.first.end),
+          '> quote one\n> quote two');
+    });
+
+    test('a blank line ends a blockquote', () {
+      const text = '> a\n\n> b';
+      final regions = parseEditorBlockRegions(text);
+      expect(regions.where((r) => r.kind == EditorBlockKind.quote).length, 2);
     });
 
     test('treats an unterminated fence as a code block to end of text', () {
       const text = 'a\n```\ncode';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
-      expect(regions.first.isCode, isTrue);
+      expect(regions.first.kind, EditorBlockKind.code);
       expect(text.substring(regions.first.start, regions.first.end), '```\ncode');
     });
 
-    test('--- inside a fence is part of the code block, not a rule', () {
-      const text = '```\n---\n```';
+    test('--- and > inside a fence are part of the code block', () {
+      const text = '```\n---\n> not a quote\n```';
       final regions = parseEditorBlockRegions(text);
       expect(regions.length, 1);
-      expect(regions.single.isCode, isTrue);
+      expect(regions.single.kind, EditorBlockKind.code);
     });
 
-    test('handles multiple blocks and rules', () {
-      const text = '# h\n---\n```js\n1\n```\n***\ntext';
+    test('handles a mix of code, rules and quotes', () {
+      const text = '# h\n---\n```js\n1\n```\n***\n> q\ntext';
       final regions = parseEditorBlockRegions(text);
-      expect(regions.where((r) => r.isCode).length, 1);
-      expect(regions.where((r) => !r.isCode).length, 2); // --- and ***
+      expect(regions.where((r) => r.kind == EditorBlockKind.code).length, 1);
+      expect(regions.where((r) => r.kind == EditorBlockKind.rule).length, 2);
+      expect(regions.where((r) => r.kind == EditorBlockKind.quote).length, 1);
     });
 
     test('empty text yields no regions', () {

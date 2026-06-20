@@ -496,6 +496,7 @@ class _EditorPanelState extends State<EditorPanel> {
                     codeBackground: c.surfaceLight,
                     codeBorder: c.border,
                     ruleColor: c.border,
+                    quoteBar: c.textMuted,
                   ),
                 ),
               ),

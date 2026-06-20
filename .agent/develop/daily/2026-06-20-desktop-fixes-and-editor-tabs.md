@@ -107,3 +107,14 @@ related:
   - 컨트롤러: fence/`---` 라인은 비활성 시 `_hideKeepHeight`(투명하되 정상 높이 유지 → 박스/룰 그릴 행 확보), 활성 시 dim. 코드 span의 per-glyph 배경 제거(박스가 대신).
 - 검증: 영역 파서 단위테스트 6, HR 숨김/표시 + char 보존(`---`/`***`/코드) 컨트롤러 테스트, 에디터 위젯테스트(데코레이션 페인터 마운트 + paint 무예외), `flutter analyze` clean, 전체 185 통과, macOS 빌드 + Finder형 기동 스모크. 독립 적대 리뷰: 정렬 dy/dx=0 경험 확인, scroll 동기화·Stack·hit-test·dispose 안전, critical 0. caret-margin 정렬 결함 1건 수정.
 - 알려진 한계: 내용 없는 빈 마커 라인(예: 빈 `# `)이 코드/HR 바로 위에 있고 커서를 거기 둘 때, selection-only 변경엔 페인터 미재생성이라 그 아래 박스가 일시적으로 ~12px 어긋남(다음 편집 시 보정). 매우 드물어 한계로 둠.
+
+## 후속: 마크다운 전체 표현 지원 (인용문 등)
+
+- 요구: 마크다운 모든 표현 반영, 특히 `>` 인용문 렌더링. 인터넷으로 CommonMark+GFM+확장 전체 형식 확인 후 적용.
+- 추가 구현:
+  - **blockquote**: 컨트롤러는 `>`/`>>` 마커를 비활성 시 투명-폭유지(`_hideKeepHeight`, 들여쓰기 확보)·활성 시 dim, 내용은 muted italic. 데코레이션 레이어가 **왼쪽 바**를 그림(연속 `>` 라인 그룹핑, 빈 줄로 종료). `EditorBlockRegion.kind`(code/rule/quote)로 확장.
+  - **인라인 토큰 전체**(named-group 정규식): `***bold italic***`/`___`, `**`/`__` bold, `*`/`_` italic, `~~strike~~`, `==highlight==`, `` `code` ``, 링크 `[text](url)`(텍스트는 accent+underline, url·괄호는 비활성 시 숨김), autolink `<url>`, 평문 URL. 순서: 긴 opener 우선, link→plain-url, autolink→plain-url.
+  - char 보존: 각 토큰을 마커+내용+마커로 분해해 원문 정확 복원(`![img](x)`는 `!`가 평문으로 보존되고 `[img](x)`만 링크 — 손상 없음).
+- 위젯 한계: 표·이미지는 위젯 렌더 불가(단일 TextField). 인라인/박스/바까지가 한계.
+- 검증(5회+): 컨트롤러 테스트(새 토큰 char 보존 양상태 + 링크/`***`/`==`/blockquote hide·reveal) / 영역 파서 테스트(code/rule/quote 그룹핑·종료·fence 제외) / `flutter analyze` clean / 전체 189 통과 / 독립 적대 리뷰(42 적대 입력 char 보존, 정규식 순서·backtracking·blockquote 파싱 검증, critical 0) / macOS 빌드 + Finder형 스모크.
+- 부수: 리뷰가 발견한 기존 결함(controller 파일에 NUL 0x00 2개 — memoization 키 구분자/주석, git 바이너리 인식 유발) 공백으로 교체(런타임 무영향).

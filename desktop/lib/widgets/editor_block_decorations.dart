@@ -3,43 +3,46 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-/// A block-level region in the editor text that gets a painted decoration
-/// behind the (single, still-editable) TextField: a fenced code block drawn as a
-/// box, or a `---` thematic break drawn as a horizontal rule.
+/// Kind of block decoration painted behind the (still-editable) TextField.
+enum EditorBlockKind { code, rule, quote }
+
+/// A block-level region of the editor text that gets a painted decoration: a
+/// fenced code block (box), a `---` thematic break (rule), or a `>` blockquote
+/// (left bar).
 class EditorBlockRegion {
   const EditorBlockRegion({
     required this.start,
     required this.end,
-    required this.isCode,
+    required this.kind,
   });
 
   /// Character offset of the first char of the block (inclusive).
   final int start;
 
-  /// Character offset just past the last char of the block (exclusive end of
-  /// the selection range used to measure the block).
+  /// Character offset just past the last char of the block (exclusive).
   final int end;
 
-  /// True for fenced code blocks (drawn as a box); false for `---` rules.
-  final bool isCode;
+  final EditorBlockKind kind;
 
   @override
   bool operator ==(Object other) =>
       other is EditorBlockRegion &&
       other.start == start &&
       other.end == end &&
-      other.isCode == isCode;
+      other.kind == kind;
 
   @override
-  int get hashCode => Object.hash(start, end, isCode);
+  int get hashCode => Object.hash(start, end, kind);
 }
 
 final RegExp _fence = RegExp(r'^\s*(?:```|~~~)');
 final RegExp _rule = RegExp(r'^\s*(?:-{3,}|\*{3,}|_{3,})\s*$');
+final RegExp _quote = RegExp(r'^\s*>');
 
-/// Scans [text] for fenced code blocks and `---` rules, returning their exact
-/// character ranges. A code block spans from its opening fence line through its
-/// closing fence line (or to end-of-text if unterminated).
+/// Scans [text] for fenced code blocks, `---` rules and `>` blockquotes,
+/// returning their exact character ranges. A code block spans both fence lines
+/// (or to end-of-text if unterminated); a blockquote groups consecutive `>`
+/// lines.
 List<EditorBlockRegion> parseEditorBlockRegions(String text) {
   if (text.isEmpty) return const [];
   final regions = <EditorBlockRegion>[];
@@ -47,39 +50,59 @@ List<EditorBlockRegion> parseEditorBlockRegions(String text) {
   var offset = 0;
   var inFence = false;
   var codeStart = 0;
+  int? quoteStart;
+  var quoteEnd = 0;
+
+  void flushQuote() {
+    if (quoteStart != null) {
+      regions.add(EditorBlockRegion(
+          start: quoteStart!, end: quoteEnd, kind: EditorBlockKind.quote));
+      quoteStart = null;
+    }
+  }
 
   for (final line in lines) {
     final lineStart = offset;
     final lineEnd = offset + line.length;
     if (_fence.hasMatch(line)) {
+      flushQuote();
       if (inFence) {
         regions.add(EditorBlockRegion(
-            start: codeStart, end: lineEnd, isCode: true));
+            start: codeStart, end: lineEnd, kind: EditorBlockKind.code));
         inFence = false;
       } else {
         inFence = true;
         codeStart = lineStart;
       }
-    } else if (!inFence && _rule.hasMatch(line)) {
-      regions.add(
-          EditorBlockRegion(start: lineStart, end: lineEnd, isCode: false));
+    } else if (inFence) {
+      // code content — part of the open code block
+    } else if (_quote.hasMatch(line)) {
+      quoteStart ??= lineStart;
+      quoteEnd = lineEnd;
+    } else if (_rule.hasMatch(line)) {
+      flushQuote();
+      regions.add(EditorBlockRegion(
+          start: lineStart, end: lineEnd, kind: EditorBlockKind.rule));
+    } else {
+      flushQuote();
     }
     offset = lineEnd + 1; // + the '\n'
   }
 
-  // Unterminated fence: treat the rest of the document as the code block.
+  flushQuote();
   if (inFence) {
-    regions.add(
-        EditorBlockRegion(start: codeStart, end: text.length, isCode: true));
+    regions.add(EditorBlockRegion(
+        start: codeStart, end: text.length, kind: EditorBlockKind.code));
   }
   return regions;
 }
 
-/// Paints code-block boxes and `---` rules behind the editor's TextField.
+/// Paints code-block boxes, `---` rules and `>` quote bars behind the editor's
+/// TextField.
 ///
-/// It lays out a [TextPainter] with the SAME span, strut, width and text scaler
-/// as the TextField, so the measured line boxes line up exactly with the
-/// rendered text. The drawing is translated by the field's scroll offset.
+/// It lays out a [TextPainter] with the SAME span, strut and width as the field
+/// (minus the caret margin) so the measured line boxes line up exactly with the
+/// rendered text. Drawing is translated by the field's scroll offset.
 class EditorBlockDecorationPainter extends CustomPainter {
   EditorBlockDecorationPainter({
     required this.span,
@@ -90,6 +113,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
     required this.codeBackground,
     required this.codeBorder,
     required this.ruleColor,
+    required this.quoteBar,
   }) : super(repaint: scrollController);
 
   final InlineSpan span;
@@ -100,15 +124,15 @@ class EditorBlockDecorationPainter extends CustomPainter {
   final Color codeBackground;
   final Color codeBorder;
   final Color ruleColor;
+  final Color quoteBar;
 
-  // Layout is cached across scroll repaints; only width changes invalidate it.
+  // RenderEditable lays text out at `width - _caretMargin` (_kCaretGap 1.0 +
+  // cursorWidth 2.0). Matching it keeps line wrapping — and every decoration
+  // below — aligned with the field.
+  static const double _caretMargin = 3.0;
+
   double? _laidOutWidth;
   List<({EditorBlockRegion region, double top, double bottom})>? _measured;
-
-  // RenderEditable lays text out at `width - _caretMargin`, where the margin is
-  // `_kCaretGap (1.0) + cursorWidth (2.0)`. Matching it keeps the painter's line
-  // wrapping (and therefore every box/rule below) row-aligned with the field.
-  static const double _caretMargin = 3.0;
 
   void _measure(double width) {
     final painter = TextPainter(
@@ -155,23 +179,27 @@ class EditorBlockDecorationPainter extends CustomPainter {
     final rule = Paint()
       ..color = ruleColor
       ..strokeWidth = 1;
+    final bar = Paint()..color = quoteBar;
 
     for (final m in _measured!) {
-      if (m.region.isCode) {
-        final rect = Rect.fromLTRB(
-          0,
-          m.top - scrollY - 4,
-          size.width,
-          m.bottom - scrollY + 4,
-        );
-        if (rect.bottom < 0 || rect.top > size.height) continue;
-        final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
-        canvas.drawRRect(rrect, fill);
-        canvas.drawRRect(rrect, stroke);
-      } else {
-        final y = (m.top + m.bottom) / 2 - scrollY;
-        if (y < 0 || y > size.height) continue;
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), rule);
+      final top = m.top - scrollY;
+      final bottom = m.bottom - scrollY;
+      if (bottom < 0 || top > size.height) continue;
+      switch (m.region.kind) {
+        case EditorBlockKind.code:
+          final rect = Rect.fromLTRB(0, top - 4, size.width, bottom + 4);
+          final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+          canvas.drawRRect(rrect, fill);
+          canvas.drawRRect(rrect, stroke);
+        case EditorBlockKind.rule:
+          final y = (top + bottom) / 2;
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), rule);
+        case EditorBlockKind.quote:
+          final rect = Rect.fromLTRB(2, top + 1, 5, bottom - 1);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(1.5)),
+            bar,
+          );
       }
     }
   }
@@ -183,6 +211,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
         old.codeBackground != codeBackground ||
         old.codeBorder != codeBorder ||
         old.ruleColor != ruleColor ||
+        old.quoteBar != quoteBar ||
         old.strutStyle != strutStyle;
   }
 }

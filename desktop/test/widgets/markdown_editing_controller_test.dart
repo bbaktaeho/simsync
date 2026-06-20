@@ -67,6 +67,12 @@ void main() {
       'above\n---\nbelow',
       '***',
       '```\ncode without language\n```',
+      '> a quote\n>> nested deeper',
+      '[a link](https://example.com)',
+      '***bold italic*** and ___also___',
+      'text with ==highlight== inside',
+      'auto <https://example.com> and plain http://plain.url/x',
+      'mixed [a](b) **c** ==d== ~~e~~ `f` ***g*** http://x.y here',
       'unterminated **bold and *italic',
       'mixed __underscore bold__ and _underscore italic_',
       'trailing spaces and \nblank lines\n\n\nend',
@@ -148,7 +154,42 @@ void main() {
     expect(activeMarkers.first.$2!.color, isNot(Colors.transparent));
   });
 
-  testWidgets('bullet and quote structural markers stay visible when inactive', (
+  testWidgets('renders links, bold-italic and highlight inline', (tester) async {
+    // Link: visible text is an accented underlined link; url stays (collapsed).
+    final link = _flatten(await _build(tester, '[text](https://x.com)'));
+    expect(link.firstWhere((p) => p.$1 == 'text').$2!.decoration,
+        TextDecoration.underline);
+    expect(link.firstWhere((p) => p.$1 == 'https://x.com').$2!.color,
+        Colors.transparent); // url hidden when inactive
+
+    // Bold + italic (***)
+    final bi = _flatten(await _build(tester, '***x***'));
+    final biContent = bi.firstWhere((p) => p.$1 == 'x');
+    expect(biContent.$2!.fontWeight, FontWeight.w700);
+    expect(biContent.$2!.fontStyle, FontStyle.italic);
+
+    // Highlight (==)
+    final hl = _flatten(await _build(tester, '==hi=='));
+    expect(hl.firstWhere((p) => p.$1 == 'hi').$2!.backgroundColor, isNotNull);
+  });
+
+  testWidgets('blockquote marker hides when inactive, reveals when active', (
+    tester,
+  ) async {
+    final inactive = _flatten(await _build(tester, '> quoted'));
+    expect(inactive.firstWhere((p) => p.$1 == '> ').$2!.color, Colors.transparent);
+
+    final active = _flatten(await _build(
+      tester,
+      '> quoted',
+      focused: true,
+      selection: const TextSelection.collapsed(offset: 3),
+    ));
+    expect(active.firstWhere((p) => p.$1 == '> ').$2!.color,
+        isNot(Colors.transparent));
+  });
+
+  testWidgets('bullet structural marker stays visible when inactive', (
     tester,
   ) async {
     final bullet = _flatten(await _build(tester, '- item'));
