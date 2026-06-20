@@ -118,3 +118,8 @@ related:
 - 위젯 한계: 표·이미지는 위젯 렌더 불가(단일 TextField). 인라인/박스/바까지가 한계.
 - 검증(5회+): 컨트롤러 테스트(새 토큰 char 보존 양상태 + 링크/`***`/`==`/blockquote hide·reveal) / 영역 파서 테스트(code/rule/quote 그룹핑·종료·fence 제외) / `flutter analyze` clean / 전체 189 통과 / 독립 적대 리뷰(42 적대 입력 char 보존, 정규식 순서·backtracking·blockquote 파싱 검증, critical 0) / macOS 빌드 + Finder형 스모크.
 - 부수: 리뷰가 발견한 기존 결함(controller 파일에 NUL 0x00 2개 — memoization 키 구분자/주석, git 바이너리 인식 유발) 공백으로 교체(런타임 무영향).
+
+## 후속: Cmd+W 탭 닫기 단축키
+
+- `ShortcutAction.closeTab`(기본 `Cmd+W`) 추가 — 설정형 바인딩 시스템에 등록(설정 > 단축키에 자동 노출·재설정 가능). `document_screen._handleHardwareKeyEvent`에서 활성 탭(`_selectedNote`)을 `_closeTab`. 닫기 시 더티 노트는 EditorPanel의 노트 prop 변경 flush로 보존.
+- 검증: 통합 테스트(`cmd+W closes the active editor tab` — 자동 오픈된 탭이 Cmd+W로 닫혀 빈 상태 복귀), analyze clean, 전체 190 통과, macOS 빌드+스모크.

@@ -176,6 +176,78 @@ void main() {
   );
 
   testWidgets(
+    'cmd+W closes the active editor tab',
+    (WidgetTester tester) async {
+      final today = DateTime.now();
+      final note = Note(
+        id: 'note-1',
+        noteDate: DateTime(today.year, today.month, today.day),
+        title: 'Today',
+        content: 'Hello',
+        isDefault: true,
+        tags: const [],
+        createdAt: today,
+        updatedAt: today,
+      );
+
+      Future<StorageBundle> storageFactory(
+        String accessToken, {
+        required String owner,
+        required String repo,
+        required String branch,
+        Future<void> Function()? onRemoteChanged,
+      }) async {
+        return StorageBundle(
+          storage: _FakeNoteStorage([note]),
+          noteService: NoteService(),
+        );
+      }
+
+      final repoCache = _InMemoryRepoCache([
+        RepoEntry(owner: 'octocat', repo: 'notes'),
+      ]);
+
+      await tester.pumpWidget(
+        SimSyncApp(
+          authService: _FakeAuthService(
+            restoreResult: AuthSession(
+              provider: 'github',
+              accessToken: 'token',
+              tokenType: 'bearer',
+              scope: 'read:user',
+              issuedAt: DateTime.utc(2026, 3, 10, 9),
+              expiresAt: DateTime.utc(2026, 3, 11, 9),
+              user: const AuthUser(
+                id: '1',
+                login: 'octocat',
+                name: null,
+                avatarUrl: '',
+              ),
+            ),
+          ),
+          storageFactory: storageFactory,
+          repoCache: repoCache,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The default note auto-opens in a tab.
+      expect(find.text('Markdown 100%'), findsOneWidget);
+      expect(find.text('No notes for this date'), findsNothing);
+
+      // Cmd+W closes the active tab.
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.keyW);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.keyW);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+      await tester.pumpAndSettle();
+
+      expect(find.text('No notes for this date'), findsOneWidget);
+      expect(find.text('Markdown 100%'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'memo tab filters notes to memos only',
     (WidgetTester tester) async {
       final today = DateTime.now();

@@ -1068,6 +1068,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
             unawaited(_decreaseContentScale());
           case ShortcutAction.search:
             _activateSearch();
+          case ShortcutAction.closeTab:
+            final activeId = _selectedNote?.id;
+            if (activeId != null) _closeTab(activeId);
         }
         return true;
       }
