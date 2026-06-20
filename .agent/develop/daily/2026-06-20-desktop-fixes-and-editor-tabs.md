@@ -138,3 +138,10 @@ related:
 - 근본: fence 줄을 `_hideKeepHeight`(투명·전체높이 유지)로 렌더 → 박스가 fence 행 높이까지 감쌈. + strut floor(bodyStyle 14→23.8px)가 collapse를 막음.
 - 수정: (1) fence 줄을 `_marker`(비활성 시 fontSize 0.1)로 collapse, (2) TextField·painter의 strut를 minimal(`fontSize 1`)로 낮춰 fence 줄만 ~1px로 줄임(실측: 일반/빈 줄은 23.8px 유지, fence만 1px). 박스가 콘텐츠에 딱 맞음. `---`·blockquote는 `_hideKeepHeight` 유지(행 높이 필요).
 - 검증: fence collapse 테스트, char 보존·정렬 테스트 유지, analyze clean, 전체 192 통과, macOS 빌드+스모크.
+
+## 후속: 코드블록에서 빠져나갈 수 없는 문제 (Enter 탈출)
+
+- 증상: 코드 박스 다음 줄에 쓰려고 Enter를 눌러도 코드 박스만 계속 늘어남.
+- 근본 원인: 종료되지 않은(unterminated) 코드 펜스(여는 ```만 있고 닫는 ``` 없음) → 박스가 문서 끝까지 확장, Enter마다 안에서 줄 추가. 닫는 펜스가 collapse 렌더라 인지·탈출 어려움.
+- 수정: `markdown_editing.dart`에 `_exitUnterminatedCodeFence` — 미종료 코드블록 안의 **빈 줄에서 Enter** 시 그 자리에 닫는 펜스를 넣고 커서를 블록 밖 아래 줄로 이동(Typora식). 여는 마커(```/~~~)와 동일하게 닫음. 종료된 블록·비빈 줄·블록 밖은 영향 없음.
+- 검증: 포매터 테스트 5(미종료 빈 줄 닫고 탈출, ~~~ 동일 마커, 비빈 줄 일반 개행, 종료 블록 무영향, 일반 텍스트 무영향), analyze clean, 전체 197 통과, macOS 빌드+스모크.

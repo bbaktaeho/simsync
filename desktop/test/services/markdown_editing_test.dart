@@ -143,4 +143,35 @@ void main() {
       );
     });
   });
+
+  group('code fence exit on Enter', () {
+    test('empty line in an unterminated block closes it and drops below', () {
+      // '```\ncode\n' with the caret on the trailing empty line (offset 9).
+      final result = _applyEnter('```\ncode\n', 9);
+      expect(result.text, '```\ncode\n```\n');
+      expect(result.selection.baseOffset, 13); // on the new line below the close
+    });
+
+    test('uses the same fence marker the block was opened with', () {
+      final result = _applyEnter('~~~\ncode\n', 9);
+      expect(result.text, '~~~\ncode\n~~~\n');
+    });
+
+    test('a non-empty code line just gets a normal newline', () {
+      final result = _applyEnter('```\ncode', 8);
+      expect(result.text, '```\ncode\n');
+      expect(result.selection.baseOffset, 9);
+    });
+
+    test('an already-closed block is left alone', () {
+      // Caret on the empty line between the code and the closing fence.
+      final result = _applyEnter('```\ncode\n\n```', 9);
+      expect(result.text, '```\ncode\n\n\n```'); // plain newline, not re-closed
+    });
+
+    test('a plain empty line outside any block is unaffected', () {
+      final result = _applyEnter('hello\n', 6);
+      expect(result.text, 'hello\n\n');
+    });
+  });
 }

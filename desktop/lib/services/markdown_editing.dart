@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 final RegExp _taskRe = RegExp(r'^(\s*)([-*+]) +\[([ xX])\] +(.*)$');
 final RegExp _orderedRe = RegExp(r'^(\s*)(\d+)([.)]) +(.*)$');
 final RegExp _bulletRe = RegExp(r'^(\s*)([-*+]) +(.*)$');
+final RegExp _fenceRe = RegExp(r'^\s*(```|~~~)');
 
 class _ListMarker {
   _ListMarker.bullet({required this.indent, required this.bullet, required this.body})
@@ -128,7 +129,13 @@ class MarkdownListInputFormatter extends TextInputFormatter {
     final lineEnd = _lineEndOf(oldValue.text, cursor);
     final line = oldValue.text.substring(lineStart, lineEnd);
     final marker = _matchMarker(line);
-    if (marker == null) return newValue;
+    if (marker == null) {
+      // Not a list line. If the cursor is on an empty line inside an
+      // unterminated code block, pressing Enter closes the block and drops the
+      // cursor onto a fresh line below it (so you can keep writing outside).
+      return _exitUnterminatedCodeFence(oldValue, lineStart, lineEnd, line) ??
+          newValue;
+    }
 
     if (marker.body.trim().isEmpty) {
       // Empty item: clear the marker and exit the list (no newline added).
@@ -148,6 +155,45 @@ class MarkdownListInputFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(offset: cursor + 1 + continuation.length),
     );
   }
+}
+
+/// When Enter is pressed on an empty line that sits inside an *unterminated*
+/// fenced code block, close the block on that line and put the cursor on a new
+/// line just below it. Returns null when the situation doesn't apply (so the
+/// caller falls back to the default newline). This is the standard "press Enter
+/// to leave the code block" affordance — important here because the closing
+/// fence renders collapsed and is otherwise hard to reach.
+TextEditingValue? _exitUnterminatedCodeFence(
+  TextEditingValue value,
+  int lineStart,
+  int lineEnd,
+  String line,
+) {
+  if (line.trim().isNotEmpty) return null;
+
+  final beforeLines = value.text.substring(0, lineStart).split('\n');
+  final fencesBefore = beforeLines.where(_fenceRe.hasMatch).length;
+  if (fencesBefore.isEven) return null; // not inside an open code block
+
+  final after = value.text.substring(lineEnd);
+  if (after.split('\n').any(_fenceRe.hasMatch)) return null; // already closed below
+
+  // Close with the same fence marker the block was opened with.
+  var marker = '```';
+  for (final l in beforeLines.reversed) {
+    final m = _fenceRe.firstMatch(l);
+    if (m != null) {
+      marker = m.group(1)!;
+      break;
+    }
+  }
+
+  final text =
+      '${value.text.substring(0, lineStart)}$marker\n${value.text.substring(lineEnd)}';
+  return TextEditingValue(
+    text: text,
+    selection: TextSelection.collapsed(offset: lineStart + marker.length + 1),
+  );
 }
 
 // ── Ordered list renumbering ────────────────────────────────────────────────
