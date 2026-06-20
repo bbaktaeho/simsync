@@ -159,4 +159,40 @@ void main() {
       expect(await service.isAvailable(), isFalse);
     });
   });
+
+  group('ClaudeCodeService.buildPathEnv', () {
+    test('prepends the executable directory so the node shebang resolves', () {
+      final path = ClaudeCodeService.buildPathEnv(
+        '/opt/homebrew/bin/claude',
+        '/usr/bin:/bin',
+        '/Users/x',
+      );
+      final dirs = path.split(':');
+      // The executable's own directory (where a co-installed node lives) comes
+      // first, ahead of the minimal inherited PATH.
+      expect(dirs.first, '/opt/homebrew/bin');
+      expect(dirs.indexOf('/opt/homebrew/bin'), lessThan(dirs.indexOf('/usr/bin')));
+    });
+
+    test('includes common install dirs and the inherited PATH, de-duplicated', () {
+      final path = ClaudeCodeService.buildPathEnv(
+        '/usr/local/bin/claude',
+        '/usr/local/bin:/usr/bin', // /usr/local/bin already present
+        '/Users/x',
+      );
+      final dirs = path.split(':');
+      expect(dirs, contains('/opt/homebrew/bin'));
+      expect(dirs, contains('/Users/x/.local/bin'));
+      expect(dirs, contains('/usr/bin'));
+      // No duplicates even though /usr/local/bin appears in both lists.
+      expect(dirs.where((d) => d == '/usr/local/bin').length, 1);
+    });
+
+    test('tolerates a bare executable name and a null PATH', () {
+      final path = ClaudeCodeService.buildPathEnv('claude', null, null);
+      final dirs = path.split(':');
+      expect(dirs, contains('/opt/homebrew/bin'));
+      expect(dirs, isNot(contains(''))); // no empty segments
+    });
+  });
 }

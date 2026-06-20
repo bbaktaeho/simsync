@@ -625,11 +625,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _probe() async {
     setState(() => _claudeProbe = _ClaudeProbe.checking);
     final settings = widget.settingsController.value;
-    final bool ok;
-    if (settings.weeklyProvider == AppSettings.providerApi) {
-      ok = await _anthropicService.validateKey(apiKey: _apiKeyController.text);
-    } else {
-      ok = await _claudeService.isAvailable(cliPath: _claudeCliPathController.text);
+    // Defense-in-depth: the probe must never crash the app, whatever a provider
+    // call does. Any unexpected error simply reports "unavailable".
+    var ok = false;
+    try {
+      if (settings.weeklyProvider == AppSettings.providerApi) {
+        ok = await _anthropicService.validateKey(apiKey: _apiKeyController.text);
+      } else {
+        ok =
+            await _claudeService.isAvailable(cliPath: _claudeCliPathController.text);
+      }
+    } catch (_) {
+      ok = false;
     }
     if (!mounted) return;
     setState(() =>

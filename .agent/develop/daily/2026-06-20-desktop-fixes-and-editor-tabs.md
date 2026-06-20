@@ -76,3 +76,13 @@ related:
 ## 결과
 - `flutter analyze` clean, `flutter test` 172 passed.
 - 앱 빌드/실행 스모크 확인(런타임 예외 없음). 스크린샷은 환경 권한상 불가.
+
+## 후속: 설정 Claude Test 실패(node PATH) 수정
+
+- 증상 보고: 설정에서 Claude Test 클릭 시 동작 불가("죽는다").
+- 조사(systematic-debugging): Test 핸들러 `_probe`는 `isAvailable`/`validateKey`만 호출 — 둘 다 catch-all + 타임아웃이라 **Dart 레벨에선 하드 크래시 불가**. 크래시 리포트도 없음.
+- **근본 원인(직접 재현 확인)**: `/opt/homebrew/bin/claude`는 `#!/usr/bin/env node` 스크립트. Finder 실행 GUI 앱의 최소 PATH(`/usr/bin:/bin:...`)엔 `node`(`/opt/homebrew/bin/node`)가 없어 `claude` 실행이 `env: node: No such file or directory`(exit 127)로 실패 → CLI provider가 Finder 실행 시 항상 "unavailable". `_resolveExecutable`은 claude 경로는 찾지만 인터프리터(node)는 PATH에서 못 찾는 중첩 문제.
+- 수정: `ClaudeCodeService.buildPathEnv`(순수 함수, 테스트 가능)로 spawn 시 PATH 보강 — exe 자신의 디렉터리(보통 node 동거) + 공용 설치 경로 + 상속 PATH(중복 제거). `_defaultRunner`의 `Process.start`에 `environment: {PATH: ...}` 주입. 재현 검증: 보강 PATH로 `claude --version` → exit 0(이전 127).
+- 방어: `_probe`에 try/catch 추가(어떤 예외도 앱을 죽이지 않고 "unavailable" 표시, defense-in-depth).
+- 검증: `buildPathEnv` 단위테스트 3, `flutter analyze` clean, 전체 175 테스트 통과, macOS 디버그 빌드 + `open`(Finder형) 기동 스모크 정상.
+- 미해결: 사용자가 보고한 게 "하드 크래시"라면 Dart 경로상 재현 불가 — fresh 빌드에서 증상/메시지 확인 필요(필요시 진단 로그 추가).

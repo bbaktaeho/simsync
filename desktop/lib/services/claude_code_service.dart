@@ -74,6 +74,33 @@ class ClaudeCodeService {
     return 'claude';
   }
 
+  /// Builds a PATH for spawning [executable] that survives a Finder launch.
+  ///
+  /// The `claude` CLI is a `#!/usr/bin/env node` script, so executing it needs
+  /// `node` on PATH — but a GUI app launched from Finder inherits only a minimal
+  /// PATH (`/usr/bin:/bin:...`) without Homebrew/npm dirs. We prepend the
+  /// executable's own directory (where a co-installed `node` usually lives) and
+  /// the common install locations, then the inherited PATH, de-duplicated.
+  static String buildPathEnv(String executable, String? currentPath, String? home) {
+    final dirs = <String>[
+      if (executable.contains('/'))
+        executable.substring(0, executable.lastIndexOf('/')),
+      '/opt/homebrew/bin',
+      '/usr/local/bin',
+      if (home != null) '$home/.local/bin',
+      if (home != null) '$home/.claude/local',
+      '/usr/bin',
+      '/bin',
+    ];
+    final inherited = (currentPath ?? '').split(':');
+    final seen = <String>{};
+    final ordered = <String>[];
+    for (final dir in [...dirs, ...inherited]) {
+      if (dir.isNotEmpty && seen.add(dir)) ordered.add(dir);
+    }
+    return ordered.join(':');
+  }
+
   /// Whether the Claude Code CLI is reachable (`claude --version` exits 0).
   Future<bool> isAvailable({String? cliPath}) async {
     try {
@@ -158,7 +185,17 @@ class ClaudeCodeService {
     String? stdinText,
     Duration? timeout,
   }) async {
-    final process = await Process.start(executable, arguments);
+    final process = await Process.start(
+      executable,
+      arguments,
+      environment: {
+        'PATH': buildPathEnv(
+          executable,
+          Platform.environment['PATH'],
+          Platform.environment['HOME'],
+        ),
+      },
+    );
 
     // Feed stdin then close it. The process may close its stdin reader early
     // (e.g. on error); swallow the resulting broken-pipe error.
