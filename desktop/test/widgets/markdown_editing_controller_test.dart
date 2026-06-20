@@ -235,6 +235,18 @@ void main() {
     expect(colors.length, greaterThan(1));
   });
 
+  testWidgets('fence lines collapse when inactive so the code box stays tight', (
+    tester,
+  ) async {
+    final fences = _flatten(await _build(tester, '```\ncode\n```'))
+        .where((p) => p.$1 == '```')
+        .toList();
+    expect(fences.length, 2);
+    // Collapsed to near-zero font (the decoration box wraps just the content).
+    expect(fences.first.$2!.fontSize, lessThan(1));
+    expect(fences.last.$2!.fontSize, lessThan(1));
+  });
+
   testWidgets('--- rule text is hidden when inactive, revealed when active', (
     tester,
   ) async {

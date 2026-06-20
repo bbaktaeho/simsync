@@ -110,8 +110,9 @@ class MarkdownEditingController extends TextEditingController {
       final active = hasActive && selStart <= lineEnd && selEnd >= lineStart;
 
       if (_fence.hasMatch(line)) {
-        spans.add(
-            TextSpan(text: line, style: _hideKeepHeight(fenceStyle, c, active)));
+        // Collapse the fence line (```), like other inline markers, so the
+        // code box wraps just the content instead of two full-height blank rows.
+        spans.add(TextSpan(text: line, style: _marker(fenceStyle, c, active)));
         if (inFence) {
           inFence = false;
           fenceLang = 'plaintext';

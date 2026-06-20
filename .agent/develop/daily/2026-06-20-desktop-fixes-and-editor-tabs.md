@@ -130,3 +130,11 @@ related:
 - 근본 원인: 데코레이션 페인터는 `_buildEditor`에서 생성되는데, 타이핑 시 `_onContentChanged`가 setState를 안 함(의도적) → `_buildEditor` 미리빌드 → 페인터가 새 span/regions로 갱신 안 됨(repaint는 스크롤만 청취). 박스가 옛 크기로 고정.
 - 수정: 데코레이션 레이어만 `ListenableBuilder(listenable: _contentController)`로 감싸 텍스트/커서 변경 시 페인터를 새 span·regions로 재생성·재측정(전체 패널은 미리빌드). 박스/룰/인용바가 입력에 따라 즉시 늘고 줄어듦. 부수효과로 이전 "빈 마커 라인 위 블록" 정렬 한계도 해소(selection 변경에도 재측정).
 - 검증: 통합 테스트(`code box decoration grows as more code lines are typed` — 코드 라인 추가 시 region.end 증가), analyze clean, 전체 191 통과, macOS 빌드+스모크.
+
+## 후속: 코드 박스가 콘텐츠 아래로 길게 뻗는 버그 수정
+
+- 증상: 코드블록 닫은 뒤(``` 이후) 작성한 텍스트 쪽으로 코드 박스 그림이 넘어감.
+- 재현으로 확인: 정적 콘텐츠는 정확(닫는 ```에서 region 끝, 이후 텍스트는 일반 폰트). 문제는 데코레이션 박스가 **숨겨진 fence 행(full-height 23.8px)을 포함**해 박스가 콘텐츠보다 ~2행 길어져 다음 줄에 닿음.
+- 근본: fence 줄을 `_hideKeepHeight`(투명·전체높이 유지)로 렌더 → 박스가 fence 행 높이까지 감쌈. + strut floor(bodyStyle 14→23.8px)가 collapse를 막음.
+- 수정: (1) fence 줄을 `_marker`(비활성 시 fontSize 0.1)로 collapse, (2) TextField·painter의 strut를 minimal(`fontSize 1`)로 낮춰 fence 줄만 ~1px로 줄임(실측: 일반/빈 줄은 23.8px 유지, fence만 1px). 박스가 콘텐츠에 딱 맞음. `---`·blockquote는 `_hideKeepHeight` 유지(행 높이 필요).
+- 검증: fence collapse 테스트, char 보존·정렬 테스트 유지, analyze clean, 전체 192 통과, macOS 빌드+스모크.
