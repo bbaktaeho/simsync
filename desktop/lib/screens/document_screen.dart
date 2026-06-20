@@ -6,8 +6,10 @@ import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
 import '../search/search_result.dart';
+import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
+import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/note_service.dart';
 import '../storage/github/github_sync_engine.dart';
@@ -109,6 +111,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
   final ClaudeCodeService _claudeService = ClaudeCodeService();
+  final AnthropicApiService _anthropicService = AnthropicApiService();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
   int _loadGeneration = 0;
@@ -717,10 +720,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
   /// only — it is never written back over the original notes.
   Future<String> _generateWeeklySummary() async {
     final settings = widget.settingsController.value;
-    return _claudeService.summarizeWeek(
+    final context = _buildWeekNotesContext();
+    if (settings.weeklyProvider == AppSettings.providerCli) {
+      return _claudeService.summarizeWeek(
+        instruction: settings.weeklyInstruction,
+        notesContext: context,
+        cliPath: settings.claudeCliPath,
+      );
+    }
+    return _anthropicService.summarizeWeek(
+      apiKey: settings.anthropicApiKey,
       instruction: settings.weeklyInstruction,
-      notesContext: _buildWeekNotesContext(),
-      cliPath: settings.claudeCliPath,
+      notesContext: context,
+      model: settings.anthropicModel,
     );
   }
 

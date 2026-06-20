@@ -30,7 +30,9 @@ void main() {
       );
 
       expect(result, 'weekly summary'); // trimmed
-      expect(capturedExe, 'claude');
+      // With no configured path, the resolver uses `claude` or a detected
+      // absolute install path ending in `/claude`.
+      expect(capturedExe == 'claude' || capturedExe!.endsWith('/claude'), isTrue);
       expect(capturedArgs, contains('--print'));
       expect(capturedArgs, containsAllInOrder(['--output-format', 'text']));
       // Instruction is the positional prompt (last arg).

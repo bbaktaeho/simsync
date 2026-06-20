@@ -112,4 +112,50 @@ void main() {
       AppSettings.defaultWeeklyInstruction,
     );
   });
+
+  test('defaults to the Anthropic API provider with the default model',
+      () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    expect(controller.value.weeklyProvider, AppSettings.providerApi);
+    expect(controller.value.anthropicApiKey, '');
+    expect(controller.value.anthropicModel, AppSettings.defaultAnthropicModel);
+  });
+
+  test('persists provider, api key and model', () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await controller.setWeeklyProvider(AppSettings.providerCli);
+    await controller.setAnthropicApiKey('sk-ant-abc');
+    await controller.setAnthropicModel('claude-sonnet-4-6');
+
+    final reloaded = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await reloaded.load();
+
+    expect(reloaded.value.weeklyProvider, AppSettings.providerCli);
+    expect(reloaded.value.anthropicApiKey, 'sk-ant-abc');
+    expect(reloaded.value.anthropicModel, 'claude-sonnet-4-6');
+  });
+
+  test('blank model falls back to the default; unknown provider falls to api',
+      () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await controller.setAnthropicModel('  ');
+    await controller.setWeeklyProvider('bogus');
+
+    expect(controller.value.anthropicModel, AppSettings.defaultAnthropicModel);
+    expect(controller.value.weeklyProvider, AppSettings.providerApi);
+  });
 }

@@ -56,7 +56,22 @@ class ClaudeCodeService {
 
   String _resolveExecutable(String? cliPath) {
     final trimmed = cliPath?.trim() ?? '';
-    return trimmed.isEmpty ? 'claude' : trimmed;
+    if (trimmed.isNotEmpty) return trimmed;
+    // GUI apps launched from Finder do not inherit the shell PATH, so a bare
+    // `claude` may not resolve. Probe common install locations first; fall back
+    // to `claude` (which works when launched from a shell that has it on PATH).
+    final home = Platform.environment['HOME'];
+    final candidates = <String>[
+      '/opt/homebrew/bin/claude',
+      '/usr/local/bin/claude',
+      if (home != null) '$home/.claude/local/claude',
+      if (home != null) '$home/.local/bin/claude',
+      '/usr/bin/claude',
+    ];
+    for (final candidate in candidates) {
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return 'claude';
   }
 
   /// Whether the Claude Code CLI is reachable (`claude --version` exits 0).

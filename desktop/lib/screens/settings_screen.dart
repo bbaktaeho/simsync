@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
@@ -69,7 +70,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _createController = TextEditingController();
   late final TextEditingController _weeklyInstructionController;
   late final TextEditingController _claudeCliPathController;
+  late final TextEditingController _apiKeyController;
+  late final TextEditingController _modelController;
   final ClaudeCodeService _claudeService = ClaudeCodeService();
+  final AnthropicApiService _anthropicService = AnthropicApiService();
 
   _SettingsPane _selectedPane = _SettingsPane.storage;
   List<RepoEntry> _cachedRepos = [];
@@ -86,6 +90,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextEditingController(text: settings.weeklyInstruction);
     _claudeCliPathController =
         TextEditingController(text: settings.claudeCliPath);
+    _apiKeyController = TextEditingController(text: settings.anthropicApiKey);
+    _modelController = TextEditingController(text: settings.anthropicModel);
     _loadCachedRepos();
   }
 
@@ -95,6 +101,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _createController.dispose();
     _weeklyInstructionController.dispose();
     _claudeCliPathController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -392,15 +400,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const _PaneHeader(
             title: 'Weekly summary',
             description:
-                'Click the Weekly button below the calendar to turn this week\'s '
-                'notes into a summary written by Claude Code, following the '
-                'instruction below.',
+                '캘린더 아래 Weekly 버튼을 누르면 이번 주 노트를 아래 지침대로 '
+                '요약합니다. 연동 방식은 Anthropic API(API 키) 또는 Claude Code CLI '
+                '중 선택할 수 있습니다.',
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
             title: '위클리 지침',
             description:
-                'Claude Code에 전달되는 지침입니다. 이번 주 노트가 컨텍스트로 함께 전달됩니다.',
+                '요약 생성 시 모델에 전달되는 지침입니다. 이번 주 노트가 컨텍스트로 함께 전달됩니다.',
             action: _ActionButton(
               label: 'Reset',
               onTap: () {
@@ -425,9 +433,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
-            title: 'Claude Code 연동',
-            description:
-                'Weekly 버튼을 눌렀을 때 Claude Code CLI(claude --print)로 요약을 생성합니다.',
+            title: 'AI 요약 연동',
+            description: 'Weekly 버튼을 눌렀을 때 어떤 방식으로 요약을 생성할지 설정합니다.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -450,72 +457,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 if (settings.claudeCodeEnabled) ...[
                   const SizedBox(height: AppDimensions.spacingLg),
-                  _SectionLabel(label: 'Claude CLI 경로 (선택)'),
+                  _SectionLabel(label: '연동 방식'),
                   const SizedBox(height: AppDimensions.spacingSm),
-                  Text(
-                    '비워두면 PATH의 claude를 사용합니다. macOS GUI 앱에서 claude를 찾지 못하면 '
-                    '절대 경로를 입력하세요 (예: /opt/homebrew/bin/claude).',
-                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                          color: c.textSecondary,
-                          height: 1.5,
-                        ),
-                  ),
-                  const SizedBox(height: AppDimensions.spacingSm),
-                  Row(
+                  Wrap(
+                    spacing: AppDimensions.spacingSm,
                     children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _claudeCliPathController,
-                          style: AppTextStyles.codeMono(size: 12)
-                              .copyWith(color: c.textPrimary),
-                          decoration: const InputDecoration(
-                            hintText: 'claude',
-                          ),
-                          onChanged: (value) {
-                            widget.settingsController.setClaudeCliPath(value);
-                            setState(() => _claudeProbe = _ClaudeProbe.idle);
-                          },
-                        ),
+                      ChoiceChip(
+                        label: const Text('Anthropic API'),
+                        selected:
+                            settings.weeklyProvider == AppSettings.providerApi,
+                        onSelected: (_) {
+                          widget.settingsController
+                              .setWeeklyProvider(AppSettings.providerApi);
+                          setState(() => _claudeProbe = _ClaudeProbe.idle);
+                        },
                       ),
-                      const SizedBox(width: AppDimensions.spacingSm),
-                      _ActionButton(
-                        label: _claudeProbe == _ClaudeProbe.checking
-                            ? 'Checking...'
-                            : 'Test',
-                        onTap: _claudeProbe == _ClaudeProbe.checking
-                            ? null
-                            : _probeClaude,
+                      ChoiceChip(
+                        label: const Text('Claude Code CLI'),
+                        selected:
+                            settings.weeklyProvider == AppSettings.providerCli,
+                        onSelected: (_) {
+                          widget.settingsController
+                              .setWeeklyProvider(AppSettings.providerCli);
+                          setState(() => _claudeProbe = _ClaudeProbe.idle);
+                        },
                       ),
                     ],
                   ),
+                  const SizedBox(height: AppDimensions.spacingLg),
+                  if (settings.weeklyProvider == AppSettings.providerApi)
+                    ..._buildApiProviderFields(c)
+                  else
+                    ..._buildCliProviderFields(c),
                   if (_claudeProbe == _ClaudeProbe.available ||
-                      _claudeProbe == _ClaudeProbe.unavailable) ...[
-                    const SizedBox(height: AppDimensions.spacingSm),
-                    Row(
-                      children: [
-                        Icon(
-                          _claudeProbe == _ClaudeProbe.available
-                              ? Icons.check_circle_outline_rounded
-                              : Icons.error_outline_rounded,
-                          size: 14,
-                          color: _claudeProbe == _ClaudeProbe.available
-                              ? c.success
-                              : c.error,
-                        ),
-                        const SizedBox(width: AppDimensions.spacingXs),
-                        Text(
-                          _claudeProbe == _ClaudeProbe.available
-                              ? 'Claude Code를 찾았습니다.'
-                              : 'Claude Code를 찾지 못했습니다. 경로를 확인하세요.',
-                          style: AppTextStyles.micro.copyWith(
-                            color: _claudeProbe == _ClaudeProbe.available
-                                ? c.success
-                                : c.error,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      _claudeProbe == _ClaudeProbe.unavailable)
+                    _buildProbeResult(c, settings),
                 ],
               ],
             ),
@@ -525,14 +501,139 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _probeClaude() async {
-    setState(() => _claudeProbe = _ClaudeProbe.checking);
-    final available = await _claudeService.isAvailable(
-      cliPath: _claudeCliPathController.text,
+  List<Widget> _buildApiProviderFields(AppColorsExtension c) {
+    return [
+      Text(
+        'console.anthropic.com에서 발급한 API 키(sk-ant-...)를 입력하세요. '
+        '결제 설정이 필요하며 Claude.ai 구독과 별개로 사용량만큼 과금됩니다.',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _apiKeyController,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(hintText: 'sk-ant-...'),
+              onChanged: (value) {
+                widget.settingsController.setAnthropicApiKey(value);
+                setState(() => _claudeProbe = _ClaudeProbe.idle);
+              },
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _ActionButton(
+            label: _claudeProbe == _ClaudeProbe.checking ? 'Checking...' : 'Test',
+            onTap: _claudeProbe == _ClaudeProbe.checking ? null : _probe,
+          ),
+        ],
+      ),
+      const SizedBox(height: AppDimensions.spacingLg),
+      _SectionLabel(label: '모델'),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Text(
+        '기본값은 claude-opus-4-8 입니다. claude-sonnet-4-6 등으로 바꾸면 비용을 낮출 수 있습니다.',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      TextField(
+        controller: _modelController,
+        style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+        decoration: const InputDecoration(hintText: AppSettings.defaultAnthropicModel),
+        onChanged: (value) =>
+            widget.settingsController.setAnthropicModel(value),
+      ),
+    ];
+  }
+
+  List<Widget> _buildCliProviderFields(AppColorsExtension c) {
+    return [
+      Text(
+        'Claude Code CLI(claude --print)로 요약을 생성합니다. CLI가 구독 계정으로 '
+        '로그인되어 있으면 구독을 사용합니다. 비워두면 일반 설치 경로를 자동으로 찾고, '
+        'macOS GUI 앱에서 찾지 못하면 절대 경로를 입력하세요 (예: /opt/homebrew/bin/claude).',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _claudeCliPathController,
+              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(hintText: 'claude'),
+              onChanged: (value) {
+                widget.settingsController.setClaudeCliPath(value);
+                setState(() => _claudeProbe = _ClaudeProbe.idle);
+              },
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _ActionButton(
+            label: _claudeProbe == _ClaudeProbe.checking ? 'Checking...' : 'Test',
+            onTap: _claudeProbe == _ClaudeProbe.checking ? null : _probe,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _buildProbeResult(AppColorsExtension c, AppSettings settings) {
+    final ok = _claudeProbe == _ClaudeProbe.available;
+    final isApi = settings.weeklyProvider == AppSettings.providerApi;
+    final message = ok
+        ? (isApi ? 'API 키가 확인되었습니다.' : 'Claude Code를 찾았습니다.')
+        : (isApi
+            ? 'API 키를 확인하지 못했습니다. 키와 네트워크를 확인하세요.'
+            : 'Claude Code를 찾지 못했습니다. 경로를 확인하세요.');
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimensions.spacingSm),
+      child: Row(
+        children: [
+          Icon(
+            ok
+                ? Icons.check_circle_outline_rounded
+                : Icons.error_outline_rounded,
+            size: 14,
+            color: ok ? c.success : c.error,
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.micro.copyWith(color: ok ? c.success : c.error),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _probe() async {
+    setState(() => _claudeProbe = _ClaudeProbe.checking);
+    final settings = widget.settingsController.value;
+    final bool ok;
+    if (settings.weeklyProvider == AppSettings.providerApi) {
+      ok = await _anthropicService.validateKey(apiKey: _apiKeyController.text);
+    } else {
+      ok = await _claudeService.isAvailable(cliPath: _claudeCliPathController.text);
+    }
     if (!mounted) return;
-    setState(() => _claudeProbe =
-        available ? _ClaudeProbe.available : _ClaudeProbe.unavailable);
+    setState(() =>
+        _claudeProbe = ok ? _ClaudeProbe.available : _ClaudeProbe.unavailable);
   }
 
   Widget _buildStoragePane(

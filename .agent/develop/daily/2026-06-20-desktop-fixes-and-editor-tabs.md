@@ -49,6 +49,17 @@ related:
 - **더티 탭 닫기 크래시 (`setState during build`)**: 더티 노트 전환 시 `EditorPanel.didUpdateWidget` flush가 빌드 도중 부모 setState 호출. `_flushPending`을 post-frame defer로, `_onNoteChanged`는 비활성 노트 재선택 방지 가드 추가. 기존 코드에도 잠재하던 버그를 함께 해결.
 - 독립 코드리뷰의 "코드블록 이중 패딩" 지적은 flutter_markdown 소스 확인 결과 빌더가 SCSV를 교체하므로 단일 패딩이 맞음(오인). `TapGestureRecognizer` 누수는 수정.
 
+## 후속: Weekly 연동 견고화 (Anthropic API provider)
+
+- 문제: Claude Code CLI 단독 연동이 macOS GUI(Finder 실행) PATH 미상속으로 동작하지 않음("죽는다").
+- 해결: Weekly 연동에 **provider 선택**(Anthropic API / Claude Code CLI) 추가, API 기본.
+  - `services/anthropic_api_service.dart`: `http`로 `POST /v1/messages` 직접 호출(`x-api-key` + `anthropic-version`). 지침=system, 노트=user. 기본 모델 `claude-opus-4-8`. validateKey는 무과금 `GET /v1/models`. 친절한 에러 매핑/타임아웃/refusal 처리.
+  - `AppSettings`에 `weeklyProvider`/`anthropicApiKey`/`anthropicModel` + 컨트롤러 persistence.
+  - 설정 Weekly pane: provider 칩 + 조건부 필드(API 키 obscure + 모델 / CLI 경로), Test 버튼(provider별 검증).
+  - `ClaudeCodeService._resolveExecutable`: 경로 미설정 시 common 설치 위치 자동 탐색(GUI PATH 보완).
+- 검증: 단위 테스트(API 10 + 컨트롤러/설정), **실제 plumbing** 확인 — 더미 키 `POST /v1/messages` → 401 `authentication_error`(요청 본문/헤더/엔드포인트 정상, 키만 거부). 유효 키면 200+요약.
+- 참고: Claude.ai 구독은 API 직접 접근이 아님(별도 pay-as-you-go). 구독만 있으면 CLI provider 사용.
+
 ## 결과
-- `flutter analyze` clean, `flutter test` 149 passed.
+- `flutter analyze` clean, `flutter test` 164 passed.
 - 앱 빌드/실행 스모크 확인(런타임 예외 없음). 스크린샷은 환경 권한상 불가.

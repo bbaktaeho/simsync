@@ -16,6 +16,9 @@ class AppSettingsController extends ChangeNotifier {
   static const String weeklyInstructionKey = 'weekly_instruction';
   static const String claudeCodeEnabledKey = 'claude_code_enabled';
   static const String claudeCliPathKey = 'claude_cli_path';
+  static const String weeklyProviderKey = 'weekly_provider';
+  static const String anthropicApiKeyKey = 'anthropic_api_key';
+  static const String anthropicModelKey = 'anthropic_model';
   static const String _shortcutPrefix = 'shortcut_';
 
   AppSettingsController({required String defaultLocalNotePath})
@@ -59,6 +62,11 @@ class AppSettingsController extends ChangeNotifier {
           AppSettings.defaultWeeklyInstruction,
       claudeCodeEnabled: prefs.getBool(claudeCodeEnabledKey) ?? false,
       claudeCliPath: prefs.getString(claudeCliPathKey) ?? '',
+      weeklyProvider:
+          prefs.getString(weeklyProviderKey) ?? AppSettings.providerApi,
+      anthropicApiKey: prefs.getString(anthropicApiKeyKey) ?? '',
+      anthropicModel: prefs.getString(anthropicModelKey) ??
+          AppSettings.defaultAnthropicModel,
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
@@ -154,6 +162,33 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(claudeCliPathKey, trimmed);
+  }
+
+  Future<void> setWeeklyProvider(String value) async {
+    final next = value == AppSettings.providerCli
+        ? AppSettings.providerCli
+        : AppSettings.providerApi;
+    _value = _value.copyWith(weeklyProvider: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(weeklyProviderKey, next);
+  }
+
+  Future<void> setAnthropicApiKey(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(anthropicApiKey: trimmed);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(anthropicApiKeyKey, trimmed);
+  }
+
+  Future<void> setAnthropicModel(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty ? AppSettings.defaultAnthropicModel : trimmed;
+    _value = _value.copyWith(anthropicModel: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(anthropicModelKey, next);
   }
 
   Future<void> setShortcutBinding(ShortcutBinding binding) async {

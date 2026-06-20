@@ -7,12 +7,22 @@ class AppSettings {
   static const int minSearchContextLines = 1;
   static const int maxSearchContextLines = 10;
 
-  /// Default instruction used to generate the weekly summary via Claude Code.
+  /// Default instruction used to generate the weekly summary.
   static const String defaultWeeklyInstruction =
       '아래는 이번 주(월~일) 동안 작성한 노트입니다. '
       '이 기록을 바탕으로 이번 주에 한 일을 카테고리별로 정리하고, '
       '주요 성과와 다음 주에 이어갈 일을 간결하게 요약해 주세요. '
       '한국어로 작성하고, 핵심만 불릿으로 정리하세요.';
+
+  /// Weekly summary provider. [providerApi] calls the Anthropic Messages API
+  /// directly with an API key (robust, works from a GUI app). [providerCli]
+  /// shells out to the Claude Code CLI (uses a Claude.ai subscription when the
+  /// CLI is logged in via subscription).
+  static const String providerApi = 'api';
+  static const String providerCli = 'cli';
+
+  /// Default Anthropic model for the API provider.
+  static const String defaultAnthropicModel = 'claude-opus-4-8';
 
   final String localNotePath;
   final double contentScale;
@@ -20,15 +30,23 @@ class AppSettings {
   final bool syncEnabled;
   final int searchContextLines;
 
-  /// Instruction text sent to Claude Code when generating the weekly summary.
+  /// Instruction text sent to the model when generating the weekly summary.
   final String weeklyInstruction;
 
-  /// Whether the Claude Code weekly-summary integration is enabled.
+  /// Whether the weekly-summary AI integration is enabled.
   final bool claudeCodeEnabled;
 
-  /// Optional absolute path to the `claude` CLI. Empty means "use `claude` from
-  /// PATH". Useful on macOS where GUI apps do not inherit the shell PATH.
+  /// Optional absolute path to the `claude` CLI. Empty means auto-detect.
   final String claudeCliPath;
+
+  /// Selected weekly summary provider: [providerApi] or [providerCli].
+  final String weeklyProvider;
+
+  /// Anthropic API key (`sk-ant-...`) for the API provider.
+  final String anthropicApiKey;
+
+  /// Anthropic model id for the API provider.
+  final String anthropicModel;
 
   const AppSettings({
     required this.localNotePath,
@@ -39,6 +57,9 @@ class AppSettings {
     this.weeklyInstruction = defaultWeeklyInstruction,
     this.claudeCodeEnabled = false,
     this.claudeCliPath = '',
+    this.weeklyProvider = providerApi,
+    this.anthropicApiKey = '',
+    this.anthropicModel = defaultAnthropicModel,
   });
 
   AppSettings copyWith({
@@ -50,6 +71,9 @@ class AppSettings {
     String? weeklyInstruction,
     bool? claudeCodeEnabled,
     String? claudeCliPath,
+    String? weeklyProvider,
+    String? anthropicApiKey,
+    String? anthropicModel,
   }) {
     return AppSettings(
       localNotePath: localNotePath ?? this.localNotePath,
@@ -60,6 +84,9 @@ class AppSettings {
       weeklyInstruction: weeklyInstruction ?? this.weeklyInstruction,
       claudeCodeEnabled: claudeCodeEnabled ?? this.claudeCodeEnabled,
       claudeCliPath: claudeCliPath ?? this.claudeCliPath,
+      weeklyProvider: weeklyProvider ?? this.weeklyProvider,
+      anthropicApiKey: anthropicApiKey ?? this.anthropicApiKey,
+      anthropicModel: anthropicModel ?? this.anthropicModel,
     );
   }
 
@@ -74,7 +101,10 @@ class AppSettings {
         other.searchContextLines == searchContextLines &&
         other.weeklyInstruction == weeklyInstruction &&
         other.claudeCodeEnabled == claudeCodeEnabled &&
-        other.claudeCliPath == claudeCliPath;
+        other.claudeCliPath == claudeCliPath &&
+        other.weeklyProvider == weeklyProvider &&
+        other.anthropicApiKey == anthropicApiKey &&
+        other.anthropicModel == anthropicModel;
   }
 
   @override
@@ -87,5 +117,8 @@ class AppSettings {
     weeklyInstruction,
     claudeCodeEnabled,
     claudeCliPath,
+    weeklyProvider,
+    anthropicApiKey,
+    anthropicModel,
   );
 }
