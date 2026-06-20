@@ -46,6 +46,28 @@ MarkdownEditingController _contentController(WidgetTester tester) =>
     tester.widget<TextField>(_contentFinder).controller
         as MarkdownEditingController;
 
+/// Builds the controller's span in [context] and returns the style of the first
+/// span whose text equals [text].
+TextStyle? _markerStyle(
+  MarkdownEditingController controller,
+  BuildContext context,
+  String text,
+) {
+  final span = controller.buildTextSpan(context: context, withComposing: false);
+  TextStyle? found;
+  void walk(InlineSpan s) {
+    if (s is TextSpan) {
+      if (s.text == text) found ??= s.style;
+      for (final child in s.children ?? const <InlineSpan>[]) {
+        walk(child);
+      }
+    }
+  }
+
+  walk(span);
+  return found;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -64,6 +86,30 @@ void main() {
     expect(find.text('Edit'), findsNothing);
     // The content field renders markdown inline via the custom controller.
     expect(_contentController(tester), isA<MarkdownEditingController>());
+  });
+
+  testWidgets('reveals the caret line markers and collapses inactive lines', (
+    tester,
+  ) async {
+    await _pump(tester, note: _note(content: '# Title\nbody text'));
+    final controller = _contentController(tester);
+
+    // Focus the editor: the controller switches into the "editing" state.
+    await tester.tap(_contentFinder);
+    await tester.pump();
+    expect(controller.focused, isTrue);
+
+    final context = tester.element(_contentFinder);
+
+    // Caret on the heading line -> the "# " marker is revealed (heading size).
+    controller.selection = const TextSelection.collapsed(offset: 2);
+    await tester.pump();
+    expect(_markerStyle(controller, context, '# ')!.fontSize, greaterThan(20));
+
+    // Caret on the body line -> the heading marker collapses (renders clean).
+    controller.selection = const TextSelection.collapsed(offset: 10);
+    await tester.pump();
+    expect(_markerStyle(controller, context, '# ')!.fontSize, lessThan(1));
   });
 
   testWidgets('checklist button toggles a checkbox prefix on the caret line', (

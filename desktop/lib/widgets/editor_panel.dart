@@ -51,6 +51,7 @@ class _EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
   late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
+  late FocusNode _contentFocusNode;
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
@@ -62,7 +63,15 @@ class _EditorPanelState extends State<EditorPanel> {
     _titleController = TextEditingController();
     _contentController = MarkdownEditingController();
     _tagController = TextEditingController();
+    _contentFocusNode = FocusNode()..addListener(_onContentFocusChanged);
     _syncControllers();
+  }
+
+  /// When the editor gains/loses focus, the controller re-renders so the caret's
+  /// line reveals its markdown markers (focused) or everything renders (blurred).
+  void _onContentFocusChanged() {
+    if (!mounted) return;
+    setState(() => _contentController.focused = _contentFocusNode.hasFocus);
   }
 
   @override
@@ -128,6 +137,7 @@ class _EditorPanelState extends State<EditorPanel> {
     _titleController.dispose();
     _contentController.dispose();
     _tagController.dispose();
+    _contentFocusNode.dispose();
     super.dispose();
   }
 
@@ -438,6 +448,7 @@ class _EditorPanelState extends State<EditorPanel> {
         padding: const EdgeInsets.all(AppDimensions.spacingLg),
         child: TextField(
           controller: _contentController,
+          focusNode: _contentFocusNode,
           onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
           readOnly: widget.isReadOnly,
           inputFormatters:

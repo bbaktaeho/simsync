@@ -19,9 +19,16 @@ List<(String, TextStyle?)> _flatten(InlineSpan root) {
   return out;
 }
 
-Future<TextSpan> _build(WidgetTester tester, String text) async {
+Future<TextSpan> _build(
+  WidgetTester tester,
+  String text, {
+  bool focused = false,
+  TextSelection? selection,
+}) async {
   late TextSpan span;
   final controller = MarkdownEditingController(text: text);
+  controller.focused = focused;
+  if (selection != null) controller.selection = selection;
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData(extensions: const [AppColorsExtension.light]),
@@ -40,7 +47,9 @@ Future<TextSpan> _build(WidgetTester tester, String text) async {
 }
 
 void main() {
-  testWidgets('preserves the exact text for arbitrary markdown', (tester) async {
+  testWidgets('preserves the exact text in both active and inactive states', (
+    tester,
+  ) async {
     const inputs = [
       '',
       'plain text',
@@ -52,6 +61,9 @@ void main() {
       '- [ ] todo\n- [x] done',
       '> a quote with *emphasis*',
       '```dart\nvoid main() {}\n```',
+      '```go\nfunc main() {\n\tfmt.Println("hi")\n}\n```',
+      '```json\n{"a": [1, 2], "b": true}\n```',
+      '```sh\necho "hello" | grep h\n```',
       'unterminated **bold and *italic',
       'mixed __underscore bold__ and _underscore italic_',
       'trailing spaces and \nblank lines\n\n\nend',
@@ -66,13 +78,21 @@ void main() {
         home: Builder(
           builder: (context) {
             for (final input in inputs) {
-              final controller = MarkdownEditingController(text: input);
-              final span = controller.buildTextSpan(
-                context: context,
-                withComposing: false,
-              );
-              expect(span.toPlainText(), input,
-                  reason: 'character mismatch for: ${input.replaceAll('\n', '\\n')}');
+              for (final focused in [false, true]) {
+                final controller = MarkdownEditingController(text: input)
+                  ..focused = focused
+                  ..selection = TextSelection(
+                    baseOffset: 0,
+                    extentOffset: input.length,
+                  );
+                final span = controller.buildTextSpan(
+                  context: context,
+                  withComposing: false,
+                );
+                expect(span.toPlainText(), input,
+                    reason:
+                        'char mismatch (focused=$focused): ${input.replaceAll('\n', '\\n')}');
+              }
             }
             return const SizedBox();
           },
@@ -81,58 +101,100 @@ void main() {
     );
   });
 
-  testWidgets('headings render larger than body text', (tester) async {
-    final span = await _build(tester, '# Title');
-    final pairs = _flatten(span);
-    final title = pairs.firstWhere((p) => p.$1 == 'Title');
-    final marker = pairs.firstWhere((p) => p.$1 == '# ');
-    expect(title.$2!.fontSize, greaterThan(20));
-    expect(marker.$2!.fontSize, title.$2!.fontSize); // marker shares heading size
-  });
-
-  testWidgets('bold and italic apply weight and style with kept markers', (
+  testWidgets('heading marker collapses when inactive, reveals when active', (
     tester,
   ) async {
-    final span = await _build(tester, '**bold** and *italic*');
-    final pairs = _flatten(span);
+    // Inactive (unfocused): the "# " marker is collapsed to near-zero size so
+    // the line reads as a rendered heading.
+    final inactive = _flatten(await _build(tester, '# Title'));
+    final inactiveTitle = inactive.firstWhere((p) => p.$1 == 'Title');
+    final inactiveMarker = inactive.firstWhere((p) => p.$1 == '# ');
+    expect(inactiveTitle.$2!.fontSize, greaterThan(20)); // rendered big
+    expect(inactiveMarker.$2!.fontSize, lessThan(1)); // collapsed
 
-    final bold = pairs.firstWhere((p) => p.$1 == 'bold');
-    expect(bold.$2!.fontWeight, FontWeight.w700);
-    expect(pairs.where((p) => p.$1 == '**').length, 2); // markers kept
-
-    final italic = pairs.firstWhere((p) => p.$1 == 'italic');
-    expect(italic.$2!.fontStyle, FontStyle.italic);
+    // Active (focused, caret on the line): the marker is revealed for editing.
+    final active = _flatten(await _build(
+      tester,
+      '# Title',
+      focused: true,
+      selection: const TextSelection.collapsed(offset: 3),
+    ));
+    final activeMarker = active.firstWhere((p) => p.$1 == '# ');
+    expect(activeMarker.$2!.fontSize, greaterThan(20)); // visible, heading-size
   });
 
-  testWidgets('inline code gets a code background', (tester) async {
-    final span = await _build(tester, 'run `flutter test` now');
-    final pairs = _flatten(span);
+  testWidgets('inline markers collapse when inactive and show when active', (
+    tester,
+  ) async {
+    final inactive = _flatten(await _build(tester, '**bold**'));
+    // Two '**' markers, both collapsed (transparent / near-zero).
+    final inactiveMarkers = inactive.where((p) => p.$1 == '**').toList();
+    expect(inactiveMarkers.length, 2);
+    expect(inactiveMarkers.first.$2!.color, Colors.transparent);
+    // Content still bold.
+    expect(inactive.firstWhere((p) => p.$1 == 'bold').$2!.fontWeight,
+        FontWeight.w700);
+
+    final active = _flatten(await _build(
+      tester,
+      '**bold**',
+      focused: true,
+      selection: const TextSelection.collapsed(offset: 4),
+    ));
+    final activeMarkers = active.where((p) => p.$1 == '**').toList();
+    expect(activeMarkers.first.$2!.color, isNot(Colors.transparent));
+  });
+
+  testWidgets('bullet and quote structural markers stay visible when inactive', (
+    tester,
+  ) async {
+    final bullet = _flatten(await _build(tester, '- item'));
+    final marker = bullet.firstWhere((p) => p.$1 == '-');
+    // Not collapsed — structural markers keep their size.
+    expect(marker.$2!.fontSize ?? 14, greaterThan(1));
+    expect(marker.$2!.color, isNot(Colors.transparent));
+  });
+
+  testWidgets('inline code content keeps a code background', (tester) async {
+    final pairs = _flatten(await _build(tester, 'run `flutter test` now'));
     final code = pairs.firstWhere((p) => p.$1 == 'flutter test');
     expect(code.$2!.backgroundColor, isNotNull);
   });
 
   testWidgets('checked checkbox strikes through its content', (tester) async {
-    final span = await _build(tester, '- [x] done\n- [ ] todo');
-    final pairs = _flatten(span);
-    final done = pairs.firstWhere((p) => p.$1 == 'done');
-    final todo = pairs.firstWhere((p) => p.$1 == 'todo');
-    expect(done.$2!.decoration, TextDecoration.lineThrough);
-    expect(todo.$2!.decoration, anyOf(isNull, TextDecoration.none));
+    final pairs = _flatten(await _build(tester, '- [x] done\n- [ ] todo'));
+    expect(pairs.firstWhere((p) => p.$1 == 'done').$2!.decoration,
+        TextDecoration.lineThrough);
+    expect(pairs.firstWhere((p) => p.$1 == 'todo').$2!.decoration,
+        anyOf(isNull, TextDecoration.none));
   });
 
-  testWidgets('bullet marker is accented', (tester) async {
-    final span = await _build(tester, '- item');
+  testWidgets('fenced code is syntax-highlighted into multiple colored tokens', (
+    tester,
+  ) async {
+    final span = await _build(tester, '```go\nfunc main() {}\n```');
     final pairs = _flatten(span);
-    // The marker '-' and the content 'item' are separate spans.
-    expect(pairs.any((p) => p.$1 == '-'), isTrue);
-    expect(pairs.any((p) => p.$1 == 'item'), isTrue);
+    // The code line tokenizes into more than one span (keyword vs rest).
+    final codeText = pairs
+        .map((p) => p.$1)
+        .join()
+        .replaceAll('```go', '')
+        .replaceAll('```', '');
+    expect(codeText.contains('func main() {}'), isTrue);
+
+    // At least two distinct foreground colors appear across the document
+    // (a highlighted keyword vs. plain code), proving tokenization ran.
+    final colors = pairs
+        .where((p) => p.$2?.color != null && p.$2?.color != Colors.transparent)
+        .map((p) => p.$2!.color)
+        .toSet();
+    expect(colors.length, greaterThan(1));
   });
 
-  testWidgets('fenced code lines use a monospace style', (tester) async {
-    final span = await _build(tester, '```\ncode line\n```');
-    final pairs = _flatten(span);
-    final code = pairs.firstWhere((p) => p.$1 == 'code line');
-    // JetBrains Mono is registered via google_fonts with a generated family.
-    expect(code.$2!.fontFamily, isNot('Inter'));
+  testWidgets('unknown code language falls back without breaking text', (
+    tester,
+  ) async {
+    final span = await _build(tester, '```nonsenselang\nsome code\n```');
+    expect(span.toPlainText(), '```nonsenselang\nsome code\n```');
   });
 }

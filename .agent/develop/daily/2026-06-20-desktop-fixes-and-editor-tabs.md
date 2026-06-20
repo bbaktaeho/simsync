@@ -86,3 +86,14 @@ related:
 - 방어: `_probe`에 try/catch 추가(어떤 예외도 앱을 죽이지 않고 "unavailable" 표시, defense-in-depth).
 - 검증: `buildPathEnv` 단위테스트 3, `flutter analyze` clean, 전체 175 테스트 통과, macOS 디버그 빌드 + `open`(Finder형) 기동 스모크 정상.
 - 미해결: 사용자가 보고한 게 "하드 크래시"라면 Dart 경로상 재현 불가 — fresh 빌드에서 증상/메시지 확인 필요(필요시 진단 로그 추가).
+
+## 후속: 옵시디언식 Live Preview(활성/비활성 렌더) + 코드 하이라이팅
+
+- 요구: 블록을 편집 중이 아니면 곧바로 마크다운 렌더링, 커서를 대면 렌더 모양 유지한 채 편집(옵시디언). 코드블록 다국어 컬러 하이라이팅.
+- 기술 제약(decision): Flutter TextField는 표시 텍스트 == 컨트롤러 텍스트여야 커서 매핑이 유지됨(문자를 진짜 숨기면 깨짐). 그래서 **문자는 보존하되 비활성 라인의 마커를 `fontSize 0.1 + transparent`로 collapse**(시각적으로 사라지나 커서/선택 매핑은 그대로). 활성 라인(커서/선택이 닿은 라인)만 마커 표시(dim). focus 해제 시 전체 렌더.
+  - `MarkdownEditingController`: `focused` 필드 + selection으로 라인별 active 판정(`selStart <= lineEnd && selEnd >= lineStart`, offset += line.length+1). 활성→마커 dim, 비활성→collapse. 구조 마커(list/quote/checkbox)는 비활성에도 유지(구조 전달).
+  - live 갱신: EditableText가 selection 변경에도 `setState` 무조건 호출 → buildTextSpan 재실행(SDK 소스로 확인). `editor_panel`은 FocusNode 리스너로 `controller.focused` 설정 + setState.
+- 코드 하이라이팅: `highlight` 패키지 코어(`highlight.parse`)로 fenced code를 라인 단위 토크나이즈 → `github`/`atom-one-dark` 테마 컬러 span. json/go/py/sh/js/yaml/dart 등 등록 없이 동작. fence 라인은 비활성 시 collapse. 미지원 언어/파서 오류는 plain mono fallback(char 보존). 키 입력당 재파싱 비용은 라인 단위 memoize(`_highlightCache`, key=`lang line`, 2000 cap)로 비활성 라인 재파싱 제거.
+- 불변식: span 텍스트 합 == controller.text(활성/비활성/코드 포함). 독립 적대 리뷰가 40+ 적대 입력 × 상태 × 선택 + highlight 소스로 검증, char 손상 0.
+- 검증(5회+): 컨트롤러 단위테스트 8(char 보존 양상태, 마커 collapse/reveal, 다중 컬러 토큰, fallback) / 통합 테스트(focus 배선 + 커서 이동 활성 갱신) / `flutter analyze` clean / 전체 177 통과 / 독립 적대 리뷰(critical 0; live 재렌더 SDK 소스 확인) / macOS 빌드 + Finder형 기동 스모크.
+- 한계: 표/이미지는 위젯 렌더가 아니라(단일 TextField 제약) 인라인 스타일링까지만. 라인 단위(블록 단위 아님) — 대부분의 노트에선 블록≈라인이라 영향 적음.
