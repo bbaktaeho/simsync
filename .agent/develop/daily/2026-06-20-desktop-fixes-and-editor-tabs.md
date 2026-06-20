@@ -123,3 +123,10 @@ related:
 
 - `ShortcutAction.closeTab`(기본 `Cmd+W`) 추가 — 설정형 바인딩 시스템에 등록(설정 > 단축키에 자동 노출·재설정 가능). `document_screen._handleHardwareKeyEvent`에서 활성 탭(`_selectedNote`)을 `_closeTab`. 닫기 시 더티 노트는 EditorPanel의 노트 prop 변경 flush로 보존.
 - 검증: 통합 테스트(`cmd+W closes the active editor tab` — 자동 오픈된 탭이 Cmd+W로 닫혀 빈 상태 복귀), analyze clean, 전체 190 통과, macOS 빌드+스모크.
+
+## 후속: 코드 박스가 타이핑 중 안 늘어나는 버그 수정
+
+- 증상: 코드블록에 다음 라인을 작성해도 코드 박스 그림이 늘어나지 않음.
+- 근본 원인: 데코레이션 페인터는 `_buildEditor`에서 생성되는데, 타이핑 시 `_onContentChanged`가 setState를 안 함(의도적) → `_buildEditor` 미리빌드 → 페인터가 새 span/regions로 갱신 안 됨(repaint는 스크롤만 청취). 박스가 옛 크기로 고정.
+- 수정: 데코레이션 레이어만 `ListenableBuilder(listenable: _contentController)`로 감싸 텍스트/커서 변경 시 페인터를 새 span·regions로 재생성·재측정(전체 패널은 미리빌드). 박스/룰/인용바가 입력에 따라 즉시 늘고 줄어듦. 부수효과로 이전 "빈 마커 라인 위 블록" 정렬 한계도 해소(selection 변경에도 재측정).
+- 검증: 통합 테스트(`code box decoration grows as more code lines are typed` — 코드 라인 추가 시 region.end 증가), analyze clean, 전체 191 통과, macOS 빌드+스모크.

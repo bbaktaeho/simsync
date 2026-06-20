@@ -127,6 +127,31 @@ void main() {
     expect(hasPainter, isTrue);
   });
 
+  testWidgets('code box decoration grows as more code lines are typed', (
+    tester,
+  ) async {
+    await _pump(tester, note: _note(content: '```\nline1\n```'));
+
+    int codeRegionEnd() => tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((cp) => cp.painter)
+        .whereType<EditorBlockDecorationPainter>()
+        .first
+        .regions
+        .firstWhere((r) => r.kind == EditorBlockKind.code)
+        .end;
+
+    final before = codeRegionEnd();
+
+    // Add a line inside the code block — the decoration must re-measure.
+    await tester.enterText(_contentFinder, '```\nline1\nline2\n```');
+    await tester.pump();
+
+    expect(codeRegionEnd(), greaterThan(before));
+
+    await tester.pump(const Duration(seconds: 2)); // flush autosave timer
+  });
+
   testWidgets('checklist button toggles a checkbox prefix on the caret line', (
     tester,
   ) async {

@@ -450,7 +450,6 @@ class _EditorPanelState extends State<EditorPanel> {
     // the painter must share strut + text scaler + width for the boxes to align.
     final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
     final textScaler = MediaQuery.textScalerOf(context);
-    final regions = parseEditorBlockRegions(_contentController.text);
 
     final field = TextField(
       controller: _contentController,
@@ -477,13 +476,21 @@ class _EditorPanelState extends State<EditorPanel> {
       ),
     );
 
-    final Widget body = regions.isEmpty
-        ? field
-        : Stack(
-            fit: StackFit.expand,
-            children: [
-              IgnorePointer(
-                child: CustomPaint(
+    final Widget body = Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            // Rebuild the decoration layer on every text/caret change so code
+            // boxes (and `---` rules / quote bars) grow and shrink with the
+            // content as you type — the rest of the editor does not rebuild.
+            child: ListenableBuilder(
+              listenable: _contentController,
+              builder: (context, _) {
+                final regions =
+                    parseEditorBlockRegions(_contentController.text);
+                if (regions.isEmpty) return const SizedBox.expand();
+                return CustomPaint(
                   painter: EditorBlockDecorationPainter(
                     span: _contentController.buildTextSpan(
                       context: context,
@@ -498,11 +505,14 @@ class _EditorPanelState extends State<EditorPanel> {
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
                   ),
-                ),
-              ),
-              field,
-            ],
-          );
+                );
+              },
+            ),
+          ),
+        ),
+        field,
+      ],
+    );
 
     return _buildZoomAwareSurface(
       Container(
