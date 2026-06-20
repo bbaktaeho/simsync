@@ -292,21 +292,163 @@ TextEditingValue renumberOrderedListAtCursor(TextEditingValue value) {
   );
 }
 
-// ── Table skeleton ──────────────────────────────────────────────────────────
+// ── Markdown tables (grid editing) ──────────────────────────────────────────
 
-/// Builds a GitHub-flavored markdown table skeleton with [columns] columns and
-/// [rows] empty data rows (plus the header and separator rows).
-String buildMarkdownTable({required int columns, required int rows}) {
-  final cols = columns < 1 ? 1 : columns;
-  final dataRows = rows < 0 ? 0 : rows;
+/// Column text alignment in a GFM table.
+enum MarkdownTableAlign { left, center, right }
 
-  final header =
-      '| ${List.generate(cols, (i) => 'Column ${i + 1}').join(' | ')} |';
-  final separator = '| ${List.generate(cols, (_) => '---').join(' | ')} |';
-  final body = List.generate(
-    dataRows,
-    (_) => '| ${List.generate(cols, (_) => '').join(' | ')} |',
+/// A parsed GFM table: [rows] (the first is the header, the rest are body rows,
+/// each normalized to [columns] cells) plus a per-column [aligns].
+class MarkdownTableData {
+  MarkdownTableData(this.rows, this.aligns);
+
+  /// Row 0 is the header; rows 1.. are the body. Every row has `aligns.length`
+  /// cells.
+  final List<List<String>> rows;
+  final List<MarkdownTableAlign> aligns;
+
+  int get columns => aligns.length;
+
+  /// A blank table with [columns] columns and [bodyRows] empty body rows.
+  factory MarkdownTableData.blank({int columns = 3, int bodyRows = 2}) {
+    final cols = columns < 1 ? 1 : columns;
+    final body = bodyRows < 0 ? 0 : bodyRows;
+    return MarkdownTableData(
+      [
+        List.generate(cols, (i) => 'Column ${i + 1}'),
+        for (var r = 0; r < body; r++) List.filled(cols, ''),
+      ],
+      List.filled(cols, MarkdownTableAlign.left),
+    );
+  }
+}
+
+final RegExp _tableSeparatorCell = RegExp(r'^:?-+:?$');
+
+/// Splits a table row on UNescaped `|`, unescaping `\|` back to `|` inside
+/// cells. Symmetric with [serializeMarkdownTable] (which escapes `|`), so a
+/// cell containing a literal pipe survives a parse → serialize round-trip.
+List<String> _splitTableRow(String line) {
+  var s = line.trim();
+  if (s.startsWith('|')) s = s.substring(1);
+  if (s.endsWith('|') && !s.endsWith(r'\|')) s = s.substring(0, s.length - 1);
+  final cells = <String>[];
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (s[i] == r'\' && i + 1 < s.length && s[i + 1] == '|') {
+      buf.write('|');
+      i++; // skip the escaped pipe
+    } else if (s[i] == '|') {
+      cells.add(buf.toString().trim());
+      buf.clear();
+    } else {
+      buf.write(s[i]);
+    }
+  }
+  cells.add(buf.toString().trim());
+  return cells;
+}
+
+bool _isTableSeparator(String line) {
+  if (!line.contains('|') && !line.contains('-')) return false;
+  final cells = _splitTableRow(line);
+  if (cells.isEmpty) return false;
+  return cells.every((c) => _tableSeparatorCell.hasMatch(c.replaceAll(' ', '')));
+}
+
+MarkdownTableAlign _alignOf(String separatorCell) {
+  final c = separatorCell.trim();
+  final left = c.startsWith(':');
+  final right = c.endsWith(':');
+  if (left && right) return MarkdownTableAlign.center;
+  if (right) return MarkdownTableAlign.right;
+  return MarkdownTableAlign.left;
+}
+
+List<String> _normalizeRow(List<String> cells, int columns) {
+  if (cells.length == columns) return cells;
+  if (cells.length > columns) return cells.sublist(0, columns);
+  return [...cells, ...List.filled(columns - cells.length, '')];
+}
+
+/// Finds the GFM table whose lines contain [offset], or null if the caret isn't
+/// inside a table. Returns the parsed data and the table's `[start, end]`
+/// character range in [text].
+///
+/// Limitations (acceptable for MVP — both need a blank line, which GFM tables
+/// want anyway): it does not track fenced code, so pipe lines inside a ``` block
+/// could be mistaken for a table; and a pipe-bearing prose line directly above a
+/// table (no blank line between) hides the table.
+({MarkdownTableData table, int start, int end})? tableAtOffset(
+    String text, int offset) {
+  final lines = text.split('\n');
+  final starts = <int>[];
+  var acc = 0;
+  for (final l in lines) {
+    starts.add(acc);
+    acc += l.length + 1;
+  }
+
+  final caret = offset.clamp(0, text.length);
+  var cur = lines.length - 1;
+  for (var i = 0; i < lines.length; i++) {
+    if (caret <= starts[i] + lines[i].length) {
+      cur = i;
+      break;
+    }
+  }
+
+  bool isRow(int i) => i >= 0 && i < lines.length && lines[i].contains('|');
+  if (!isRow(cur)) return null;
+
+  var top = cur;
+  var bottom = cur;
+  while (isRow(top - 1)) {
+    top--;
+  }
+  while (isRow(bottom + 1)) {
+    bottom++;
+  }
+
+  // A valid table needs a header, a separator on the 2nd line, and ≥1 body row.
+  if (bottom - top < 2) return null;
+  if (!_isTableSeparator(lines[top + 1])) return null;
+
+  final header = _splitTableRow(lines[top]);
+  final columns = header.length;
+  if (columns == 0) return null;
+
+  final sepCells = _splitTableRow(lines[top + 1]);
+  final aligns = List.generate(
+    columns,
+    (i) => i < sepCells.length ? _alignOf(sepCells[i]) : MarkdownTableAlign.left,
   );
 
-  return [header, separator, ...body].join('\n');
+  final rows = <List<String>>[_normalizeRow(header, columns)];
+  for (var i = top + 2; i <= bottom; i++) {
+    rows.add(_normalizeRow(_splitTableRow(lines[i]), columns));
+  }
+
+  return (
+    table: MarkdownTableData(rows, aligns),
+    start: starts[top],
+    end: starts[bottom] + lines[bottom].length,
+  );
+}
+
+String _separatorFor(MarkdownTableAlign a) => switch (a) {
+      MarkdownTableAlign.left => '---',
+      MarkdownTableAlign.center => ':--:',
+      MarkdownTableAlign.right => '---:',
+    };
+
+/// Serializes [table] to GFM markdown (header, alignment separator, body rows).
+String serializeMarkdownTable(MarkdownTableData table) {
+  String row(List<String> cells) =>
+      '| ${_normalizeRow(cells, table.columns).map((c) => c.replaceAll('|', r'\|').trim()).join(' | ')} |';
+  return [
+    row(table.rows.first),
+    '| ${table.aligns.map(_separatorFor).join(' | ')} |',
+    for (final r in table.rows.skip(1)) row(r),
+  ].join('\n');
 }

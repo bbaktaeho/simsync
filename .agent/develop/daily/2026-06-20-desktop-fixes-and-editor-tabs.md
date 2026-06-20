@@ -154,3 +154,13 @@ related:
 - 위클리 Generate 표시: 에러를 테두리 박스로 prominent하게, 안내 메시지를 provider-무관하게. **표시 자체는 정상**(위젯 테스트: 성공→요약, 실패→에러, 게이팅). "아무것도 안 나옴"은 provider 미설정/라이브 호출 문제 — 마스터 토글+provider 설정 필요.
 - 설정 Claude 테스트: 앞서 node-PATH(buildPathEnv)+방어 try/catch 수정으로 죽지 않고 결과 표시. 로직 정상, 결과는 사용자 claude 설치/API 키에 의존.
 - 검증(6회): 전체 201 테스트, analyze clean, strut 가드 테스트, 위클리 표시 테스트 3, macOS 빌드+스모크, 독립 적대 리뷰(critical 0). 픽셀 정합은 스크린샷 불가로 로직으로 검증.
+
+## 후속: 마크다운 표 그리드 에디터
+
+- 요구: 표를 파이프 문법 손작성 대신 실제 표 모양(셀 입력)으로 작성/편집.
+- 제약: 단일 TextField엔 인라인 편집 가능 위젯 불가(커서 desync) → **그리드 에디터 다이얼로그**(`widgets/table_editor_dialog.dart`)로 셀 입력 → 마크다운 직렬화. 사용자는 파이프를 안 씀.
+- `services/markdown_editing.dart`: `MarkdownTableData`(rows/aligns) + `MarkdownTableAlign`, `tableAtOffset`(커서 위치의 표 감지·파싱·범위), `serializeMarkdownTable`(정렬·`\|` 이스케이프). 파서는 unescaped `|`로 split하고 `\|`를 언이스케이프(직렬화와 대칭 → 리터럴 파이프 셀 round-trip 안전). 구식 `buildMarkdownTable`/`_InsertTableDialog`/`_TableSpec`/`_StepperRow` 제거.
+- `editor_panel._insertTable`: 커서가 표 안이면 그 표를 그리드로 열어 편집 후 범위 교체(`_replaceRange`), 아니면 새 표 삽입. 툴바 표 버튼 tooltip "표 삽입 / 편집".
+- 그리드 에디터: 셀 TextField, 행/열 추가·삭제(헤더·최소 1행/열 보호), 열별 정렬 토글(L/C/R), 삽입/저장·취소. 컨트롤러 add/remove 시 dispose.
+- 검증(6+): 표 파싱/직렬화/정렬/감지/round-trip(+리터럴 파이프) 단위테스트, 그리드 위젯테스트(편집→직렬화/행·열 추가/취소), 에디터 삽입 테스트, analyze clean, 전체 209 통과, macOS 빌드+스모크, 독립 적대 리뷰(critical 1=이스케이프 비대칭 발견·수정, 나머지 niche/cosmetic defer).
+- 한계(docstring 명시): 코드펜스 내 파이프 라인 오탐 가능, 표 바로 위 파이프 산문은 감지 가림(둘 다 빈 줄로 회피; GFM도 표 위 빈 줄 권장).

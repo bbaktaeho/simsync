@@ -121,26 +121,71 @@ void main() {
     });
   });
 
-  group('buildMarkdownTable', () {
-    test('builds a 2x2 GFM table skeleton', () {
-      expect(
-        buildMarkdownTable(columns: 2, rows: 2),
-        '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n|  |  |',
-      );
+  group('markdown tables', () {
+    test('a blank table serializes to a GFM skeleton', () {
+      final md =
+          serializeMarkdownTable(MarkdownTableData.blank(columns: 2, bodyRows: 2));
+      expect(md, '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n|  |  |');
     });
 
-    test('omits body rows when rows is 0', () {
-      expect(
-        buildMarkdownTable(columns: 3, rows: 0),
-        '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |',
+    test('serializes per-column alignment', () {
+      final data = MarkdownTableData(
+        [
+          ['Name', 'Score'],
+          ['Alice', '90'],
+        ],
+        [MarkdownTableAlign.left, MarkdownTableAlign.right],
       );
+      expect(serializeMarkdownTable(data),
+          '| Name | Score |\n| --- | ---: |\n| Alice | 90 |');
     });
 
-    test('clamps columns to at least 1', () {
-      expect(
-        buildMarkdownTable(columns: 0, rows: 1),
-        '| Column 1 |\n| --- |\n|  |',
+    test('tableAtOffset parses the table containing the caret', () {
+      const text =
+          'intro\n\n| A | B |\n| :-- | --: |\n| 1 | 2 |\n| 3 | 4 |\n\nafter';
+      final found = tableAtOffset(text, text.indexOf('| 1'));
+      expect(found, isNotNull);
+      expect(found!.table.columns, 2);
+      expect(found.table.rows.length, 3); // header + 2 body rows
+      expect(found.table.rows[0], ['A', 'B']);
+      expect(found.table.rows[2], ['3', '4']);
+      expect(found.table.aligns,
+          [MarkdownTableAlign.left, MarkdownTableAlign.right]);
+      expect(text.substring(found.start, found.end),
+          '| A | B |\n| :-- | --: |\n| 1 | 2 |\n| 3 | 4 |');
+    });
+
+    test('tableAtOffset returns null in prose that merely contains a pipe', () {
+      expect(tableAtOffset('just prose with a | pipe', 5), isNull);
+    });
+
+    test('tableAtOffset pads ragged rows to the header width', () {
+      const text = '| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |';
+      final found = tableAtOffset(text, 0);
+      expect(found, isNotNull);
+      expect(found!.table.rows[1], ['1', '2', '']);
+    });
+
+    test('parse → serialize round-trips a simple table', () {
+      const text = '| H1 | H2 |\n| --- | --- |\n| a | b |';
+      final found = tableAtOffset(text, 0)!;
+      expect(serializeMarkdownTable(found.table), text);
+    });
+
+    test('round-trips a cell that contains a literal pipe', () {
+      final once = serializeMarkdownTable(
+        MarkdownTableData(
+          [
+            ['a|b', 'h2'],
+            ['c', 'd'],
+          ],
+          [MarkdownTableAlign.left, MarkdownTableAlign.left],
+        ),
       );
+      final found = tableAtOffset(once, 0)!;
+      expect(found.table.columns, 2); // not split into 3 by the escaped pipe
+      expect(found.table.rows[0], ['a|b', 'h2']);
+      expect(serializeMarkdownTable(found.table), once); // stable across edits
     });
   });
 

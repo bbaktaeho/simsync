@@ -12,6 +12,7 @@ import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
 import 'markdown_editing_controller.dart';
+import 'table_editor_dialog.dart';
 
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
@@ -210,14 +211,34 @@ class _EditorPanelState extends State<EditorPanel> {
     _onContentChanged();
   }
 
+  /// Opens the table grid editor. If the caret is inside an existing table it
+  /// edits that table in-place; otherwise it inserts a new one. Either way the
+  /// user fills cells in a real grid instead of typing pipe syntax.
   Future<void> _insertTable() async {
     if (widget.isReadOnly || widget.note == null) return;
-    final spec = await showDialog<_TableSpec>(
-      context: context,
-      builder: (_) => const _InsertTableDialog(),
+    final selection = _contentController.selection;
+    final offset = selection.isValid ? selection.baseOffset : -1;
+    final found =
+        offset >= 0 ? tableAtOffset(_contentController.text, offset) : null;
+    final markdown =
+        await TableEditorDialog.show(context, initial: found?.table);
+    if (markdown == null || !mounted) return;
+    if (found != null) {
+      _replaceRange(found.start, found.end, markdown);
+    } else {
+      _insertBlock(markdown);
+    }
+  }
+
+  void _replaceRange(int start, int end, String replacement) {
+    final text = _contentController.text;
+    final s = start.clamp(0, text.length);
+    final e = end.clamp(s, text.length);
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, replacement),
+      selection: TextSelection.collapsed(offset: s + replacement.length),
     );
-    if (spec == null) return;
-    _insertBlock(buildMarkdownTable(columns: spec.columns, rows: spec.rows));
+    _onContentChanged();
   }
 
   @override
@@ -362,7 +383,7 @@ class _EditorPanelState extends State<EditorPanel> {
             const SizedBox(width: AppDimensions.spacingMd),
             _ToolbarIconButton(
               icon: Icons.table_chart_outlined,
-              tooltip: 'Insert table',
+              tooltip: '표 삽입 / 편집',
               onTap: () => unawaited(_insertTable()),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
@@ -745,130 +766,6 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Column/row count returned by [_InsertTableDialog].
-class _TableSpec {
-  const _TableSpec(this.columns, this.rows);
-  final int columns;
-  final int rows;
-}
-
-/// Dialog to choose the dimensions of a markdown table to insert.
-class _InsertTableDialog extends StatefulWidget {
-  const _InsertTableDialog();
-
-  @override
-  State<_InsertTableDialog> createState() => _InsertTableDialogState();
-}
-
-class _InsertTableDialogState extends State<_InsertTableDialog> {
-  int _columns = 2;
-  int _rows = 2;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return AlertDialog(
-      backgroundColor: c.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-        side: BorderSide(color: c.border),
-      ),
-      title: Text(
-        'Insert table',
-        style: Theme.of(context).textTheme.titleSmall!.copyWith(
-          fontWeight: FontWeight.w600,
-          color: c.textPrimary,
-        ),
-      ),
-      content: SizedBox(
-        width: 240,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _StepperRow(
-              label: 'Columns',
-              value: _columns,
-              onChanged: (v) => setState(() => _columns = v),
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
-            _StepperRow(
-              label: 'Rows',
-              value: _rows,
-              onChanged: (v) => setState(() => _rows = v),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
-          ),
-        ),
-        FilledButton(
-          onPressed: () =>
-              Navigator.pop(context, _TableSpec(_columns, _rows)),
-          child: const Text('Insert'),
-        ),
-      ],
-    );
-  }
-}
-
-class _StepperRow extends StatelessWidget {
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  const _StepperRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  static const int _min = 1;
-  static const int _max = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
-          color: c.textSecondary,
-          splashRadius: 14,
-          onPressed: value > _min ? () => onChanged(value - 1) : null,
-        ),
-        SizedBox(
-          width: 24,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(color: c.textPrimary),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-          color: c.textSecondary,
-          splashRadius: 14,
-          onPressed: value < _max ? () => onChanged(value + 1) : null,
-        ),
-      ],
     );
   }
 }

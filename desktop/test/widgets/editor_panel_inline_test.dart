@@ -246,19 +246,21 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('insert table writes a markdown table into the editor', (
+  testWidgets('table button opens the grid editor and inserts markdown', (
     tester,
   ) async {
     await _pump(tester, note: _note(content: ''));
 
-    await tester.tap(find.byTooltip('Insert table'));
+    await tester.tap(find.byTooltip('표 삽입 / 편집'));
     await tester.pumpAndSettle();
-    expect(find.text('Insert table'), findsOneWidget); // dialog title
+    expect(find.text('표 삽입'), findsOneWidget); // grid editor title
 
-    await tester.tap(find.text('Insert'));
+    await tester.tap(find.text('삽입'));
     await tester.pumpAndSettle();
 
+    // The default blank table is serialized into the editor.
     expect(_contentController(tester).text, contains('Column 1'));
+    expect(_contentController(tester).text, contains('| --- |'));
 
     await tester.pump(const Duration(seconds: 2));
   });
