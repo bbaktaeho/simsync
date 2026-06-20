@@ -60,6 +60,19 @@ related:
 - 검증: 단위 테스트(API 10 + 컨트롤러/설정), **실제 plumbing** 확인 — 더미 키 `POST /v1/messages` → 401 `authentication_error`(요청 본문/헤더/엔드포인트 정상, 키만 거부). 유효 키면 200+요약.
 - 참고: Claude.ai 구독은 API 직접 접근이 아님(별도 pay-as-you-go). 구독만 있으면 CLI provider 사용.
 
+## 후속: 노션/옵시디언식 인라인 에디터 (프리뷰·split 제거)
+
+- 요구: 에디터와 뷰를 함께(편집 중 인라인 렌더링), 마크다운 프리뷰/split 모두 제거, 가장 기본 기능부터.
+- 방향(decision): 무거운 에디터 패키지 도입 없이 `TextEditingController.buildTextSpan` 오버라이드로 편집 중 인라인 스타일링(옵시디언 Live Preview 방식). 노트는 markdown source 유지(데이터 모델 일치), 의존성 0 추가.
+  - `widgets/markdown_editing_controller.dart`: `MarkdownEditingController`. 라인 단위 파싱(heading/checkbox/bullet/ordered/quote + fenced code 추적) + 인라인 토큰(bold/italic/strike/inline code). 마커는 숨기지 않고 dim 처리.
+  - **불변식**: span 텍스트 합 == `controller.text` (커서/선택 desync 방지). 마커를 제거하지 않고 스타일만 입혀 char-count 보존.
+- `editor_panel.dart`: `EditorViewMode`(edit/split/preview) 및 `_ViewModeControl`/`_ViewModeSegment`/`_buildLivePreview`/`_buildPreviewSurface` 제거. body는 단일 인라인 에디터. 본문 폰트를 mono→proportional(`mdBody`)로 변경해 렌더 모습과 일치. 툴바에 기본 포맷 버튼(Bold/Italic/Heading/Bullet/Checklist) 추가, 기존 table/renumber 유지.
+  - `_wrapSelection`(선택 래핑 + 이미 래핑 시 언랩), `_toggleLinePrefix`(블록 프리픽스 토글, 기존 블록 타입은 교체(checkbox→bullet 등), 들여쓰기·커서 보존).
+- `document_screen.dart`: `EditorPanel.allowSplit` 제거. `markdown_preview.dart`는 weekly view에서 계속 사용하므로 유지(에디터 프리뷰만 제거).
+- 검증(5회+): 컨트롤러 단위테스트(char 보존 16케이스 + 스타일 7) / `flutter analyze` clean / 인라인 위젯테스트 7 / 독립 적대적 코드리뷰(파싱 로직 50만 입력 퍼징 → char 불일치 0, 한글 IME 기능 정상[composing 밑줄만 누락], 커서수학·성능 양호) / 전체 스위트.
+  - 리뷰 중 발견·수정: line-prefix 토글이 기존 블록 타입을 중첩(`- [ ] ` + Bullet → `[ ] ...`)하던 문제를 "정확히 같은 프리픽스일 때만 toggle-off, 아니면 교체"로 수정. Bold 언랩 추가.
+- 한계: 편집 중 composing(한글 조합) 밑줄 affordance는 없음(기능은 정상). 인라인 nested 스타일(굵게 안의 기울임)은 MVP 범위 외.
+
 ## 결과
-- `flutter analyze` clean, `flutter test` 164 passed.
+- `flutter analyze` clean, `flutter test` 172 passed.
 - 앱 빌드/실행 스모크 확인(런타임 예외 없음). 스크린샷은 환경 권한상 불가.

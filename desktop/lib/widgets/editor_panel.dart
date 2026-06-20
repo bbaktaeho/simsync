@@ -10,13 +10,10 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
-import 'markdown_preview.dart';
+import 'markdown_editing_controller.dart';
 
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
-
-/// Editor display mode: edit only, side-by-side split, or preview only.
-enum EditorViewMode { edit, split, preview }
 
 class EditorPanel extends StatefulWidget {
   final Note? note;
@@ -31,11 +28,6 @@ class EditorPanel extends StatefulWidget {
   final Future<void> Function()? onDecreaseContentScale;
   final Future<void> Function(double value)? onSetContentScale;
 
-  /// Whether the side-by-side split view is permitted. Disabled when the
-  /// surrounding layout is already space-constrained (e.g. the search results
-  /// panel is showing), in which case split falls back to edit.
-  final bool allowSplit;
-
   const EditorPanel({
     super.key,
     this.note,
@@ -49,7 +41,6 @@ class EditorPanel extends StatefulWidget {
     this.onIncreaseContentScale,
     this.onDecreaseContentScale,
     this.onSetContentScale,
-    this.allowSplit = true,
   });
 
   @override
@@ -58,9 +49,8 @@ class EditorPanel extends StatefulWidget {
 
 class _EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
+  late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
-  EditorViewMode _viewMode = EditorViewMode.split;
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
@@ -70,7 +60,7 @@ class _EditorPanelState extends State<EditorPanel> {
   void initState() {
     super.initState();
     _titleController = TextEditingController();
-    _contentController = TextEditingController();
+    _contentController = MarkdownEditingController();
     _tagController = TextEditingController();
     _syncControllers();
   }
@@ -230,7 +220,7 @@ class _EditorPanelState extends State<EditorPanel> {
         Divider(height: 1, color: c.border),
         _buildMetaHeader(c),
         Divider(height: 1, color: c.border),
-        Expanded(child: _buildBody(c)),
+        Expanded(child: _buildEditor(c)),
         _buildStatusBar(c),
       ],
     );
@@ -327,6 +317,36 @@ class _EditorPanelState extends State<EditorPanel> {
           const SizedBox(width: AppDimensions.spacingMd),
           if (!widget.isReadOnly) ...[
             _ToolbarIconButton(
+              icon: Icons.format_bold_rounded,
+              tooltip: 'Bold',
+              onTap: () => _wrapSelection('**'),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.format_italic_rounded,
+              tooltip: 'Italic',
+              onTap: () => _wrapSelection('*'),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.title_rounded,
+              tooltip: 'Heading',
+              onTap: () => _toggleLinePrefix('# '),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.format_list_bulleted_rounded,
+              tooltip: 'Bullet list',
+              onTap: () => _toggleLinePrefix('- '),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.checklist_rounded,
+              tooltip: 'Checklist',
+              onTap: () => _toggleLinePrefix('- [ ] '),
+            ),
+            const SizedBox(width: AppDimensions.spacingMd),
+            _ToolbarIconButton(
               icon: Icons.table_chart_outlined,
               tooltip: 'Insert table',
               onTap: () => unawaited(_insertTable()),
@@ -337,13 +357,7 @@ class _EditorPanelState extends State<EditorPanel> {
               tooltip: 'Renumber list',
               onTap: _renumberList,
             ),
-            const SizedBox(width: AppDimensions.spacingMd),
           ],
-          _ViewModeControl(
-            mode: _effectiveViewMode,
-            allowSplit: widget.allowSplit,
-            onChanged: (mode) => setState(() => _viewMode = mode),
-          ),
         ],
       ),
     );
@@ -413,6 +427,11 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   Widget _buildEditor(AppColorsExtension c) {
+    // The controller renders markdown styling inline as you type (Notion /
+    // Obsidian style) — there is no separate preview pane.
+    _contentController.scale = widget.contentScale;
+    final bodyStyle =
+        AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
@@ -426,10 +445,11 @@ class _EditorPanelState extends State<EditorPanel> {
           maxLines: null,
           expands: true,
           textAlignVertical: TextAlignVertical.top,
-          style: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textPrimary),
+          cursorColor: c.accent,
+          style: bodyStyle,
           decoration: InputDecoration(
             hintText: 'Start writing in markdown...',
-            hintStyle: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textMuted),
+            hintStyle: bodyStyle.copyWith(color: c.textMuted),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
@@ -441,49 +461,107 @@ class _EditorPanelState extends State<EditorPanel> {
     );
   }
 
-  EditorViewMode get _effectiveViewMode {
-    if (_viewMode == EditorViewMode.split && !widget.allowSplit) {
-      return EditorViewMode.edit;
+  static final RegExp _leadingIndent = RegExp(r'^[ \t]*');
+  static final List<RegExp> _blockPrefixes = [
+    RegExp(r'^#{1,6} '), // heading
+    RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (before bullet)
+    RegExp(r'^[-*+] '), // bullet
+    RegExp(r'^\d+[.)] '), // ordered
+    RegExp(r'^> '), // quote
+  ];
+
+  /// Length of any recognized block prefix at the start of [body] (no indent),
+  /// or 0 when the line has no block marker.
+  int _blockPrefixLength(String body) {
+    for (final pattern in _blockPrefixes) {
+      final match = pattern.firstMatch(body);
+      if (match != null) return match.end;
     }
-    return _viewMode;
+    return 0;
   }
 
-  Widget _buildBody(AppColorsExtension c) {
-    switch (_effectiveViewMode) {
-      case EditorViewMode.edit:
-        return _buildEditor(c);
-      case EditorViewMode.preview:
-        return _buildLivePreview(c);
-      case EditorViewMode.split:
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _buildEditor(c)),
-            VerticalDivider(width: 1, thickness: 1, color: c.border),
-            Expanded(child: _buildLivePreview(c)),
-          ],
-        );
+  /// Toggles inline [marker] (e.g. `**` for bold) on the selection. An empty
+  /// selection inserts the markers with the cursor between them; a selection
+  /// already wrapped in [marker] is un-wrapped.
+  void _wrapSelection(String marker) {
+    if (widget.isReadOnly) return;
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final selected = text.substring(start, end);
+
+    // Un-wrap if the selection is already exactly wrapped.
+    if (selected.length >= marker.length * 2 &&
+        selected.startsWith(marker) &&
+        selected.endsWith(marker)) {
+      final inner =
+          selected.substring(marker.length, selected.length - marker.length);
+      _contentController.value = TextEditingValue(
+        text: text.replaceRange(start, end, inner),
+        selection:
+            TextSelection(baseOffset: start, extentOffset: start + inner.length),
+      );
+      _onContentChanged();
+      return;
     }
+
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(start, end, '$marker$selected$marker'),
+      selection: selected.isEmpty
+          ? TextSelection.collapsed(offset: start + marker.length)
+          : TextSelection(
+              baseOffset: start + marker.length,
+              extentOffset: end + marker.length,
+            ),
+    );
+    _onContentChanged();
   }
 
-  Widget _buildLivePreview(AppColorsExtension c) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: _contentController,
-      builder: (context, value, _) => _buildPreviewSurface(c, value.text),
-    );
-  }
+  /// Toggles a line-level [prefix] (`# `, `- `, `- [ ] `) on the caret's line.
+  /// Setting a new block type replaces any existing one (Notion/Obsidian style)
+  /// rather than stacking; pressing the same type again clears it. Leading
+  /// indentation is preserved.
+  void _toggleLinePrefix(String prefix) {
+    if (widget.isReadOnly) return;
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    final caret =
+        (selection.isValid ? selection.baseOffset : text.length).clamp(0, text.length);
+    final lineStart = caret == 0 ? 0 : text.lastIndexOf('\n', caret - 1) + 1;
+    var lineEnd = text.indexOf('\n', caret);
+    if (lineEnd == -1) lineEnd = text.length;
+    final line = text.substring(lineStart, lineEnd);
 
-  Widget _buildPreviewSurface(AppColorsExtension c, String content) {
-    return _buildZoomAwareSurface(
-      Container(
-        color: c.scaffold,
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: MarkdownPreviewWidget(
-          content: content,
-          contentScale: widget.contentScale,
-        ),
-      ),
+    final indent = _leadingIndent.firstMatch(line)!.group(0)!;
+    final body = line.substring(indent.length);
+    final existingLen = _blockPrefixLength(body);
+    final content = body.substring(existingLen);
+    // Toggle off only when the existing block prefix is exactly this one;
+    // otherwise replace it (e.g. checkbox -> bullet, not strip to plain).
+    final toggleOff = body.substring(0, existingLen) == prefix;
+    final newPrefixLen = toggleOff ? 0 : prefix.length;
+    final newBody = toggleOff ? content : '$prefix$content';
+    final newLine = '$indent$newBody';
+
+    final caretInLine = caret - lineStart;
+    final contentStart = indent.length + existingLen;
+    final newContentStart = indent.length + newPrefixLen;
+    final newCaretInLine = caretInLine <= contentStart
+        ? newContentStart
+        : caretInLine - contentStart + newContentStart;
+
+    final newText = text.replaceRange(lineStart, lineEnd, newLine);
+    final newCaret =
+        (lineStart + newCaretInLine).clamp(lineStart, lineStart + newLine.length);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCaret),
     );
+    _onContentChanged();
   }
 
   Widget _buildZoomAwareSurface(Widget child) {
@@ -601,93 +679,6 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
               border: Border.all(color: c.border),
             ),
             child: Icon(widget.icon, size: 16, color: c.textSecondary),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Segmented control switching between Edit / Split / Preview view modes.
-/// The Split segment is omitted when [allowSplit] is false.
-class _ViewModeControl extends StatelessWidget {
-  final EditorViewMode mode;
-  final bool allowSplit;
-  final ValueChanged<EditorViewMode> onChanged;
-
-  const _ViewModeControl({
-    required this.mode,
-    required this.allowSplit,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-        border: Border.all(color: c.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _ViewModeSegment(
-            label: 'Edit',
-            active: mode == EditorViewMode.edit,
-            onTap: () => onChanged(EditorViewMode.edit),
-          ),
-          if (allowSplit)
-            _ViewModeSegment(
-              label: 'Split',
-              active: mode == EditorViewMode.split,
-              onTap: () => onChanged(EditorViewMode.split),
-            ),
-          _ViewModeSegment(
-            label: 'Preview',
-            active: mode == EditorViewMode.preview,
-            onTap: () => onChanged(EditorViewMode.preview),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ViewModeSegment extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _ViewModeSegment({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: active ? c.accentMuted : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-          ),
-          child: Text(
-            label,
-            style: AppTextStyles.microMedium.copyWith(
-              color: active ? c.accent : c.textSecondary,
-            ),
           ),
         ),
       ),
