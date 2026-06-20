@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
@@ -7,17 +9,31 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'markdown_preview.dart';
 
-/// Displays all notes for a given week (Mon–Sun) in a scrollable journal view.
+/// Displays all notes for a given week (Mon–Sun) in a scrollable journal view,
+/// with an optional Claude Code summary at the top.
 class WeeklyViewPanel extends StatelessWidget {
   final DateTime weekStart; // Monday
   final List<Note> weekNotes;
   final ValueChanged<Note>? onNoteTap;
+
+  /// Whether the Claude Code weekly-summary integration is enabled in settings.
+  final bool claudeEnabled;
+
+  /// Generates the weekly summary. Returns the summary text, or throws with a
+  /// user-facing message. Null disables the summary affordance entirely.
+  final Future<String> Function()? onGenerateSummary;
+
+  /// Opens settings so the user can enable / configure Claude Code.
+  final VoidCallback? onOpenSettings;
 
   const WeeklyViewPanel({
     super.key,
     required this.weekStart,
     required this.weekNotes,
     this.onNoteTap,
+    this.claudeEnabled = false,
+    this.onGenerateSummary,
+    this.onOpenSettings,
   });
 
   @override
@@ -29,12 +45,76 @@ class WeeklyViewPanel extends StatelessWidget {
       children: [
         _buildHeader(context, c, weekEnd),
         Divider(height: 1, color: c.border),
-        Expanded(
-          child: weekNotes.isEmpty
-              ? _buildEmptyState(context, c)
-              : _buildNotesFeed(c),
-        ),
+        Expanded(child: _buildBody(context, c)),
       ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AppColorsExtension c) {
+    // Group notes by date.
+    final grouped = <DateTime, List<Note>>{};
+    for (final note in weekNotes) {
+      final dateKey = DateTime(
+        note.noteDate.year,
+        note.noteDate.month,
+        note.noteDate.day,
+      );
+      grouped.putIfAbsent(dateKey, () => []).add(note);
+    }
+    final sortedDates = grouped.keys.toList()..sort();
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingXl,
+        vertical: AppDimensions.spacingLg,
+      ),
+      children: [
+        _WeeklySummarySection(
+          claudeEnabled: claudeEnabled,
+          onGenerate: onGenerateSummary,
+          onOpenSettings: onOpenSettings,
+        ),
+        const SizedBox(height: AppDimensions.spacingXl),
+        if (weekNotes.isEmpty)
+          _buildInlineEmptyState(context, c)
+        else
+          for (var i = 0; i < sortedDates.length; i++)
+            _DateGroup(
+              date: sortedDates[i],
+              notes: grouped[sortedDates[i]]!,
+              isLast: i == sortedDates.length - 1,
+              onNoteTap: onNoteTap,
+            ),
+      ],
+    );
+  }
+
+  Widget _buildInlineEmptyState(BuildContext context, AppColorsExtension c) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimensions.spacingXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.calendar_view_week_rounded,
+            size: 40,
+            color: c.textMuted,
+          ),
+          const SizedBox(height: AppDimensions.spacingMd),
+          Text(
+            'No notes this week',
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: c.textMuted,
+                ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
+          Text(
+            'Select a date and start writing',
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
+          ),
+        ],
+      ),
     );
   }
 
@@ -81,62 +161,245 @@ class WeeklyViewPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context, AppColorsExtension c) {
-    return Center(
+}
+
+/// Claude Code weekly summary card shown at the top of the weekly view.
+///
+/// The summary is requested only on an explicit user action (the Generate
+/// button), satisfying the "explicit consent before AI summary" rule, and the
+/// result lives only in this widget — it is never written back over the
+/// original notes.
+class _WeeklySummarySection extends StatefulWidget {
+  const _WeeklySummarySection({
+    required this.claudeEnabled,
+    required this.onGenerate,
+    required this.onOpenSettings,
+  });
+
+  final bool claudeEnabled;
+  final Future<String> Function()? onGenerate;
+  final VoidCallback? onOpenSettings;
+
+  @override
+  State<_WeeklySummarySection> createState() => _WeeklySummarySectionState();
+}
+
+class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
+  bool _loading = false;
+  String? _summary;
+  String? _error;
+  late final TapGestureRecognizer _settingsTapRecognizer;
+
+  @override
+  void initState() {
+    super.initState();
+    _settingsTapRecognizer = TapGestureRecognizer();
+  }
+
+  @override
+  void dispose() {
+    _settingsTapRecognizer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final generate = widget.onGenerate;
+    if (generate == null || _loading) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final result = await generate();
+      if (!mounted) return;
+      setState(() {
+        _summary = result;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final canGenerate = widget.claudeEnabled && widget.onGenerate != null;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: c.surfaceLight,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
+        border: Border.all(color: c.border),
+      ),
+      padding: const EdgeInsets.all(AppDimensions.spacingLg),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.calendar_view_week_rounded,
-            size: 48,
-            color: c.textMuted,
+          Row(
+            children: [
+              Icon(Icons.auto_awesome_rounded, size: 16, color: c.accent),
+              const SizedBox(width: AppDimensions.spacingSm),
+              Text(
+                'Weekly Summary',
+                style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+              ),
+              const Spacer(),
+              if (canGenerate)
+                _GenerateButton(
+                  loading: _loading,
+                  hasResult: _summary != null,
+                  onTap: _generate,
+                ),
+            ],
           ),
-          const SizedBox(height: AppDimensions.spacingLg),
-          Text(
-            'No notes this week',
-            style: Theme.of(context).textTheme.titleMedium!.copyWith(fontWeight: FontWeight.w400, color: c.textMuted),
-          ),
-          const SizedBox(height: AppDimensions.spacingSm),
-          Text(
-            'Select a date and start writing',
-            style: AppTextStyles.caption.copyWith(color: c.textMuted),
-          ),
+          const SizedBox(height: AppDimensions.spacingMd),
+          _buildContent(c),
         ],
       ),
     );
   }
 
-  Widget _buildNotesFeed(AppColorsExtension c) {
-    // Group notes by date
-    final grouped = <DateTime, List<Note>>{};
-    for (final note in weekNotes) {
-      final dateKey = DateTime(
-        note.noteDate.year,
-        note.noteDate.month,
-        note.noteDate.day,
+  Widget _buildContent(AppColorsExtension c) {
+    if (!widget.claudeEnabled) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline_rounded, size: 14, color: c.textMuted),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
+                children: [
+                  const TextSpan(
+                    text: '설정 > Weekly에서 Claude Code 연동을 켜면 이번 주 노트를 요약할 수 있습니다. ',
+                  ),
+                  if (widget.onOpenSettings != null)
+                    TextSpan(
+                      text: '설정 열기',
+                      style: AppTextStyles.captionBold.copyWith(color: c.accent),
+                      recognizer: _settingsTapRecognizer
+                        ..onTap = widget.onOpenSettings,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       );
-      grouped.putIfAbsent(dateKey, () => []).add(note);
     }
 
-    // Sort dates
-    final sortedDates = grouped.keys.toList()..sort();
+    if (_loading) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+          ),
+          const SizedBox(width: AppDimensions.spacingMd),
+          Text(
+            'Claude Code가 이번 주를 정리하는 중...',
+            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
+          ),
+        ],
+      );
+    }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppDimensions.spacingXl,
-        vertical: AppDimensions.spacingLg,
+    if (_error != null) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 14, color: c.error),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Expanded(
+            child: Text(
+              _error!,
+              style: AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_summary != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MarkdownBody(
+            data: _summary!,
+            selectable: true,
+            styleSheet: MarkdownStyleSheet(
+              p: AppTextStyles.mdBody(1.0).copyWith(color: c.textPrimary),
+              listBullet:
+                  AppTextStyles.mdBody(1.0).copyWith(color: c.textSecondary),
+              h1: AppTextStyles.mdH3(1.0).copyWith(color: c.textPrimary),
+              h2: AppTextStyles.mdH4(1.0).copyWith(color: c.textPrimary),
+              h3: AppTextStyles.mdH5(1.0).copyWith(color: c.textPrimary),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingSm),
+          Text(
+            'Claude Code가 생성 · 원본 노트와 별도로 보관됩니다',
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      'Generate를 눌러 이번 주 노트를 지침대로 요약하세요.',
+      style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
+    );
+  }
+}
+
+class _GenerateButton extends StatelessWidget {
+  const _GenerateButton({
+    required this.loading,
+    required this.hasResult,
+    required this.onTap,
+  });
+
+  final bool loading;
+  final bool hasResult;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return FilledButton.icon(
+      onPressed: loading ? null : onTap,
+      icon: Icon(
+        hasResult ? Icons.refresh_rounded : Icons.auto_awesome_rounded,
+        size: 14,
       ),
-      itemCount: sortedDates.length,
-      itemBuilder: (context, index) {
-        final date = sortedDates[index];
-        final notes = grouped[date]!;
-        return _DateGroup(
-          date: date,
-          notes: notes,
-          isLast: index == sortedDates.length - 1,
-          onNoteTap: onNoteTap,
-        );
-      },
+      label: Text(loading
+          ? 'Generating...'
+          : hasResult
+              ? 'Regenerate'
+              : 'Generate'),
+      style: FilledButton.styleFrom(
+        backgroundColor: c.accent,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingMd,
+          vertical: AppDimensions.spacingSm,
+        ),
+        textStyle: Theme.of(context).textTheme.labelSmall!.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
     );
   }
 }

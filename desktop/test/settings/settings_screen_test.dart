@@ -24,6 +24,12 @@ void main() {
   testWidgets('renders distinct settings navigation and pane headings', (
     WidgetTester tester,
   ) async {
+    // Desktop-sized surface so all navigation items are comfortably visible.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
@@ -182,5 +188,43 @@ void main() {
       find.byKey(const ValueKey('settings-nav-selected-shortcuts')),
       findsNothing,
     );
+  });
+
+  testWidgets('weekly pane shows instruction and toggles Claude integration', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(body: SettingsScreen(settingsController: controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Weekly'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Weekly summary'), findsOneWidget);
+    expect(find.text('위클리 지침'), findsOneWidget);
+    expect(find.text('Claude Code 연동'), findsOneWidget);
+
+    // CLI path field only appears once integration is enabled.
+    expect(find.text('Claude CLI 경로 (선택)'), findsNothing);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.claudeCodeEnabled, isTrue);
+    expect(find.text('Claude CLI 경로 (선택)'), findsOneWidget);
   });
 }

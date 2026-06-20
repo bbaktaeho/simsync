@@ -64,4 +64,52 @@ void main() {
 
     expect(controller.value.localNotePath, '/tmp/custom-notes');
   });
+
+  test('defaults weekly instruction and disabled Claude integration', () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    expect(
+      controller.value.weeklyInstruction,
+      AppSettings.defaultWeeklyInstruction,
+    );
+    expect(controller.value.claudeCodeEnabled, isFalse);
+    expect(controller.value.claudeCliPath, '');
+  });
+
+  test('persists weekly instruction, claude toggle and cli path', () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await controller.setWeeklyInstruction('내 지침');
+    await controller.setClaudeCodeEnabled(true);
+    await controller.setClaudeCliPath('/opt/homebrew/bin/claude');
+
+    final reloaded = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await reloaded.load();
+
+    expect(reloaded.value.weeklyInstruction, '내 지침');
+    expect(reloaded.value.claudeCodeEnabled, isTrue);
+    expect(reloaded.value.claudeCliPath, '/opt/homebrew/bin/claude');
+  });
+
+  test('blank weekly instruction falls back to the default', () async {
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await controller.setWeeklyInstruction('   ');
+
+    expect(
+      controller.value.weeklyInstruction,
+      AppSettings.defaultWeeklyInstruction,
+    );
+  });
 }

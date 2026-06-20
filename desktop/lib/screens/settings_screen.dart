@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/claude_code_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
@@ -14,7 +15,10 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 
-enum _SettingsPane { storage, editor, sync, shortcuts }
+enum _SettingsPane { storage, editor, weekly, sync, shortcuts }
+
+/// Outcome of a Claude Code CLI availability probe shown in the Weekly pane.
+enum _ClaudeProbe { idle, checking, available, unavailable }
 
 String? resolveDirectoryPickerInitialPath(String currentPath) {
   final normalized = currentPath.trim();
@@ -63,16 +67,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final TextEditingController _connectController = TextEditingController();
   final TextEditingController _createController = TextEditingController();
+  late final TextEditingController _weeklyInstructionController;
+  late final TextEditingController _claudeCliPathController;
+  final ClaudeCodeService _claudeService = ClaudeCodeService();
 
   _SettingsPane _selectedPane = _SettingsPane.storage;
   List<RepoEntry> _cachedRepos = [];
   bool _isRepoLoading = false;
   bool _isRepoMutating = false;
   String? _repoError;
+  _ClaudeProbe _claudeProbe = _ClaudeProbe.idle;
 
   @override
   void initState() {
     super.initState();
+    final settings = widget.settingsController.value;
+    _weeklyInstructionController =
+        TextEditingController(text: settings.weeklyInstruction);
+    _claudeCliPathController =
+        TextEditingController(text: settings.claudeCliPath);
     _loadCachedRepos();
   }
 
@@ -80,6 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _connectController.dispose();
     _createController.dispose();
+    _weeklyInstructionController.dispose();
+    _claudeCliPathController.dispose();
     super.dispose();
   }
 
@@ -300,6 +315,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: AppDimensions.spacingSm),
                   _NavigationItem(
+                    selectionKey: 'weekly',
+                    label: 'Weekly',
+                    description: 'Summary instruction & Claude Code',
+                    icon: Icons.auto_awesome_rounded,
+                    isSelected: _selectedPane == _SettingsPane.weekly,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.weekly),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
                     selectionKey: 'sync',
                     label: 'Sync',
                     description: 'Polling and cadence',
@@ -348,11 +373,166 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildStoragePane(c, settings, recentRepos);
       case _SettingsPane.editor:
         return _buildEditorPane(c, settings);
+      case _SettingsPane.weekly:
+        return _buildWeeklyPane(c, settings);
       case _SettingsPane.sync:
         return _buildSyncPane(c, settings);
       case _SettingsPane.shortcuts:
         return _buildShortcutsPane(c);
     }
+  }
+
+  Widget _buildWeeklyPane(AppColorsExtension c, AppSettings settings) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.weekly),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Weekly summary',
+            description:
+                'Click the Weekly button below the calendar to turn this week\'s '
+                'notes into a summary written by Claude Code, following the '
+                'instruction below.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: '위클리 지침',
+            description:
+                'Claude Code에 전달되는 지침입니다. 이번 주 노트가 컨텍스트로 함께 전달됩니다.',
+            action: _ActionButton(
+              label: 'Reset',
+              onTap: () {
+                _weeklyInstructionController.text =
+                    AppSettings.defaultWeeklyInstruction;
+                widget.settingsController.setWeeklyInstruction(
+                  AppSettings.defaultWeeklyInstruction,
+                );
+              },
+            ),
+            child: TextField(
+              controller: _weeklyInstructionController,
+              minLines: 3,
+              maxLines: 8,
+              style: AppTextStyles.caption.copyWith(color: c.textPrimary, height: 1.5),
+              decoration: const InputDecoration(
+                hintText: '이번 주에 한 일을 정리해 주세요...',
+              ),
+              onChanged: (value) =>
+                  widget.settingsController.setWeeklyInstruction(value),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Claude Code 연동',
+            description:
+                'Weekly 버튼을 눌렀을 때 Claude Code CLI(claude --print)로 요약을 생성합니다.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        settings.claudeCodeEnabled ? 'Enabled' : 'Disabled',
+                        style: AppTextStyles.captionBold.copyWith(color: c.textPrimary),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: settings.claudeCodeEnabled,
+                      onChanged: (value) {
+                        widget.settingsController.setClaudeCodeEnabled(value);
+                        setState(() => _claudeProbe = _ClaudeProbe.idle);
+                      },
+                    ),
+                  ],
+                ),
+                if (settings.claudeCodeEnabled) ...[
+                  const SizedBox(height: AppDimensions.spacingLg),
+                  _SectionLabel(label: 'Claude CLI 경로 (선택)'),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  Text(
+                    '비워두면 PATH의 claude를 사용합니다. macOS GUI 앱에서 claude를 찾지 못하면 '
+                    '절대 경로를 입력하세요 (예: /opt/homebrew/bin/claude).',
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                          color: c.textSecondary,
+                          height: 1.5,
+                        ),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _claudeCliPathController,
+                          style: AppTextStyles.codeMono(size: 12)
+                              .copyWith(color: c.textPrimary),
+                          decoration: const InputDecoration(
+                            hintText: 'claude',
+                          ),
+                          onChanged: (value) {
+                            widget.settingsController.setClaudeCliPath(value);
+                            setState(() => _claudeProbe = _ClaudeProbe.idle);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: AppDimensions.spacingSm),
+                      _ActionButton(
+                        label: _claudeProbe == _ClaudeProbe.checking
+                            ? 'Checking...'
+                            : 'Test',
+                        onTap: _claudeProbe == _ClaudeProbe.checking
+                            ? null
+                            : _probeClaude,
+                      ),
+                    ],
+                  ),
+                  if (_claudeProbe == _ClaudeProbe.available ||
+                      _claudeProbe == _ClaudeProbe.unavailable) ...[
+                    const SizedBox(height: AppDimensions.spacingSm),
+                    Row(
+                      children: [
+                        Icon(
+                          _claudeProbe == _ClaudeProbe.available
+                              ? Icons.check_circle_outline_rounded
+                              : Icons.error_outline_rounded,
+                          size: 14,
+                          color: _claudeProbe == _ClaudeProbe.available
+                              ? c.success
+                              : c.error,
+                        ),
+                        const SizedBox(width: AppDimensions.spacingXs),
+                        Text(
+                          _claudeProbe == _ClaudeProbe.available
+                              ? 'Claude Code를 찾았습니다.'
+                              : 'Claude Code를 찾지 못했습니다. 경로를 확인하세요.',
+                          style: AppTextStyles.micro.copyWith(
+                            color: _claudeProbe == _ClaudeProbe.available
+                                ? c.success
+                                : c.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _probeClaude() async {
+    setState(() => _claudeProbe = _ClaudeProbe.checking);
+    final available = await _claudeService.isAvailable(
+      cliPath: _claudeCliPathController.text,
+    );
+    if (!mounted) return;
+    setState(() => _claudeProbe =
+        available ? _ClaudeProbe.available : _ClaudeProbe.unavailable);
   }
 
   Widget _buildStoragePane(

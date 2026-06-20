@@ -13,6 +13,9 @@ class AppSettingsController extends ChangeNotifier {
   static const String syncIntervalSecondsKey = 'sync_interval_seconds';
   static const String syncEnabledKey = 'sync_enabled';
   static const String searchContextLinesKey = 'search_context_lines';
+  static const String weeklyInstructionKey = 'weekly_instruction';
+  static const String claudeCodeEnabledKey = 'claude_code_enabled';
+  static const String claudeCliPathKey = 'claude_cli_path';
   static const String _shortcutPrefix = 'shortcut_';
 
   AppSettingsController({required String defaultLocalNotePath})
@@ -52,6 +55,10 @@ class AppSettingsController extends ChangeNotifier {
         AppSettings.minSearchContextLines,
         AppSettings.maxSearchContextLines,
       ),
+      weeklyInstruction: prefs.getString(weeklyInstructionKey) ??
+          AppSettings.defaultWeeklyInstruction,
+      claudeCodeEnabled: prefs.getBool(claudeCodeEnabledKey) ?? false,
+      claudeCliPath: prefs.getString(claudeCliPathKey) ?? '',
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
@@ -121,6 +128,32 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(syncEnabledKey, value);
+  }
+
+  Future<void> setWeeklyInstruction(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty
+        ? AppSettings.defaultWeeklyInstruction
+        : trimmed;
+    _value = _value.copyWith(weeklyInstruction: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(weeklyInstructionKey, next);
+  }
+
+  Future<void> setClaudeCodeEnabled(bool value) async {
+    _value = _value.copyWith(claudeCodeEnabled: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(claudeCodeEnabledKey, value);
+  }
+
+  Future<void> setClaudeCliPath(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(claudeCliPath: trimmed);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(claudeCliPathKey, trimmed);
   }
 
   Future<void> setShortcutBinding(ShortcutBinding binding) async {
