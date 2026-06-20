@@ -954,8 +954,11 @@ class _NavigationItem extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
-      child: AnimatedContainer(
-        duration: AppDimensions.animFast,
+      // Plain Container (not AnimatedContainer): selection must change atomically
+      // with the icon/text/bar, which switch instantly. Animating only the
+      // background/border made the previously-selected item linger and read as a
+      // flicker when a different item was clicked.
+      child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.spacingMd,
           vertical: AppDimensions.spacingMd,
