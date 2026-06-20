@@ -1165,6 +1165,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
     final openTabs = _openTabNotes;
     final editorWithTabs = Column(
+      // Stretch so the tab bar fills the full width and its tabs align to the
+      // left edge (the Column otherwise centers a min-width tab strip).
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (openTabs.isNotEmpty)
           EditorTabBar(

@@ -436,6 +436,13 @@ void main() {
       expect(tabBar().tabs.length, 1);
       expect(tabBar().tabs.first.id, 'a');
 
+      // The tab bar fills the editor width (left-aligned), not just the width
+      // of a single content-sized tab.
+      expect(
+        tester.getSize(find.byType(EditorTabBar)).width,
+        greaterThan(400),
+      );
+
       // Opening a second note from the list adds a second tab.
       await tester.tap(
         find.descendant(
