@@ -102,16 +102,24 @@ class _EditorPanelState extends State<EditorPanel> {
   /// Flushes the current controller text into [note] via [onNoteChanged] if
   /// the note has unsaved edits. Cancels the pending auto-save timer to avoid
   /// it firing later against a stale note reference.
+  ///
+  /// The captured text is snapshotted synchronously (before the controllers are
+  /// re-synced to the next note), but the parent callback is invoked after the
+  /// frame: [didUpdateWidget] runs mid-build when the note prop changes (e.g.
+  /// switching or closing a tab), so calling the parent's setState synchronously
+  /// here would throw "setState() called during build".
   void _flushPending(Note note) {
     if (widget.isReadOnly || !note.isDirty) return;
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
+    final callback = widget.onNoteChanged;
+    if (callback == null) return;
     final updated = note.copyWith(
       title: _titleController.text,
       content: _contentController.text,
       updatedAt: DateTime.now(),
     );
-    widget.onNoteChanged?.call(updated);
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback(updated));
   }
 
   @override

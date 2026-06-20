@@ -8,6 +8,7 @@ import '../search/note_search_query.dart';
 import '../search/search_result.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
+import '../services/claude_code_service.dart';
 import '../services/note_service.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
@@ -17,6 +18,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
+import '../widgets/editor_tab_bar.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
 import '../widgets/search_results_panel.dart';
@@ -80,6 +82,17 @@ class _DocumentScreenState extends State<DocumentScreen> {
 
   List<Note> _allNotes = [];
   Note? _selectedNote;
+
+  /// Open editor tabs, in display order, identified by note id. The active tab
+  /// is [_selectedNote] (whose id is always present here, unless the list is
+  /// empty in which case the editor shows the create screen).
+  final List<String> _openTabIds = [];
+  static const int _maxTabs = 10;
+
+  /// True once the initial date's note has been auto-opened on first load, so
+  /// later reloads never reopen a tab the user deliberately closed.
+  bool _didInitialTabOpen = false;
+
   DateTime _displayedMonth = DateTime.now();
   DateTime? _selectedDate;
   bool _sidebarOpen = true;
@@ -95,6 +108,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   late final TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
+  final ClaudeCodeService _claudeService = ClaudeCodeService();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
   int _loadGeneration = 0;
@@ -219,20 +233,106 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _allNotes = notes;
       _isLoading = false;
       _selectedDate ??= DateTime(now.year, now.month, now.day);
-      // Preserve selected note if it still exists after refresh.
+
+      // Drop tabs whose notes no longer exist (deleted locally or remotely).
+      final liveIds = notes.map((n) => n.id).toSet();
+      _openTabIds.removeWhere((id) => !liveIds.contains(id));
+
+      // Preserve the active note if it still exists after refresh.
       if (previousSelectedId != null) {
         final match = notes.where((n) => n.id == previousSelectedId);
         _selectedNote = match.isNotEmpty ? match.first : null;
       }
-      if (_selectedNote == null) {
-        final todayNotes = _notesForSelectedDate;
-        if (todayNotes.isNotEmpty) {
-          _selectedNote = todayNotes.first;
+
+      // First load only: open the selected date's first note in a tab so the
+      // app starts with content. Closed tabs are never reopened afterwards.
+      if (!_didInitialTabOpen) {
+        _didInitialTabOpen = true;
+        final dateNotes = _notesForSelectedDate;
+        if (dateNotes.isNotEmpty) {
+          final first = dateNotes.first;
+          if (!_openTabIds.contains(first.id)) _openTabIds.add(first.id);
+          _selectedNote = first;
         }
+      }
+
+      // Keep the active note consistent with the open tab set.
+      if (_selectedNote != null && !_openTabIds.contains(_selectedNote!.id)) {
+        _selectedNote = _activeNoteForOpenTabs();
+      } else if (_selectedNote == null && _openTabIds.isNotEmpty) {
+        _selectedNote = _activeNoteForOpenTabs();
       }
     });
 
     unawaited(_rebuildSearchIndex());
+  }
+
+  /// Resolves an open-tab id to its current [Note], or null if none remain.
+  Note? _noteForId(String id) =>
+      _allNotes.where((n) => n.id == id).firstOrNull;
+
+  /// The notes backing the currently open tabs, in tab order.
+  List<Note> get _openTabNotes {
+    final result = <Note>[];
+    for (final id in _openTabIds) {
+      final note = _noteForId(id);
+      if (note != null) result.add(note);
+    }
+    return result;
+  }
+
+  /// Picks a sensible active note from the open tabs (the last one), or null.
+  Note? _activeNoteForOpenTabs() {
+    for (final id in _openTabIds.reversed) {
+      final note = _noteForId(id);
+      if (note != null) return note;
+    }
+    return null;
+  }
+
+  /// Opens [note] in a tab and makes it active. Activates the existing tab if
+  /// already open; appends a new tab while under [_maxTabs]; otherwise replaces
+  /// the active tab so navigation stays within the cap.
+  void _openNote(Note note) {
+    setState(() {
+      _weeklyViewActive = false;
+      final existing = _openTabIds.indexOf(note.id);
+      if (existing == -1) {
+        if (_openTabIds.length >= _maxTabs) {
+          final activeIndex =
+              _selectedNote == null ? -1 : _openTabIds.indexOf(_selectedNote!.id);
+          _openTabIds[activeIndex == -1 ? _openTabIds.length - 1 : activeIndex] =
+              note.id;
+        } else {
+          _openTabIds.add(note.id);
+        }
+      }
+      _selectedNote = note;
+    });
+  }
+
+  /// Activates an already-open tab without moving the calendar date.
+  void _activateTab(Note note) {
+    if (_selectedNote?.id == note.id) return;
+    setState(() => _selectedNote = note);
+  }
+
+  /// Closes the tab for [id]. When the active tab is closed, the neighbouring
+  /// tab becomes active; closing the last tab returns to the create screen.
+  void _closeTab(String id) {
+    setState(() {
+      final index = _openTabIds.indexOf(id);
+      if (index == -1) return;
+      _openTabIds.removeAt(index);
+      if (_selectedNote?.id == id) {
+        if (_openTabIds.isEmpty) {
+          _selectedNote = null;
+        } else {
+          final neighbour = index.clamp(0, _openTabIds.length - 1);
+          _selectedNote = _noteForId(_openTabIds[neighbour]);
+        }
+      }
+    });
   }
 
   bool get _syncEnabled => widget.settingsController.value.syncEnabled;
@@ -359,22 +459,32 @@ class _DocumentScreenState extends State<DocumentScreen> {
       }
       if (!_weeklyViewActive && !_isSearchActive) {
         _currentPage = 0;
-        final notes = _notesForSelectedDate;
-        _selectedNote = notes.isNotEmpty ? notes.first : null;
       }
     });
+    // Date-oriented one-click flow: open the date's default note in a tab.
+    // Existing tabs stay open (revisiting a date just re-activates its tab),
+    // and an empty date leaves the current tabs untouched — the user creates a
+    // note from the list "+". The cap is enforced inside [_openNote].
+    if (!_weeklyViewActive && !_isSearchActive) {
+      final notes = _notesForSelectedDate;
+      if (notes.isNotEmpty) {
+        _openNote(notes.first);
+      }
+    }
   }
 
   void _onNoteSelected(Note note) {
-    setState(() {
-      _selectedNote = note;
+    // Memos are date-independent quick notes. Selecting one must NOT move the
+    // daily calendar date, so switching back to the daily tab restores the
+    // date the user was viewing before opening the memo.
+    if (!note.isMemo) {
       _selectedDate = DateTime(
         note.noteDate.year,
         note.noteDate.month,
         note.noteDate.day,
       );
-      _weeklyViewActive = false;
-    });
+    }
+    _openNote(note);
   }
 
   void _onNoteChanged(Note updatedNote) {
@@ -387,7 +497,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
       final idx = _allNotes.indexWhere((n) => n.id == updatedNote.id);
       if (idx != -1) {
         _allNotes[idx] = updatedNote;
-        _selectedNote = updatedNote;
+        // Only keep it active if it still IS the active tab. A deferred flush of
+        // a note the user just switched away from (or closed) must not steal
+        // focus back from the now-active tab.
+        if (_selectedNote?.id == updatedNote.id) {
+          _selectedNote = updatedNote;
+        }
       }
     });
     _searchIndex.upsert(updatedNote);
@@ -431,10 +546,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     await _storage.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
-      _selectedNote = newNote;
-      _weeklyViewActive = false;
       _memoTabActive = false;
     });
+    _openNote(newNote);
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
   }
@@ -456,10 +570,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     await widget.localStorage!.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
-      _selectedNote = newNote;
-      _weeklyViewActive = false;
       _memoTabActive = false;
     });
+    _openNote(newNote);
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
   }
@@ -551,9 +664,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
       await _storageFor(note).deleteNote(note);
       setState(() {
         _allNotes.removeWhere((n) => n.id == note.id);
+        final tabIndex = _openTabIds.indexOf(note.id);
+        if (tabIndex != -1) _openTabIds.removeAt(tabIndex);
         if (_selectedNote?.id == note.id) {
-          final remaining = _visibleNotes.where((n) => n.id != note.id);
-          _selectedNote = remaining.isNotEmpty ? remaining.first : null;
+          // Prefer the neighbouring tab; fall back to the create screen.
+          if (_openTabIds.isEmpty) {
+            _selectedNote = null;
+          } else {
+            final neighbour = tabIndex.clamp(0, _openTabIds.length - 1);
+            _selectedNote = _noteForId(_openTabIds[neighbour]);
+          }
         }
       });
       _searchIndex.remove(note.id);
@@ -574,6 +694,36 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  /// Formats the current week's notes as the context fed to Claude Code.
+  String _buildWeekNotesContext() {
+    final notes = _weekNotes;
+    final buffer = StringBuffer();
+    for (final note in notes) {
+      final date = _formatDate(note.noteDate);
+      final title = note.title.trim().isEmpty ? 'Untitled' : note.title.trim();
+      buffer.writeln('## $date · $title');
+      if (note.tags.isNotEmpty) {
+        buffer.writeln('tags: ${note.tags.join(', ')}');
+      }
+      final content = note.content.trim();
+      buffer.writeln(content.isEmpty ? '(내용 없음)' : content);
+      buffer.writeln();
+    }
+    return buffer.toString().trim();
+  }
+
+  /// Runs the Claude Code weekly summary. Invoked from the weekly panel's
+  /// Generate button (explicit user consent). The result is shown in the panel
+  /// only — it is never written back over the original notes.
+  Future<String> _generateWeeklySummary() async {
+    final settings = widget.settingsController.value;
+    return _claudeService.summarizeWeek(
+      instruction: settings.weeklyInstruction,
+      notesContext: _buildWeekNotesContext(),
+      cliPath: settings.claudeCliPath,
+    );
+  }
+
   void _onMemoTabChanged(bool active) {
     if (_memoTabActive == active) return;
     setState(() {
@@ -587,8 +737,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _searchQuery = const NoteSearchQuery();
         _searchResults = [];
       }
-      final notes = _visibleNotes;
-      _selectedNote = notes.isNotEmpty ? notes.first : null;
+      // Switching the daily/memo list filter only changes the sidebar list; the
+      // open editor tabs and the active document stay put.
     });
   }
 
@@ -707,21 +857,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
       if (_currentPage > maxPage) {
         _currentPage = maxPage;
       }
-
-      if (_isSearchActive) {
-        final selected =
-            results.where((r) => r.note.id == _selectedNote?.id);
-        _selectedNote = selected.isNotEmpty
-            ? selected.first.note
-            : results.firstOrNull?.note;
-        if (_selectedNote != null) {
-          _selectedDate = DateTime(
-            _selectedNote!.noteDate.year,
-            _selectedNote!.noteDate.month,
-            _selectedNote!.noteDate.day,
-          );
-        }
-      }
+      // Typing a query never opens or switches editor tabs — the open documents
+      // stay put. The user taps a search result to open it in a tab.
     });
   }
 
@@ -739,14 +876,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _onSearchResultTap(SearchResult result) {
-    setState(() {
-      _selectedNote = result.note;
+    if (!result.note.isMemo) {
       _selectedDate = DateTime(
         result.note.noteDate.year,
         result.note.noteDate.month,
         result.note.noteDate.day,
       );
-    });
+    }
+    _openNote(result.note);
   }
 
   Future<void> _openSearchFilters() async {
@@ -941,15 +1078,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _onWeeklyNoteTap(Note note) {
-    setState(() {
-      _selectedNote = note;
+    if (!note.isMemo) {
       _selectedDate = DateTime(
         note.noteDate.year,
         note.noteDate.month,
         note.noteDate.day,
       );
-      _weeklyViewActive = false;
-    });
+    }
+    _openNote(note);
   }
 
   @override
@@ -1004,6 +1140,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
         weekStart: _weekStart,
         weekNotes: _weekNotes,
         onNoteTap: _onWeeklyNoteTap,
+        claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
+        onGenerateSummary: _generateWeeklySummary,
+        onOpenSettings: () => unawaited(_openSettings()),
       );
     }
 
@@ -1024,7 +1163,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
       allowSplit: !_isSearchActive,
     );
 
-    if (!_isSearchActive) return editor;
+    final openTabs = _openTabNotes;
+    final editorWithTabs = Column(
+      children: [
+        if (openTabs.isNotEmpty)
+          EditorTabBar(
+            tabs: openTabs,
+            activeNoteId: _selectedNote?.id,
+            onSelect: _activateTab,
+            onClose: (note) => _closeTab(note.id),
+          ),
+        Expanded(child: editor),
+      ],
+    );
+
+    if (!_isSearchActive) return editorWithTabs;
 
     return Row(
       children: [
@@ -1038,7 +1191,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           ),
         ),
         VerticalDivider(width: 1, thickness: 1, color: context.colors.border),
-        Expanded(child: editor),
+        Expanded(child: editorWithTabs),
       ],
     );
   }
