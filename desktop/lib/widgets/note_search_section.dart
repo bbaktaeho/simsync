@@ -30,6 +30,10 @@ class NoteSearchSection extends StatelessWidget {
   bool get _hasActiveFilters =>
       tag.trim().isNotEmpty || startDate != null || endDate != null;
 
+  /// Shared control height so the search field and the filter button render at
+  /// exactly the same size and stay vertically aligned.
+  static const double _controlHeight = 32;
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
@@ -43,10 +47,11 @@ class NoteSearchSection extends StatelessWidget {
         );
 
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: SizedBox(
-            height: 30,
+            height: _controlHeight,
             child: TextField(
               controller: effectiveController,
               focusNode: focusNode,
@@ -117,15 +122,15 @@ class NoteSearchSection extends StatelessWidget {
         InkWell(
           onTap: onOpenFilters,
           borderRadius: BorderRadius.circular(
-            AppDimensions.borderRadiusSm,
+            AppDimensions.borderRadius,
           ),
           child: Container(
-            width: 30,
-            height: 30,
+            width: _controlHeight,
+            height: _controlHeight,
             decoration: BoxDecoration(
               color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
               borderRadius: BorderRadius.circular(
-                AppDimensions.borderRadiusSm,
+                AppDimensions.borderRadius,
               ),
               border: Border.all(
                 color: _hasActiveFilters ? c.accent : c.border,
@@ -133,7 +138,7 @@ class NoteSearchSection extends StatelessWidget {
             ),
             child: Icon(
               Icons.tune_rounded,
-              size: 14,
+              size: 16,
               color: _hasActiveFilters ? c.accent : c.textSecondary,
             ),
           ),
