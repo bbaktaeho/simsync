@@ -10,6 +10,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
+import 'editor_block_decorations.dart';
 import 'markdown_editing_controller.dart';
 
 /// Auto-save debounce duration.
@@ -52,6 +53,7 @@ class _EditorPanelState extends State<EditorPanel> {
   late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
   late FocusNode _contentFocusNode;
+  late ScrollController _contentScrollController;
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
@@ -64,6 +66,7 @@ class _EditorPanelState extends State<EditorPanel> {
     _contentController = MarkdownEditingController();
     _tagController = TextEditingController();
     _contentFocusNode = FocusNode()..addListener(_onContentFocusChanged);
+    _contentScrollController = ScrollController();
     _syncControllers();
   }
 
@@ -138,6 +141,7 @@ class _EditorPanelState extends State<EditorPanel> {
     _contentController.dispose();
     _tagController.dispose();
     _contentFocusNode.dispose();
+    _contentScrollController.dispose();
     super.dispose();
   }
 
@@ -442,32 +446,68 @@ class _EditorPanelState extends State<EditorPanel> {
     _contentController.scale = widget.contentScale;
     final bodyStyle =
         AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
+    // The decoration painter lays out an identical TextPainter, so the field and
+    // the painter must share strut + text scaler + width for the boxes to align.
+    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
+    final textScaler = MediaQuery.textScalerOf(context);
+    final regions = parseEditorBlockRegions(_contentController.text);
+
+    final field = TextField(
+      controller: _contentController,
+      focusNode: _contentFocusNode,
+      scrollController: _contentScrollController,
+      onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
+      readOnly: widget.isReadOnly,
+      inputFormatters:
+          widget.isReadOnly ? null : [MarkdownListInputFormatter()],
+      maxLines: null,
+      expands: true,
+      textAlignVertical: TextAlignVertical.top,
+      cursorColor: c.accent,
+      style: bodyStyle,
+      strutStyle: strut,
+      decoration: InputDecoration(
+        hintText: 'Start writing in markdown...',
+        hintStyle: bodyStyle.copyWith(color: c.textMuted),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: false,
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+
+    final Widget body = regions.isEmpty
+        ? field
+        : Stack(
+            fit: StackFit.expand,
+            children: [
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: EditorBlockDecorationPainter(
+                    span: _contentController.buildTextSpan(
+                      context: context,
+                      withComposing: false,
+                    ),
+                    regions: regions,
+                    strutStyle: strut,
+                    textScaler: textScaler,
+                    scrollController: _contentScrollController,
+                    codeBackground: c.surfaceLight,
+                    codeBorder: c.border,
+                    ruleColor: c.border,
+                  ),
+                ),
+              ),
+              field,
+            ],
+          );
+
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
         padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: TextField(
-          controller: _contentController,
-          focusNode: _contentFocusNode,
-          onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
-          readOnly: widget.isReadOnly,
-          inputFormatters:
-              widget.isReadOnly ? null : [MarkdownListInputFormatter()],
-          maxLines: null,
-          expands: true,
-          textAlignVertical: TextAlignVertical.top,
-          cursorColor: c.accent,
-          style: bodyStyle,
-          decoration: InputDecoration(
-            hintText: 'Start writing in markdown...',
-            hintStyle: bodyStyle.copyWith(color: c.textMuted),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            filled: false,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
+        child: body,
       ),
     );
   }

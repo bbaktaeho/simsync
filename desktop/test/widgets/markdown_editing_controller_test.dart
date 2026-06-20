@@ -64,6 +64,9 @@ void main() {
       '```go\nfunc main() {\n\tfmt.Println("hi")\n}\n```',
       '```json\n{"a": [1, 2], "b": true}\n```',
       '```sh\necho "hello" | grep h\n```',
+      'above\n---\nbelow',
+      '***',
+      '```\ncode without language\n```',
       'unterminated **bold and *italic',
       'mixed __underscore bold__ and _underscore italic_',
       'trailing spaces and \nblank lines\n\n\nend',
@@ -189,6 +192,25 @@ void main() {
         .map((p) => p.$2!.color)
         .toSet();
     expect(colors.length, greaterThan(1));
+  });
+
+  testWidgets('--- rule text is hidden when inactive, revealed when active', (
+    tester,
+  ) async {
+    // Inactive: text transparent (the decoration layer paints the line).
+    final inactive = _flatten(await _build(tester, 'a\n---\nb'));
+    expect(inactive.firstWhere((p) => p.$1 == '---').$2!.color,
+        Colors.transparent);
+
+    // Active (caret on the rule line): revealed for editing.
+    final active = _flatten(await _build(
+      tester,
+      'a\n---\nb',
+      focused: true,
+      selection: const TextSelection.collapsed(offset: 3),
+    ));
+    expect(active.firstWhere((p) => p.$1 == '---').$2!.color,
+        isNot(Colors.transparent));
   });
 
   testWidgets('unknown code language falls back without breaking text', (

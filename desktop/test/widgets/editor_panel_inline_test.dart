@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simsync/models/note.dart';
 import 'package:simsync/theme/app_theme.dart';
+import 'package:simsync/widgets/editor_block_decorations.dart';
 import 'package:simsync/widgets/editor_panel.dart';
 import 'package:simsync/widgets/markdown_editing_controller.dart';
 import 'package:simsync/widgets/markdown_preview.dart';
@@ -110,6 +111,20 @@ void main() {
     controller.selection = const TextSelection.collapsed(offset: 10);
     await tester.pump();
     expect(_markerStyle(controller, context, '# ')!.fontSize, lessThan(1));
+  });
+
+  testWidgets('paints block decorations for code blocks and rules', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      note: _note(content: 'intro\n\n```go\nfunc main() {}\n```\n\n---\n\nend'),
+    );
+    // The block-decoration painter is mounted (and painting did not throw).
+    final hasPainter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .any((cp) => cp.painter is EditorBlockDecorationPainter);
+    expect(hasPainter, isTrue);
   });
 
   testWidgets('checklist button toggles a checkbox prefix on the caret line', (

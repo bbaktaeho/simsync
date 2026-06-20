@@ -97,3 +97,13 @@ related:
 - 불변식: span 텍스트 합 == controller.text(활성/비활성/코드 포함). 독립 적대 리뷰가 40+ 적대 입력 × 상태 × 선택 + highlight 소스로 검증, char 손상 0.
 - 검증(5회+): 컨트롤러 단위테스트 8(char 보존 양상태, 마커 collapse/reveal, 다중 컬러 토큰, fallback) / 통합 테스트(focus 배선 + 커서 이동 활성 갱신) / `flutter analyze` clean / 전체 177 통과 / 독립 적대 리뷰(critical 0; live 재렌더 SDK 소스 확인) / macOS 빌드 + Finder형 기동 스모크.
 - 한계: 표/이미지는 위젯 렌더가 아니라(단일 TextField 제약) 인라인 스타일링까지만. 라인 단위(블록 단위 아님) — 대부분의 노트에선 블록≈라인이라 영향 적음.
+
+## 후속: 코드 박스 + `---` 수평선 (데코레이션 레이어)
+
+- 요구: `---`이 수평선으로 렌더, 코드블록(```...```)을 코드 박스 형태로(편집 가능하게).
+- 제약: 단일 TextField에 위젯/박스/HR을 그리면 커서 매핑이 깨짐(WidgetSpan은 toPlainText에 U+FFFC 삽입 → desync). 그래서 **편집은 단일 TextField 유지, 그 뒤에 CustomPaint 데코레이션 레이어**를 동기화해 박스/룰을 그림.
+  - `widgets/editor_block_decorations.dart`: `parseEditorBlockRegions(text)`(코드블록=fence open~close 범위, `---`=그 라인 범위; 미종료 fence는 끝까지) + `EditorBlockDecorationPainter`. 페인터는 **TextField와 동일한 span/strut/width/textScaler로 TextPainter를 layout** → `getBoxesForSelection(BoxHeightStyle.max)`로 블록 Y범위 측정 → 코드=둥근 박스, HR=가로선. scroll offset만큼 translate, 폭 단위 캐시(스크롤 시 재layout 안 함).
+  - 정렬 핵심: `width - 3.0`으로 layout(= RenderEditable의 `_caretMargin` = caretGap 1.0 + cursorWidth 2.0)해야 줄바꿈 폭이 필드와 일치. TextField에 `strutStyle: StrutStyle.fromTextStyle(bodyStyle)` 명시(페인터와 동일).
+  - 컨트롤러: fence/`---` 라인은 비활성 시 `_hideKeepHeight`(투명하되 정상 높이 유지 → 박스/룰 그릴 행 확보), 활성 시 dim. 코드 span의 per-glyph 배경 제거(박스가 대신).
+- 검증: 영역 파서 단위테스트 6, HR 숨김/표시 + char 보존(`---`/`***`/코드) 컨트롤러 테스트, 에디터 위젯테스트(데코레이션 페인터 마운트 + paint 무예외), `flutter analyze` clean, 전체 185 통과, macOS 빌드 + Finder형 기동 스모크. 독립 적대 리뷰: 정렬 dy/dx=0 경험 확인, scroll 동기화·Stack·hit-test·dispose 안전, critical 0. caret-margin 정렬 결함 1건 수정.
+- 알려진 한계: 내용 없는 빈 마커 라인(예: 빈 `# `)이 코드/HR 바로 위에 있고 커서를 거기 둘 때, selection-only 변경엔 페인터 미재생성이라 그 아래 박스가 일시적으로 ~12px 어긋남(다음 편집 시 보정). 매우 드물어 한계로 둠.
