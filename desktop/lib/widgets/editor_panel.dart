@@ -270,6 +270,46 @@ class _EditorPanelState extends State<EditorPanel> {
     );
   }
 
+  // Removes one body row. The header row (index 0) is kept so the table stays a
+  // valid markdown table even after all data rows are gone.
+  void _removeTableRow(TableRegion table, int row) {
+    final data = table.table;
+    if (row <= 0 || row >= data.rows.length) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var i = 0; i < data.rows.length; i++)
+            if (i != row) data.rows[i],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
+  // Removes one column from every row (and its alignment). Keeps at least one
+  // column; use the X control to remove the table entirely.
+  void _removeTableColumn(TableRegion table, int col) {
+    final data = table.table;
+    if (col < 0 || col >= data.columns || data.columns <= 1) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (final row in data.rows)
+            [
+              for (var j = 0; j < data.columns; j++)
+                if (j != col) (j < row.length ? row[j] : ''),
+            ],
+        ],
+        [
+          for (var j = 0; j < data.columns; j++)
+            if (j != col) data.aligns[j],
+        ],
+      ),
+    );
+  }
+
   // Writes one cell's text in place (inline cell editing) and re-serializes the
   // table. Keeps the table active so the caret/controls stay put while typing.
   void _setTableCell(TableRegion table, int row, int col, String value) {
@@ -703,6 +743,9 @@ class _EditorPanelState extends State<EditorPanel> {
                       onRemove: () => _removeTable(m.table),
                       onCellChanged: (row, col, value) =>
                           _setTableCell(m.table, row, col, value),
+                      onRemoveRow: (row) => _removeTableRow(m.table, row),
+                      onRemoveColumn: (col) =>
+                          _removeTableColumn(m.table, col),
                     ),
                   ),
               ],
