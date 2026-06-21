@@ -270,6 +270,30 @@ class _EditorPanelState extends State<EditorPanel> {
     );
   }
 
+  // Writes one cell's text in place (inline cell editing) and re-serializes the
+  // table. Keeps the table active so the caret/controls stay put while typing.
+  void _setTableCell(TableRegion table, int row, int col, String value) {
+    final data = table.table;
+    if (row < 0 || row >= data.rows.length || col < 0 || col >= data.columns) {
+      return;
+    }
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var r = 0; r < data.rows.length; r++)
+            [
+              for (var k = 0; k < data.columns; k++)
+                (r == row && k == col)
+                    ? value
+                    : (k < data.rows[r].length ? data.rows[r][k] : ''),
+            ],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
   // Replaces the table's markdown in place and keeps the caret inside it so it
   // stays active (the +col/+row controls remain visible after the change).
   void _mutateTable(TableRegion table, MarkdownTableData next) {
@@ -677,6 +701,8 @@ class _EditorPanelState extends State<EditorPanel> {
                       onAddRow: () => _addTableRow(m.table),
                       onAddColumn: () => _addTableColumn(m.table),
                       onRemove: () => _removeTable(m.table),
+                      onCellChanged: (row, col, value) =>
+                          _setTableCell(m.table, row, col, value),
                     ),
                   ),
               ],
