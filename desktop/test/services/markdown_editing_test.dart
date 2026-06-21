@@ -187,6 +187,54 @@ void main() {
       expect(found.table.rows[0], ['a|b', 'h2']);
       expect(serializeMarkdownTable(found.table), once); // stable across edits
     });
+
+    test('findTableRegions locates a table with header + body row ranges', () {
+      const text = '| H1 | H2 |\n| --- | --- |\n| a | b |';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(1));
+      final t = regions.first;
+      expect(t.start, 0);
+      expect(t.end, text.length);
+      expect(t.table.rows, [
+        ['H1', 'H2'],
+        ['a', 'b'],
+      ]);
+      // rowRanges cover the header + body lines, NOT the separator.
+      expect(t.rowRanges, hasLength(2));
+      expect(text.substring(t.rowRanges[0].start, t.rowRanges[0].end),
+          '| H1 | H2 |');
+      expect(text.substring(t.rowRanges[1].start, t.rowRanges[1].end),
+          '| a | b |');
+      expect(text.substring(t.separatorRange.start, t.separatorRange.end),
+          '| --- | --- |');
+    });
+
+    test('findTableRegions skips a pipe table inside a fenced code block', () {
+      const text = '```\n| not | a |\n| --- | --- |\n| real | table |\n```';
+      expect(findTableRegions(text), isEmpty);
+    });
+
+    test('findTableRegions ignores a pipe line with no separator', () {
+      expect(findTableRegions('| a | b |\n| c | d |'), isEmpty);
+    });
+
+    test('findTableRegions finds a table offset into the document', () {
+      const text = 'intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nafter';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(1));
+      expect(text.substring(regions.first.start, regions.first.end),
+          '| A | B |\n| --- | --- |\n| 1 | 2 |');
+      expect(regions.first.table.rows[1], ['1', '2']);
+    });
+
+    test('findTableRegions finds two separate tables', () {
+      const text =
+          '| A |\n| --- |\n| 1 |\n\ntext\n\n| B |\n| --- |\n| 2 |';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(2));
+      expect(regions[0].table.rows[0], ['A']);
+      expect(regions[1].table.rows[0], ['B']);
+    });
   });
 
   group('code fence exit on Enter', () {

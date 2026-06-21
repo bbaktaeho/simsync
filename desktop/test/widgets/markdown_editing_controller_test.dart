@@ -79,6 +79,9 @@ void main() {
       '###### deep heading',
       'inline `**not bold inside code**` stays code',
       '한국어 **굵게** 그리고 *기울임*',
+      '| H1 | H2 |\n| --- | --- |\n| a | b |',
+      'intro\n\n| A | B |\n| :-- | --: |\n| 1 | 2 |\n\nafter',
+      'text | with a pipe but no table',
     ];
 
     await tester.pumpWidget(
@@ -108,6 +111,25 @@ void main() {
         ),
       ),
     );
+  });
+
+  testWidgets('table lines are hidden so the decoration layer renders them', (
+    tester,
+  ) async {
+    const text = '| H1 | H2 |\n| --- | --- |\n| a | b |';
+    final flat = _flatten(await _build(tester, text));
+    // The whole line is kept (char-preservation) but painted transparent so the
+    // decoration layer's rendered table shows instead of the raw pipes.
+    final header = flat.firstWhere((p) => p.$1 == '| H1 | H2 |');
+    expect(header.$2!.color, Colors.transparent);
+    expect(header.$2!.fontSize, greaterThan(1)); // keeps its row height
+    final body = flat.firstWhere((p) => p.$1 == '| a | b |');
+    expect(body.$2!.color, Colors.transparent);
+    // The separator's font shrinks toward 0 (the strut still floors its line
+    // height; the painter divides the table band evenly to absorb that slack).
+    final sep = flat.firstWhere((p) => p.$1 == '| --- | --- |');
+    expect(sep.$2!.color, Colors.transparent);
+    expect(sep.$2!.fontSize, lessThan(1));
   });
 
   testWidgets('heading marker collapses when inactive, reveals when active', (

@@ -3,6 +3,7 @@ import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/github.dart';
 import 'package:highlight/highlight.dart' show highlight, Node;
 
+import '../services/markdown_editing.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
 
@@ -97,6 +98,20 @@ class MarkdownEditingController extends TextEditingController {
     final fenceStyle =
         AppTextStyles.codeMonoBlock(scale).copyWith(color: c.textMuted);
 
+    // Table lines are hidden so the decoration layer can paint a rendered table
+    // over them: header/body rows go transparent (keeping their height as the
+    // row's vertical space). The separator's font shrinks toward ~0, but the
+    // shared strut floors its line height, so the painter absorbs the leftover
+    // slack by dividing the table band evenly (see _paintTable).
+    final tableRowStarts = <int>{};
+    final tableSepStarts = <int>{};
+    for (final t in findTableRegions(text)) {
+      for (final r in t.rowRanges) {
+        tableRowStarts.add(r.start);
+      }
+      tableSepStarts.add(t.separatorRange.start);
+    }
+
     final lines = text.split('\n');
     final spans = <InlineSpan>[];
     var inFence = false;
@@ -123,6 +138,12 @@ class MarkdownEditingController extends TextEditingController {
         }
       } else if (inFence) {
         spans.addAll(_codeSpans(line, fenceLang, theme, codeBase));
+      } else if (tableSepStarts.contains(lineStart)) {
+        spans.add(TextSpan(
+            text: line,
+            style: base.copyWith(fontSize: 0.1, color: Colors.transparent)));
+      } else if (tableRowStarts.contains(lineStart)) {
+        spans.add(TextSpan(text: line, style: base.copyWith(color: Colors.transparent)));
       } else {
         spans.addAll(_styleLine(line, base, c, active));
       }

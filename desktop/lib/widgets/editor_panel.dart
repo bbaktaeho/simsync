@@ -220,14 +220,35 @@ class _EditorPanelState extends State<EditorPanel> {
     final offset = selection.isValid ? selection.baseOffset : -1;
     final found =
         offset >= 0 ? tableAtOffset(_contentController.text, offset) : null;
-    final markdown =
-        await TableEditorDialog.show(context, initial: found?.table);
-    if (markdown == null || !mounted) return;
     if (found != null) {
-      _replaceRange(found.start, found.end, markdown);
-    } else {
-      _insertBlock(markdown);
+      await _editTableAt(found);
+      return;
     }
+    final markdown = await TableEditorDialog.show(context, initial: null);
+    if (markdown == null || !mounted) return;
+    _insertBlock(markdown);
+  }
+
+  Future<void> _editTableAt(
+      ({MarkdownTableData table, int start, int end}) found) async {
+    if (widget.isReadOnly || widget.note == null) return;
+    final markdown =
+        await TableEditorDialog.show(context, initial: found.table);
+    if (markdown == null || !mounted) return;
+    _replaceRange(found.start, found.end, markdown);
+  }
+
+  // A rendered table hides its raw markdown, so a tap inside it would land the
+  // caret on invisible pipe syntax (and typing would corrupt the table). When a
+  // tap settles inside a table, open the grid editor instead.
+  void _handleContentTap() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final sel = _contentController.selection;
+      if (!sel.isValid || !sel.isCollapsed) return;
+      final found = tableAtOffset(_contentController.text, sel.baseOffset);
+      if (found != null) unawaited(_editTableAt(found));
+    });
   }
 
   void _replaceRange(int start, int end, String replacement) {
@@ -478,6 +499,7 @@ class _EditorPanelState extends State<EditorPanel> {
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
+      onTap: widget.isReadOnly ? null : _handleContentTap,
       readOnly: widget.isReadOnly,
       inputFormatters:
           widget.isReadOnly ? null : [MarkdownListInputFormatter()],
@@ -509,9 +531,21 @@ class _EditorPanelState extends State<EditorPanel> {
             child: ListenableBuilder(
               listenable: _contentController,
               builder: (context, _) {
-                final regions =
+                final allRegions =
                     parseEditorBlockRegions(_contentController.text);
-                if (regions.isEmpty) return const SizedBox.expand();
+                final tables = findTableRegions(_contentController.text);
+                // A pipe-less `---` table separator also matches the `---` rule;
+                // drop that rule so it is not drawn as a line inside the table.
+                final sepStarts = {for (final t in tables) t.separatorRange.start};
+                final regions = sepStarts.isEmpty
+                    ? allRegions
+                    : allRegions
+                        .where((r) => !(r.kind == EditorBlockKind.rule &&
+                            sepStarts.contains(r.start)))
+                        .toList();
+                if (regions.isEmpty && tables.isEmpty) {
+                  return const SizedBox.expand();
+                }
                 return CustomPaint(
                   painter: EditorBlockDecorationPainter(
                     span: _contentController.buildTextSpan(
@@ -519,6 +553,7 @@ class _EditorPanelState extends State<EditorPanel> {
                       withComposing: false,
                     ),
                     regions: regions,
+                    tables: tables,
                     strutStyle: strut,
                     textScaler: textScaler,
                     scrollController: _contentScrollController,
@@ -526,6 +561,12 @@ class _EditorPanelState extends State<EditorPanel> {
                     codeBorder: c.border,
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
+                    tableFill: c.surface,
+                    tableHeaderFill: c.accentSubtle,
+                    tableBorder: c.border,
+                    tableTextStyle: bodyStyle,
+                    tableHeaderStyle:
+                        bodyStyle.copyWith(fontWeight: FontWeight.w600),
                   ),
                 );
               },

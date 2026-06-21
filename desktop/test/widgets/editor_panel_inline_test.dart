@@ -264,4 +264,72 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('a body table is rendered by the decoration painter', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    // The decoration layer is active (not the empty SizedBox) and the editor
+    // wired the parsed table through to the painter.
+    final painters = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .where((w) => w.painter is EditorBlockDecorationPainter)
+        .map((w) => w.painter as EditorBlockDecorationPainter);
+    expect(painters, isNotEmpty);
+    expect(painters.first.tables, hasLength(1));
+  });
+
+  testWidgets('a pipe-less --- table separator is not drawn as a rule', (
+    tester,
+  ) async {
+    await _pump(tester, note: _note(content: '| H |\n---\n| a |'));
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((w) => w.painter)
+        .whereType<EditorBlockDecorationPainter>()
+        .first;
+    expect(painter.tables, hasLength(1));
+    expect(
+        painter.regions.where((r) => r.kind == EditorBlockKind.rule), isEmpty);
+  });
+
+  testWidgets('table button edits the table at the caret instead of inserting',
+      (tester) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    // Put the caret inside the table, then hit the table button.
+    _contentController(tester).selection =
+        const TextSelection.collapsed(offset: 3);
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('표 삽입 / 편집'));
+    await tester.pumpAndSettle();
+
+    // The grid opens in EDIT mode with the existing cells loaded.
+    expect(find.text('표 편집'), findsOneWidget);
+    expect(find.text('H1'), findsWidgets);
+
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('tapping directly on a rendered table opens the editor', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    // Tap on the first (header) row of the rendered table. The caret lands in
+    // the hidden markdown, which _handleContentTap turns into an edit.
+    final topLeft = tester.getTopLeft(_contentFinder);
+    await tester.tapAt(topLeft + const Offset(24, 10));
+    await tester.pumpAndSettle();
+
+    expect(find.text('표 편집'), findsOneWidget);
+    await tester.tap(find.text('취소'));
+    await tester.pumpAndSettle();
+  });
 }

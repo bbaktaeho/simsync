@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../services/markdown_editing.dart';
+
 /// Kind of block decoration painted behind the (still-editable) TextField.
 enum EditorBlockKind { code, rule, quote }
 
@@ -117,6 +119,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
   EditorBlockDecorationPainter({
     required this.span,
     required this.regions,
+    required this.tables,
     required this.strutStyle,
     required this.textScaler,
     required this.scrollController,
@@ -124,10 +127,16 @@ class EditorBlockDecorationPainter extends CustomPainter {
     required this.codeBorder,
     required this.ruleColor,
     required this.quoteBar,
+    required this.tableFill,
+    required this.tableHeaderFill,
+    required this.tableBorder,
+    required this.tableTextStyle,
+    required this.tableHeaderStyle,
   }) : super(repaint: scrollController);
 
   final InlineSpan span;
   final List<EditorBlockRegion> regions;
+  final List<TableRegion> tables;
   final StrutStyle strutStyle;
   final TextScaler textScaler;
   final ScrollController scrollController;
@@ -135,6 +144,11 @@ class EditorBlockDecorationPainter extends CustomPainter {
   final Color codeBorder;
   final Color ruleColor;
   final Color quoteBar;
+  final Color tableFill;
+  final Color tableHeaderFill;
+  final Color tableBorder;
+  final TextStyle tableTextStyle;
+  final TextStyle tableHeaderStyle;
 
   // RenderEditable lays text out at `width - _caretMargin` (_kCaretGap 1.0 +
   // cursorWidth 2.0). Matching it keeps line wrapping — and every decoration
@@ -143,6 +157,23 @@ class EditorBlockDecorationPainter extends CustomPainter {
 
   double? _laidOutWidth;
   List<({EditorBlockRegion region, double top, double bottom})>? _measured;
+  List<({TableRegion table, List<({double top, double bottom})> rows})>?
+      _measuredTables;
+
+  ({double top, double bottom})? _boxSpan(TextPainter painter, int start, int end) {
+    final boxes = painter.getBoxesForSelection(
+      TextSelection(baseOffset: start, extentOffset: end),
+      boxHeightStyle: ui.BoxHeightStyle.max,
+    );
+    if (boxes.isEmpty) return null;
+    var top = double.infinity;
+    var bottom = double.negativeInfinity;
+    for (final box in boxes) {
+      top = math.min(top, box.top);
+      bottom = math.max(bottom, box.bottom);
+    }
+    return (top: top, bottom: bottom);
+  }
 
   void _measure(double width) {
     final painter = TextPainter(
@@ -154,27 +185,30 @@ class EditorBlockDecorationPainter extends CustomPainter {
 
     final out = <({EditorBlockRegion region, double top, double bottom})>[];
     for (final region in regions) {
-      final boxes = painter.getBoxesForSelection(
-        TextSelection(baseOffset: region.start, extentOffset: region.end),
-        boxHeightStyle: ui.BoxHeightStyle.max,
-      );
-      if (boxes.isEmpty) continue;
-      var top = double.infinity;
-      var bottom = double.negativeInfinity;
-      for (final box in boxes) {
-        top = math.min(top, box.top);
-        bottom = math.max(bottom, box.bottom);
-      }
-      out.add((region: region, top: top, bottom: bottom));
+      final span = _boxSpan(painter, region.start, region.end);
+      if (span == null) continue;
+      out.add((region: region, top: span.top, bottom: span.bottom));
     }
+
+    final outTables =
+        <({TableRegion table, List<({double top, double bottom})> rows})>[];
+    for (final t in tables) {
+      final rows = <({double top, double bottom})>[];
+      for (final r in t.rowRanges) {
+        rows.add(_boxSpan(painter, r.start, r.end) ?? (top: 0, bottom: 0));
+      }
+      outTables.add((table: t, rows: rows));
+    }
+
     painter.dispose();
     _measured = out;
+    _measuredTables = outTables;
     _laidOutWidth = width;
   }
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (regions.isEmpty || size.width <= 0) return;
+    if ((regions.isEmpty && tables.isEmpty) || size.width <= 0) return;
     if (_measured == null || _laidOutWidth != size.width) {
       _measure(size.width);
     }
@@ -212,16 +246,121 @@ class EditorBlockDecorationPainter extends CustomPainter {
           );
       }
     }
+
+    for (final m in _measuredTables ?? const []) {
+      _paintTable(canvas, size, m.table.table, m.rows, scrollY);
+    }
+  }
+
+  // Draws a rendered table over its (hidden) markdown: equal-width columns,
+  // tinted header row, grid lines, and clipped/aligned cell text. The row
+  // y-positions come from the hidden markdown lines, so it stays aligned.
+  void _paintTable(
+    Canvas canvas,
+    Size size,
+    MarkdownTableData data,
+    List<({double top, double bottom})> rows,
+    double scrollY,
+  ) {
+    if (rows.isEmpty) return;
+    final top = rows.first.top - scrollY;
+    final bottom = rows.last.bottom - scrollY;
+    if (bottom < 0 || top > size.height) return;
+    final cols = data.columns;
+    if (cols == 0) return;
+
+    // Split the reserved band (header top → last body bottom) evenly across the
+    // logical rows. The hidden separator line keeps a full strut-height even at
+    // fontSize ~0, so we cannot rely on its zero height; dividing evenly absorbs
+    // that slack so there is no blank band between the header and first row. We
+    // draw the cell text ourselves, so it need not sit on the hidden line.
+    final n = rows.length;
+    final colW = size.width / cols;
+    final rowH = (bottom - top) / n;
+    double rowTop(int r) => top + r * rowH;
+
+    final outer = Rect.fromLTRB(0, top, size.width, bottom);
+    final rrect = RRect.fromRectAndRadius(outer, const Radius.circular(6));
+
+    canvas.save();
+    canvas.clipRRect(rrect);
+    canvas.drawRect(outer, Paint()..color = tableFill);
+    canvas.drawRect(
+      Rect.fromLTRB(0, top, size.width, rowTop(1)),
+      Paint()..color = tableHeaderFill,
+    );
+    canvas.restore();
+
+    final grid = Paint()
+      ..color = tableBorder
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+    for (var k = 1; k < cols; k++) {
+      final x = colW * k;
+      canvas.drawLine(Offset(x, top), Offset(x, bottom), grid);
+    }
+    for (var r = 1; r < n; r++) {
+      final y = rowTop(r);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+    }
+    canvas.drawRRect(rrect, grid);
+
+    for (var r = 0; r < n && r < data.rows.length; r++) {
+      final rt = rowTop(r);
+      final rb = rowTop(r + 1);
+      for (var k = 0; k < cols; k++) {
+        final cell = k < data.rows[r].length ? data.rows[r][k] : '';
+        if (cell.isEmpty) continue;
+        _drawCell(
+          canvas,
+          cell,
+          Rect.fromLTRB(colW * k, rt, colW * (k + 1), rb),
+          r == 0 ? tableHeaderStyle : tableTextStyle,
+          data.aligns[k],
+        );
+      }
+    }
+  }
+
+  void _drawCell(
+    Canvas canvas,
+    String text,
+    Rect rect,
+    TextStyle style,
+    MarkdownTableAlign align,
+  ) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textAlign: switch (align) {
+        MarkdownTableAlign.left => TextAlign.left,
+        MarkdownTableAlign.center => TextAlign.center,
+        MarkdownTableAlign.right => TextAlign.right,
+      },
+      textScaler: textScaler,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: math.max(0, rect.width - 16));
+    final dy = rect.top + (rect.height - tp.height) / 2;
+    canvas.save();
+    canvas.clipRect(rect);
+    tp.paint(canvas, Offset(rect.left + 8, dy));
+    canvas.restore();
+    tp.dispose();
   }
 
   @override
   bool shouldRepaint(EditorBlockDecorationPainter old) {
     return old.span != span ||
         old.regions.length != regions.length ||
+        old.tables.length != tables.length ||
         old.codeBackground != codeBackground ||
         old.codeBorder != codeBorder ||
         old.ruleColor != ruleColor ||
         old.quoteBar != quoteBar ||
+        old.tableFill != tableFill ||
+        old.tableHeaderFill != tableHeaderFill ||
+        old.tableBorder != tableBorder ||
         old.strutStyle != strutStyle;
   }
 }

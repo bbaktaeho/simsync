@@ -452,3 +452,97 @@ String serializeMarkdownTable(MarkdownTableData table) {
     for (final r in table.rows.skip(1)) row(r),
   ].join('\n');
 }
+
+/// A GFM table found in a document, with the data needed to render it inline:
+/// the parsed [table] (header + body, no separator), the character range of
+/// each DISPLAY row line ([rowRanges], header first), and the separator line's
+/// range (drawn as zero-height so it disappears).
+class TableRegion {
+  const TableRegion({
+    required this.start,
+    required this.end,
+    required this.table,
+    required this.rowRanges,
+    required this.separatorRange,
+  });
+
+  final int start;
+  final int end;
+  final MarkdownTableData table;
+  final List<({int start, int end})> rowRanges;
+  final ({int start, int end}) separatorRange;
+}
+
+final RegExp _tableFence = RegExp(r'^\s*(?:```|~~~)');
+
+/// Finds every GFM table in [text] (a `|` header line immediately followed by a
+/// separator line, then `|` body lines), skipping fenced code blocks. Used to
+/// render tables inline and to hide their raw markdown.
+List<TableRegion> findTableRegions(String text) {
+  if (text.isEmpty) return const [];
+  final lines = text.split('\n');
+  final starts = <int>[];
+  var acc = 0;
+  for (final l in lines) {
+    starts.add(acc);
+    acc += l.length + 1;
+  }
+  ({int start, int end}) rangeOf(int i) =>
+      (start: starts[i], end: starts[i] + lines[i].length);
+
+  final result = <TableRegion>[];
+  var inFence = false;
+  var i = 0;
+  while (i < lines.length) {
+    if (_tableFence.hasMatch(lines[i])) {
+      inFence = !inFence;
+      i++;
+      continue;
+    }
+    if (inFence) {
+      i++;
+      continue;
+    }
+    final isTable = lines[i].contains('|') &&
+        i + 1 < lines.length &&
+        _isTableSeparator(lines[i + 1]);
+    if (!isTable) {
+      i++;
+      continue;
+    }
+
+    final headerIdx = i;
+    final sepIdx = i + 1;
+    var bottom = sepIdx;
+    while (bottom + 1 < lines.length &&
+        lines[bottom + 1].contains('|') &&
+        !_tableFence.hasMatch(lines[bottom + 1])) {
+      bottom++;
+    }
+
+    final header = _splitTableRow(lines[headerIdx]);
+    final columns = header.length;
+    if (columns > 0) {
+      final sepCells = _splitTableRow(lines[sepIdx]);
+      final aligns = List.generate(
+        columns,
+        (k) => k < sepCells.length ? _alignOf(sepCells[k]) : MarkdownTableAlign.left,
+      );
+      final rows = <List<String>>[_normalizeRow(header, columns)];
+      final rowRanges = <({int start, int end})>[rangeOf(headerIdx)];
+      for (var r = sepIdx + 1; r <= bottom; r++) {
+        rows.add(_normalizeRow(_splitTableRow(lines[r]), columns));
+        rowRanges.add(rangeOf(r));
+      }
+      result.add(TableRegion(
+        start: starts[headerIdx],
+        end: starts[bottom] + lines[bottom].length,
+        table: MarkdownTableData(rows, aligns),
+        rowRanges: rowRanges,
+        separatorRange: rangeOf(sepIdx),
+      ));
+    }
+    i = bottom + 1;
+  }
+  return result;
+}

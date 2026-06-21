@@ -172,3 +172,13 @@ related:
 - **critical 수정(독립 리뷰가 pluto 소스로 실증)**: `setEditing(false)`는 편집 TextField 값을 cell.value에 커밋하지 않음 → 셀 타이핑 후 Enter/Tab 없이 Save/툴바 클릭하면 입력 유실. 수정: `_syncFromGrid`에서 읽기 전 `sm.textEditingController.text`를 `changeCellValue`로 현재 셀에 직접 커밋. 회귀 테스트(타이핑→Enter 없이 Save→캡처) 추가.
 - 검증: 표 다이얼로그 위젯테스트 6(렌더/초기 직렬화/행·열 추가/blank/취소/편집 캡처), analyze clean, 전체 211 통과, macOS 빌드(pluto 포함)+스모크, 독립 적대 리뷰(critical 1 발견·수정, 나머지 sound).
 - 트레이드오프: pluto는 스프레드시트 키보드 내비를 주지만 마크다운의 편집형 헤더·열별 정렬은 "헤더=틴트된 첫 행 + 정렬 툴바"로 우회. 이전 커스텀 그리드 다이얼로그를 대체.
+
+## 후속: 표를 에디터 본문에 인라인 렌더링 (raw 마크다운 제거)
+
+- 문제: pluto 다이얼로그는 별도 팝업이고, 에디터 본문에선 표가 여전히 raw `| ... |` 마크다운으로 보임. 사용자는 본문에서 표가 렌더되어 보이길 원함.
+- 제약: 단일 TextField엔 위젯 인라인 임베드 불가(커서 매핑). → 코드박스와 같은 **데코레이션 레이어** 방식 확장.
+- 구현: `findTableRegions(text)`(markdown_editing.dart) 모든 GFM 표 탐지(펜스 제외, 행별 char 범위) → 컨트롤러가 표 라인 숨김(헤더/본문 투명 keep-height, 구분선 fontSize~0) → painter `_paintTable`이 그리드+셀 텍스트(균등 열, 헤더 틴트, 정렬, ellipsis) 그림. 직렬화/파싱은 기존 재사용.
+- 표 클릭 → 편집: `onTap: _handleContentTap`(post-frame로 settle된 selection 읽고 `tableAtOffset`이면 다이얼로그). 숨은 마크다운에 커서가 박혀 타이핑으로 표가 깨지는 문제 방지. `_insertTable`은 캐럿 위치 표 편집/신규 삽입 분기.
+- **독립 적대 리뷰가 critical 1 실증**(시각 결함, 내가 못 봄): 공유 strut가 라인 높이를 floor → 구분선이 fontSize 0.1로도 collapse 안 됨 → 모든 표에 헤더-본문 사이 ~14px 빈 띠(리뷰어가 box 측정으로 입증: header[0.2,24], sep[24,38]=14px, body[38,62]). 수정: painter가 예약 밴드를 논리 행 수로 균등 분할해 slack 흡수(셀 텍스트는 painter가 직접 그려 숨은 라인 Y 비종속) → 빈 띠 수학적 제거 + 행 높이 균일. minor: bare `---` 구분선이 rule로 중복 렌더 → editor_panel에서 표 구분선과 겹치는 rule 영역 제외.
+- 검증: findTableRegions 5, 컨트롤러 표 숨김+char보존, painter 표 그리기 no-crash, editor 인라인(painter 배선/캐럿 편집/직접 탭 편집/bare-`---` 필터), analyze clean, 전체 222 통과, macOS 빌드+스모크, 독립 리뷰(critical 1 수정·나머지 sound, char-보존 불변식 확인). pluto 6 테스트 유지(라이브러리 정상).
+- 시각 픽셀 정확도는 스크린샷 없이 확정 불가 → 사용자 눈 확인 필요(밴드 제거·정렬은 결정적으로 보장).
