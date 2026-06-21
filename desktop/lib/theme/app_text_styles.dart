@@ -83,10 +83,6 @@ abstract final class AppTextStyles {
     fontFamily: _family, fontSize: 13 * scale, fontWeight: FontWeight.w400,
     height: 1.6,
   );
-  static TextStyle scaledH1(double scale) => TextStyle(
-    fontFamily: _family, fontSize: 24 * scale, fontWeight: FontWeight.w700,
-    height: 1.25,
-  );
 
   // Markdown preview scaled styles (h1..h6, body, table, code)
   static TextStyle mdH1(double scale) => TextStyle(
@@ -137,9 +133,7 @@ abstract final class AppTextStyles {
         fontWeight: weight,
       );
 
-  // Code-mono scaled (for editor + markdown preview content/code blocks).
-  static TextStyle codeMonoBody(double scale) =>
-      GoogleFonts.jetBrainsMono(fontSize: 14 * scale, height: 1.7);
+  // Code-mono scaled (markdown content/code blocks).
   static TextStyle codeMonoBlock(double scale) =>
       GoogleFonts.jetBrainsMono(fontSize: 13 * scale);
 }

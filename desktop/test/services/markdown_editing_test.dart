@@ -121,26 +121,150 @@ void main() {
     });
   });
 
-  group('buildMarkdownTable', () {
-    test('builds a 2x2 GFM table skeleton', () {
-      expect(
-        buildMarkdownTable(columns: 2, rows: 2),
-        '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n|  |  |',
-      );
+  group('markdown tables', () {
+    test('a blank table serializes to a GFM skeleton', () {
+      final md =
+          serializeMarkdownTable(MarkdownTableData.blank(columns: 2, bodyRows: 2));
+      expect(md, '| Column 1 | Column 2 |\n| --- | --- |\n|  |  |\n|  |  |');
     });
 
-    test('omits body rows when rows is 0', () {
-      expect(
-        buildMarkdownTable(columns: 3, rows: 0),
-        '| Column 1 | Column 2 | Column 3 |\n| --- | --- | --- |',
+    test('serializes per-column alignment', () {
+      final data = MarkdownTableData(
+        [
+          ['Name', 'Score'],
+          ['Alice', '90'],
+        ],
+        [MarkdownTableAlign.left, MarkdownTableAlign.right],
       );
+      expect(serializeMarkdownTable(data),
+          '| Name | Score |\n| --- | ---: |\n| Alice | 90 |');
     });
 
-    test('clamps columns to at least 1', () {
-      expect(
-        buildMarkdownTable(columns: 0, rows: 1),
-        '| Column 1 |\n| --- |\n|  |',
+    test('tableAtOffset parses the table containing the caret', () {
+      const text =
+          'intro\n\n| A | B |\n| :-- | --: |\n| 1 | 2 |\n| 3 | 4 |\n\nafter';
+      final found = tableAtOffset(text, text.indexOf('| 1'));
+      expect(found, isNotNull);
+      expect(found!.table.columns, 2);
+      expect(found.table.rows.length, 3); // header + 2 body rows
+      expect(found.table.rows[0], ['A', 'B']);
+      expect(found.table.rows[2], ['3', '4']);
+      expect(found.table.aligns,
+          [MarkdownTableAlign.left, MarkdownTableAlign.right]);
+      expect(text.substring(found.start, found.end),
+          '| A | B |\n| :-- | --: |\n| 1 | 2 |\n| 3 | 4 |');
+    });
+
+    test('tableAtOffset returns null in prose that merely contains a pipe', () {
+      expect(tableAtOffset('just prose with a | pipe', 5), isNull);
+    });
+
+    test('tableAtOffset pads ragged rows to the header width', () {
+      const text = '| A | B | C |\n| --- | --- | --- |\n| 1 | 2 |';
+      final found = tableAtOffset(text, 0);
+      expect(found, isNotNull);
+      expect(found!.table.rows[1], ['1', '2', '']);
+    });
+
+    test('parse → serialize round-trips a simple table', () {
+      const text = '| H1 | H2 |\n| --- | --- |\n| a | b |';
+      final found = tableAtOffset(text, 0)!;
+      expect(serializeMarkdownTable(found.table), text);
+    });
+
+    test('round-trips a cell that contains a literal pipe', () {
+      final once = serializeMarkdownTable(
+        MarkdownTableData(
+          [
+            ['a|b', 'h2'],
+            ['c', 'd'],
+          ],
+          [MarkdownTableAlign.left, MarkdownTableAlign.left],
+        ),
       );
+      final found = tableAtOffset(once, 0)!;
+      expect(found.table.columns, 2); // not split into 3 by the escaped pipe
+      expect(found.table.rows[0], ['a|b', 'h2']);
+      expect(serializeMarkdownTable(found.table), once); // stable across edits
+    });
+
+    test('findTableRegions locates a table with header + body row ranges', () {
+      const text = '| H1 | H2 |\n| --- | --- |\n| a | b |';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(1));
+      final t = regions.first;
+      expect(t.start, 0);
+      expect(t.end, text.length);
+      expect(t.table.rows, [
+        ['H1', 'H2'],
+        ['a', 'b'],
+      ]);
+      // rowRanges cover the header + body lines, NOT the separator.
+      expect(t.rowRanges, hasLength(2));
+      expect(text.substring(t.rowRanges[0].start, t.rowRanges[0].end),
+          '| H1 | H2 |');
+      expect(text.substring(t.rowRanges[1].start, t.rowRanges[1].end),
+          '| a | b |');
+      expect(text.substring(t.separatorRange.start, t.separatorRange.end),
+          '| --- | --- |');
+    });
+
+    test('findTableRegions skips a pipe table inside a fenced code block', () {
+      const text = '```\n| not | a |\n| --- | --- |\n| real | table |\n```';
+      expect(findTableRegions(text), isEmpty);
+    });
+
+    test('findTableRegions ignores a pipe line with no separator', () {
+      expect(findTableRegions('| a | b |\n| c | d |'), isEmpty);
+    });
+
+    test('findTableRegions finds a table offset into the document', () {
+      const text = 'intro\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nafter';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(1));
+      expect(text.substring(regions.first.start, regions.first.end),
+          '| A | B |\n| --- | --- |\n| 1 | 2 |');
+      expect(regions.first.table.rows[1], ['1', '2']);
+    });
+
+    test('findTableRegions finds two separate tables', () {
+      const text =
+          '| A |\n| --- |\n| 1 |\n\ntext\n\n| B |\n| --- |\n| 2 |';
+      final regions = findTableRegions(text);
+      expect(regions, hasLength(2));
+      expect(regions[0].table.rows[0], ['A']);
+      expect(regions[1].table.rows[0], ['B']);
+    });
+  });
+
+  group('code fence exit on Enter', () {
+    test('empty line in an unterminated block closes it and drops below', () {
+      // '```\ncode\n' with the caret on the trailing empty line (offset 9).
+      final result = _applyEnter('```\ncode\n', 9);
+      expect(result.text, '```\ncode\n```\n');
+      expect(result.selection.baseOffset, 13); // on the new line below the close
+    });
+
+    test('uses the same fence marker the block was opened with', () {
+      final result = _applyEnter('~~~\ncode\n', 9);
+      expect(result.text, '~~~\ncode\n~~~\n');
+    });
+
+    test('a non-empty code line just gets a normal newline', () {
+      final result = _applyEnter('```\ncode', 8);
+      expect(result.text, '```\ncode\n');
+      expect(result.selection.baseOffset, 9);
+    });
+
+    test('an already-closed block is left alone', () {
+      // Caret on the empty line between the code and the closing fence.
+      final result = _applyEnter('```\ncode\n\n```', 9);
+      expect(result.text, '```\ncode\n\n\n```'); // plain newline, not re-closed
+    });
+
+    test('a plain empty line outside any block is unaffected', () {
+      final result = _applyEnter('hello\n', 6);
+      expect(result.text, 'hello\n\n');
     });
   });
 }

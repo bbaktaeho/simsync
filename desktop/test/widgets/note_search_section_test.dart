@@ -17,9 +17,7 @@ void main() {
         home: Scaffold(
           body: NoteSearchSection(
             query: 'release',
-            tag: 'work',
-            startDate: DateTime(2026, 3, 1),
-            endDate: DateTime(2026, 3, 10),
+            hasActiveFilters: true,
             onQueryChanged: (value) => changedQuery = value,
             onClear: () => clearCalls++,
             onOpenFilters: () => filterCalls++,
@@ -42,5 +40,47 @@ void main() {
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump();
     expect(clearCalls, 1);
+  });
+
+  testWidgets('search field and filter button share the exact same height', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 320,
+              child: NoteSearchSection(
+                query: '',
+                onQueryChanged: (_) {},
+                onClear: () {},
+                onOpenFilters: () {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final searchBox = find
+        .ancestor(
+          of: find.byIcon(Icons.search_rounded),
+          matching: find.byType(Container),
+        )
+        .first;
+    final filterBox = find
+        .ancestor(
+          of: find.byIcon(Icons.tune_rounded),
+          matching: find.byType(Container),
+        )
+        .first;
+
+    final searchHeight = tester.getSize(searchBox).height;
+    final filterHeight = tester.getSize(filterBox).height;
+    expect(searchHeight, 32);
+    expect(filterHeight, 32);
+    expect(searchHeight, filterHeight);
   });
 }

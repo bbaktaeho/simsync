@@ -5,6 +5,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
+import '../widgets/app_logo_mark.dart';
 
 class LoginScreen extends StatefulWidget {
   final Future<void> Function() onGitHubLogin;
@@ -122,19 +123,7 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildLogo(AppColorsExtension c) {
     return Column(
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: c.accentMuted,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-          ),
-          child: Icon(
-            Icons.edit_note_rounded,
-            color: c.accent,
-            size: 28,
-          ),
-        ),
+        const AppLogoMark(size: 48),
         const SizedBox(height: AppDimensions.spacingLg),
         Text(
           'SimSync',

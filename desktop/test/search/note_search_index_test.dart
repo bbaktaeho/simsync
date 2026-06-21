@@ -82,7 +82,7 @@ void main() {
 
       final results = index.search(
         NoteSearchQuery(
-          tag: 'work',
+          tags: const ['work'],
           startDate: DateTime(2026, 3, 1),
           endDate: DateTime(2026, 3, 5),
         ),
@@ -116,6 +116,25 @@ void main() {
       expect(result.match.matchEnd, 14);
       expect(result.contextBefore, ['line1', 'line2']);
       expect(result.contextAfter, ['line4', 'line5']);
+    });
+
+    test('searchWithContext highlight offset accounts for leading whitespace',
+        () {
+      final index = NoteSearchIndex();
+      index.replaceAll([
+        buildNote(
+          id: '1',
+          noteDate: DateTime(2026, 3, 10),
+          title: 'x',
+          content: '  release notes',
+        ),
+      ]);
+
+      final result =
+          index.searchWithContext(const NoteSearchQuery(text: 'release')).first;
+      expect(result.match.line, '  release notes');
+      expect(result.match.matchStart, 2); // after the two leading spaces
+      expect(result.match.matchEnd, 9);
     });
 
     test('searchWithContext clips context at first and last lines', () {
@@ -154,7 +173,7 @@ void main() {
       index.replaceAll([note]);
 
       final results = index.searchWithContext(
-        const NoteSearchQuery(tag: 'work'),
+        const NoteSearchQuery(tags: ['work']),
         contextLines: 2,
       );
 
@@ -192,6 +211,84 @@ void main() {
       index.remove('1');
 
       expect(index.search(const NoteSearchQuery(text: 'beta')), isEmpty);
+    });
+
+    test('prefix-matches a term as you type', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 1),
+        title: 'Release Plan',
+        content: 'ship it',
+      );
+      index.replaceAll([note]);
+
+      expect(index.search(const NoteSearchQuery(text: 'rel')), [note]);
+      expect(index.search(const NoteSearchQuery(text: 'pla')), [note]);
+      expect(index.search(const NoteSearchQuery(text: 'zzz')), isEmpty);
+    });
+
+    test('matches multi-term queries regardless of word order', () {
+      final index = NoteSearchIndex();
+      final note = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 1),
+        title: '',
+        content: 'mobile search foundation',
+      );
+      index.replaceAll([note]);
+
+      expect(index.search(const NoteSearchQuery(text: 'search mobile')), [note]);
+      expect(
+          index.search(const NoteSearchQuery(text: 'mobile foundation')), [note]);
+      expect(index.search(const NoteSearchQuery(text: 'mobile missing')), isEmpty);
+    });
+
+    test('filters by multiple tags (AND)', () {
+      final index = NoteSearchIndex();
+      final a = buildNote(
+        id: '1',
+        noteDate: DateTime(2026, 3, 1),
+        title: 'A',
+        content: '',
+        tags: ['work', 'urgent'],
+      );
+      final b = buildNote(
+        id: '2',
+        noteDate: DateTime(2026, 3, 2),
+        title: 'B',
+        content: '',
+        tags: ['work'],
+      );
+      index.replaceAll([a, b]);
+
+      expect(
+        index.search(const NoteSearchQuery(tags: ['work'])).map((n) => n.id).toSet(),
+        {'1', '2'},
+      );
+      expect(index.search(const NoteSearchQuery(tags: ['work', 'urgent'])), [a]);
+      expect(
+          index.search(const NoteSearchQuery(tags: ['work', 'missing'])), isEmpty);
+    });
+
+    test('allTags returns distinct tags sorted case-insensitively', () {
+      final index = NoteSearchIndex();
+      index.replaceAll([
+        buildNote(
+            id: '1',
+            noteDate: DateTime(2026, 3, 1),
+            title: '',
+            content: '',
+            tags: ['Work', 'zeta']),
+        buildNote(
+            id: '2',
+            noteDate: DateTime(2026, 3, 2),
+            title: '',
+            content: '',
+            tags: ['work', 'Alpha']),
+      ]);
+
+      expect(index.allTags, ['Alpha', 'Work', 'zeta']);
     });
   });
 }

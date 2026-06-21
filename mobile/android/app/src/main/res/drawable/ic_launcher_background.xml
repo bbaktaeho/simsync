@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive-icon background: the SimSync Notion-Blue → Deep-Navy gradient. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#2E9BF2"
+        android:centerColor="#0075DE"
+        android:endColor="#1C3C86"
+        android:angle="270" />
+</shape>

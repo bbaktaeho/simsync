@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 final RegExp _taskRe = RegExp(r'^(\s*)([-*+]) +\[([ xX])\] +(.*)$');
 final RegExp _orderedRe = RegExp(r'^(\s*)(\d+)([.)]) +(.*)$');
 final RegExp _bulletRe = RegExp(r'^(\s*)([-*+]) +(.*)$');
+final RegExp _fenceRe = RegExp(r'^\s*(```|~~~)');
 
 class _ListMarker {
   _ListMarker.bullet({required this.indent, required this.bullet, required this.body})
@@ -128,7 +129,13 @@ class MarkdownListInputFormatter extends TextInputFormatter {
     final lineEnd = _lineEndOf(oldValue.text, cursor);
     final line = oldValue.text.substring(lineStart, lineEnd);
     final marker = _matchMarker(line);
-    if (marker == null) return newValue;
+    if (marker == null) {
+      // Not a list line. If the cursor is on an empty line inside an
+      // unterminated code block, pressing Enter closes the block and drops the
+      // cursor onto a fresh line below it (so you can keep writing outside).
+      return _exitUnterminatedCodeFence(oldValue, lineStart, lineEnd, line) ??
+          newValue;
+    }
 
     if (marker.body.trim().isEmpty) {
       // Empty item: clear the marker and exit the list (no newline added).
@@ -148,6 +155,45 @@ class MarkdownListInputFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(offset: cursor + 1 + continuation.length),
     );
   }
+}
+
+/// When Enter is pressed on an empty line that sits inside an *unterminated*
+/// fenced code block, close the block on that line and put the cursor on a new
+/// line just below it. Returns null when the situation doesn't apply (so the
+/// caller falls back to the default newline). This is the standard "press Enter
+/// to leave the code block" affordance — important here because the closing
+/// fence renders collapsed and is otherwise hard to reach.
+TextEditingValue? _exitUnterminatedCodeFence(
+  TextEditingValue value,
+  int lineStart,
+  int lineEnd,
+  String line,
+) {
+  if (line.trim().isNotEmpty) return null;
+
+  final beforeLines = value.text.substring(0, lineStart).split('\n');
+  final fencesBefore = beforeLines.where(_fenceRe.hasMatch).length;
+  if (fencesBefore.isEven) return null; // not inside an open code block
+
+  final after = value.text.substring(lineEnd);
+  if (after.split('\n').any(_fenceRe.hasMatch)) return null; // already closed below
+
+  // Close with the same fence marker the block was opened with.
+  var marker = '```';
+  for (final l in beforeLines.reversed) {
+    final m = _fenceRe.firstMatch(l);
+    if (m != null) {
+      marker = m.group(1)!;
+      break;
+    }
+  }
+
+  final text =
+      '${value.text.substring(0, lineStart)}$marker\n${value.text.substring(lineEnd)}';
+  return TextEditingValue(
+    text: text,
+    selection: TextSelection.collapsed(offset: lineStart + marker.length + 1),
+  );
 }
 
 // ── Ordered list renumbering ────────────────────────────────────────────────
@@ -246,21 +292,257 @@ TextEditingValue renumberOrderedListAtCursor(TextEditingValue value) {
   );
 }
 
-// ── Table skeleton ──────────────────────────────────────────────────────────
+// ── Markdown tables (grid editing) ──────────────────────────────────────────
 
-/// Builds a GitHub-flavored markdown table skeleton with [columns] columns and
-/// [rows] empty data rows (plus the header and separator rows).
-String buildMarkdownTable({required int columns, required int rows}) {
-  final cols = columns < 1 ? 1 : columns;
-  final dataRows = rows < 0 ? 0 : rows;
+/// Column text alignment in a GFM table.
+enum MarkdownTableAlign { left, center, right }
 
-  final header =
-      '| ${List.generate(cols, (i) => 'Column ${i + 1}').join(' | ')} |';
-  final separator = '| ${List.generate(cols, (_) => '---').join(' | ')} |';
-  final body = List.generate(
-    dataRows,
-    (_) => '| ${List.generate(cols, (_) => '').join(' | ')} |',
+/// A parsed GFM table: [rows] (the first is the header, the rest are body rows,
+/// each normalized to [columns] cells) plus a per-column [aligns].
+class MarkdownTableData {
+  MarkdownTableData(this.rows, this.aligns);
+
+  /// Row 0 is the header; rows 1.. are the body. Every row has `aligns.length`
+  /// cells.
+  final List<List<String>> rows;
+  final List<MarkdownTableAlign> aligns;
+
+  int get columns => aligns.length;
+
+  /// A blank table with [columns] columns and [bodyRows] empty body rows.
+  factory MarkdownTableData.blank({int columns = 3, int bodyRows = 2}) {
+    final cols = columns < 1 ? 1 : columns;
+    final body = bodyRows < 0 ? 0 : bodyRows;
+    return MarkdownTableData(
+      [
+        List.generate(cols, (i) => 'Column ${i + 1}'),
+        for (var r = 0; r < body; r++) List.filled(cols, ''),
+      ],
+      List.filled(cols, MarkdownTableAlign.left),
+    );
+  }
+}
+
+final RegExp _tableSeparatorCell = RegExp(r'^:?-+:?$');
+
+/// Splits a table row on UNescaped `|`, unescaping `\|` back to `|` inside
+/// cells. Symmetric with [serializeMarkdownTable] (which escapes `|`), so a
+/// cell containing a literal pipe survives a parse → serialize round-trip.
+List<String> _splitTableRow(String line) {
+  var s = line.trim();
+  if (s.startsWith('|')) s = s.substring(1);
+  if (s.endsWith('|') && !s.endsWith(r'\|')) s = s.substring(0, s.length - 1);
+  final cells = <String>[];
+  final buf = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    if (s[i] == r'\' && i + 1 < s.length && s[i + 1] == '|') {
+      buf.write('|');
+      i++; // skip the escaped pipe
+    } else if (s[i] == '|') {
+      cells.add(buf.toString().trim());
+      buf.clear();
+    } else {
+      buf.write(s[i]);
+    }
+  }
+  cells.add(buf.toString().trim());
+  return cells;
+}
+
+bool _isTableSeparator(String line) {
+  if (!line.contains('|') && !line.contains('-')) return false;
+  final cells = _splitTableRow(line);
+  if (cells.isEmpty) return false;
+  return cells.every((c) => _tableSeparatorCell.hasMatch(c.replaceAll(' ', '')));
+}
+
+MarkdownTableAlign _alignOf(String separatorCell) {
+  final c = separatorCell.trim();
+  final left = c.startsWith(':');
+  final right = c.endsWith(':');
+  if (left && right) return MarkdownTableAlign.center;
+  if (right) return MarkdownTableAlign.right;
+  return MarkdownTableAlign.left;
+}
+
+List<String> _normalizeRow(List<String> cells, int columns) {
+  if (cells.length == columns) return cells;
+  if (cells.length > columns) return cells.sublist(0, columns);
+  return [...cells, ...List.filled(columns - cells.length, '')];
+}
+
+/// Finds the GFM table whose lines contain [offset], or null if the caret isn't
+/// inside a table. Returns the parsed data and the table's `[start, end]`
+/// character range in [text].
+///
+/// Limitations (acceptable for MVP — both need a blank line, which GFM tables
+/// want anyway): it does not track fenced code, so pipe lines inside a ``` block
+/// could be mistaken for a table; and a pipe-bearing prose line directly above a
+/// table (no blank line between) hides the table.
+({MarkdownTableData table, int start, int end})? tableAtOffset(
+    String text, int offset) {
+  final lines = text.split('\n');
+  final starts = <int>[];
+  var acc = 0;
+  for (final l in lines) {
+    starts.add(acc);
+    acc += l.length + 1;
+  }
+
+  final caret = offset.clamp(0, text.length);
+  var cur = lines.length - 1;
+  for (var i = 0; i < lines.length; i++) {
+    if (caret <= starts[i] + lines[i].length) {
+      cur = i;
+      break;
+    }
+  }
+
+  bool isRow(int i) => i >= 0 && i < lines.length && lines[i].contains('|');
+  if (!isRow(cur)) return null;
+
+  var top = cur;
+  var bottom = cur;
+  while (isRow(top - 1)) {
+    top--;
+  }
+  while (isRow(bottom + 1)) {
+    bottom++;
+  }
+
+  // A valid table needs a header, a separator on the 2nd line, and ≥1 body row.
+  if (bottom - top < 2) return null;
+  if (!_isTableSeparator(lines[top + 1])) return null;
+
+  final header = _splitTableRow(lines[top]);
+  final columns = header.length;
+  if (columns == 0) return null;
+
+  final sepCells = _splitTableRow(lines[top + 1]);
+  final aligns = List.generate(
+    columns,
+    (i) => i < sepCells.length ? _alignOf(sepCells[i]) : MarkdownTableAlign.left,
   );
 
-  return [header, separator, ...body].join('\n');
+  final rows = <List<String>>[_normalizeRow(header, columns)];
+  for (var i = top + 2; i <= bottom; i++) {
+    rows.add(_normalizeRow(_splitTableRow(lines[i]), columns));
+  }
+
+  return (
+    table: MarkdownTableData(rows, aligns),
+    start: starts[top],
+    end: starts[bottom] + lines[bottom].length,
+  );
+}
+
+String _separatorFor(MarkdownTableAlign a) => switch (a) {
+      MarkdownTableAlign.left => '---',
+      MarkdownTableAlign.center => ':--:',
+      MarkdownTableAlign.right => '---:',
+    };
+
+/// Serializes [table] to GFM markdown (header, alignment separator, body rows).
+String serializeMarkdownTable(MarkdownTableData table) {
+  String row(List<String> cells) =>
+      '| ${_normalizeRow(cells, table.columns).map((c) => c.replaceAll('|', r'\|').trim()).join(' | ')} |';
+  return [
+    row(table.rows.first),
+    '| ${table.aligns.map(_separatorFor).join(' | ')} |',
+    for (final r in table.rows.skip(1)) row(r),
+  ].join('\n');
+}
+
+/// A GFM table found in a document, with the data needed to render it inline:
+/// the parsed [table] (header + body, no separator), the character range of
+/// each DISPLAY row line ([rowRanges], header first), and the separator line's
+/// range (drawn as zero-height so it disappears).
+class TableRegion {
+  const TableRegion({
+    required this.start,
+    required this.end,
+    required this.table,
+    required this.rowRanges,
+    required this.separatorRange,
+  });
+
+  final int start;
+  final int end;
+  final MarkdownTableData table;
+  final List<({int start, int end})> rowRanges;
+  final ({int start, int end}) separatorRange;
+}
+
+final RegExp _tableFence = RegExp(r'^\s*(?:```|~~~)');
+
+/// Finds every GFM table in [text] (a `|` header line immediately followed by a
+/// separator line, then `|` body lines), skipping fenced code blocks. Used to
+/// render tables inline and to hide their raw markdown.
+List<TableRegion> findTableRegions(String text) {
+  if (text.isEmpty) return const [];
+  final lines = text.split('\n');
+  final starts = <int>[];
+  var acc = 0;
+  for (final l in lines) {
+    starts.add(acc);
+    acc += l.length + 1;
+  }
+  ({int start, int end}) rangeOf(int i) =>
+      (start: starts[i], end: starts[i] + lines[i].length);
+
+  final result = <TableRegion>[];
+  var inFence = false;
+  var i = 0;
+  while (i < lines.length) {
+    if (_tableFence.hasMatch(lines[i])) {
+      inFence = !inFence;
+      i++;
+      continue;
+    }
+    if (inFence) {
+      i++;
+      continue;
+    }
+    final isTable = lines[i].contains('|') &&
+        i + 1 < lines.length &&
+        _isTableSeparator(lines[i + 1]);
+    if (!isTable) {
+      i++;
+      continue;
+    }
+
+    final headerIdx = i;
+    final sepIdx = i + 1;
+    var bottom = sepIdx;
+    while (bottom + 1 < lines.length &&
+        lines[bottom + 1].contains('|') &&
+        !_tableFence.hasMatch(lines[bottom + 1])) {
+      bottom++;
+    }
+
+    final header = _splitTableRow(lines[headerIdx]);
+    final columns = header.length;
+    if (columns > 0) {
+      final sepCells = _splitTableRow(lines[sepIdx]);
+      final aligns = List.generate(
+        columns,
+        (k) => k < sepCells.length ? _alignOf(sepCells[k]) : MarkdownTableAlign.left,
+      );
+      final rows = <List<String>>[_normalizeRow(header, columns)];
+      final rowRanges = <({int start, int end})>[rangeOf(headerIdx)];
+      for (var r = sepIdx + 1; r <= bottom; r++) {
+        rows.add(_normalizeRow(_splitTableRow(lines[r]), columns));
+        rowRanges.add(rangeOf(r));
+      }
+      result.add(TableRegion(
+        start: starts[headerIdx],
+        end: starts[bottom] + lines[bottom].length,
+        table: MarkdownTableData(rows, aligns),
+        rowRanges: rowRanges,
+        separatorRange: rangeOf(sepIdx),
+      ));
+    }
+    i = bottom + 1;
+  }
+  return result;
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simsync/screens/settings_screen.dart';
+import 'package:simsync/settings/app_settings.dart';
 import 'package:simsync/settings/app_settings_controller.dart';
 import 'package:simsync/storage/github/repo_cache.dart';
 import 'package:simsync/theme/app_colors.dart';
@@ -24,6 +25,12 @@ void main() {
   testWidgets('renders distinct settings navigation and pane headings', (
     WidgetTester tester,
   ) async {
+    // Desktop-sized surface so all navigation items are comfortably visible.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
@@ -182,5 +189,55 @@ void main() {
       find.byKey(const ValueKey('settings-nav-selected-shortcuts')),
       findsNothing,
     );
+  });
+
+  testWidgets('weekly pane toggles integration and switches provider', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(body: SettingsScreen(settingsController: controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Weekly'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Weekly summary'), findsOneWidget);
+    expect(find.text('위클리 지침'), findsOneWidget);
+    expect(find.text('AI 요약 연동'), findsOneWidget);
+
+    // Provider fields only appear once integration is enabled.
+    expect(find.text('Anthropic API'), findsNothing);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.claudeCodeEnabled, isTrue);
+    // Default provider is the Anthropic API: provider chips + model field shown.
+    expect(find.text('Anthropic API'), findsWidgets);
+    expect(find.text('Claude Code CLI'), findsWidgets);
+    expect(find.text('모델'), findsOneWidget);
+    expect(find.textContaining('console.anthropic.com'), findsOneWidget);
+
+    // Switch to the CLI provider — model field gone, CLI help shown.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Claude Code CLI'));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.weeklyProvider, AppSettings.providerCli);
+    expect(find.text('모델'), findsNothing);
+    expect(find.textContaining('claude --print'), findsOneWidget);
   });
 }

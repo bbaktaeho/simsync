@@ -38,7 +38,7 @@ class MarkdownPreviewWidget extends StatelessWidget {
       selectable: true,
       padding: EdgeInsets.zero,
       styleSheet: _buildStyleSheet(c),
-      builders: {'pre': _CodeBlockBuilder(contentScale: contentScale)},
+      builders: {'code': _CodeBlockBuilder(contentScale: contentScale)},
     );
   }
 
@@ -93,8 +93,21 @@ class MarkdownPreviewWidget extends StatelessWidget {
   }
 }
 
-/// Custom builder that applies syntax highlighting to fenced code blocks.
-/// Registered under the 'pre' key so it only fires for fenced code blocks.
+/// Custom builder that applies syntax highlighting to fenced and indented code
+/// blocks.
+///
+/// IMPORTANT: this MUST be keyed on 'code', not 'pre'. flutter_markdown routes a
+/// `pre` block's text through [MarkdownElementBuilder.visitText] (null by
+/// default), which starves the lazily-created parent inline of children. Because
+/// `_addAnonymousBlockIfNeeded` only clears the inline stack when the inline has
+/// children, the empty inline is left dangling and trips the internal
+/// `assert(_inlines.isEmpty)` — a hard crash on every code block.
+///
+/// Keying on 'code' lets the default text path feed the inline first, so the
+/// bookkeeping stays balanced. The block child is then replaced with the
+/// highlighted view. Inline code (`` `like this` ``) returns null to keep its
+/// compact default styling untouched. The surrounding box (background, border,
+/// radius) comes from `codeblockDecoration` in the style sheet.
 class _CodeBlockBuilder extends MarkdownElementBuilder {
   _CodeBlockBuilder({required this.contentScale});
 
@@ -107,37 +120,44 @@ class _CodeBlockBuilder extends MarkdownElementBuilder {
     TextStyle? preferredStyle,
     TextStyle? parentStyle,
   ) {
-    final textContent = element.textContent;
-
-    // Extract language from class name (e.g., 'language-go' -> 'go').
     final className = element.attributes['class'];
-    String language = 'plaintext';
-    if (className != null && className.startsWith('language-')) {
-      language = className.substring('language-'.length);
+    final hasLanguageClass =
+        className != null && className.startsWith('language-');
+    final rawText = element.textContent;
+
+    // Distinguish block code from inline code. Inline code is single-line and
+    // carries no language class; block code from the markdown package always
+    // has a trailing newline or an explicit `language-` class. Leaving inline
+    // code to the default `code` style (return null) also avoids replacing the
+    // text child, keeping flutter_markdown's inline bookkeeping balanced.
+    final isBlock = hasLanguageClass || rawText.contains('\n');
+    if (!isBlock) return null;
+
+    // Extract language from class name (e.g., 'language-go' -> 'go'). highlight
+    // falls back to plaintext for any unregistered language, so this is safe.
+    var language = 'plaintext';
+    if (hasLanguageClass) {
+      final parsed = className.substring('language-'.length).trim();
+      if (parsed.isNotEmpty) language = parsed;
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final highlightTheme = isDark ? atomOneDarkTheme : githubTheme;
 
-    // Make HighlightView background transparent so Container handles it.
+    // Make HighlightView background transparent so the code block decoration
+    // from the style sheet provides the single surrounding surface.
     final transparentTheme = Map<String, TextStyle>.from(highlightTheme);
     transparentTheme['root'] = (transparentTheme['root'] ?? const TextStyle())
         .copyWith(backgroundColor: Colors.transparent);
 
-    final c = context.colors;
+    final code = rawText.endsWith('\n')
+        ? rawText.substring(0, rawText.length - 1)
+        : rawText;
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
-        border: Border.all(color: c.border),
-      ),
+    return Padding(
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       child: HighlightView(
-        textContent.endsWith('\n')
-            ? textContent.substring(0, textContent.length - 1)
-            : textContent,
+        code,
         language: language,
         theme: transparentTheme,
         textStyle: AppTextStyles.codeMonoBlock(contentScale),
