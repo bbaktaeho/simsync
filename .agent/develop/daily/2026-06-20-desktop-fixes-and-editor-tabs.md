@@ -164,3 +164,11 @@ related:
 - 그리드 에디터: 셀 TextField, 행/열 추가·삭제(헤더·최소 1행/열 보호), 열별 정렬 토글(L/C/R), 삽입/저장·취소. 컨트롤러 add/remove 시 dispose.
 - 검증(6+): 표 파싱/직렬화/정렬/감지/round-trip(+리터럴 파이프) 단위테스트, 그리드 위젯테스트(편집→직렬화/행·열 추가/취소), 에디터 삽입 테스트, analyze clean, 전체 209 통과, macOS 빌드+스모크, 독립 적대 리뷰(critical 1=이스케이프 비대칭 발견·수정, 나머지 niche/cosmetic defer).
 - 한계(docstring 명시): 코드펜스 내 파이프 라인 오탐 가능, 표 바로 위 파이프 산문은 감지 가림(둘 다 빈 줄로 회피; GFM도 표 위 빈 줄 권장).
+
+## 후속: 표 에디터를 pluto_grid 라이브러리 기반으로 교체
+
+- 요구: 표 에디터를 라이브러리로 구현. pub.dev 조사 — `editable`(5년 방치), `pluto_grid_plus`(discontinued)는 제외, **`pluto_grid 8.1.0`**(주 25.5k 다운로드, MIT, macOS, 셀 편집+키보드 내비, 활발 유지보수) 채택. API는 context7로 확인(추측 금지).
+- 매핑: 마크다운 표는 헤더가 편집 데이터 행 → **모든 행을 pluto 데이터 행**(row 0=헤더, rowColorCallback로 틴트), 컬럼은 위치(`c0..`). `_data`+`_aligns`가 모델, pluto onChanged가 _data 갱신. 정렬은 툴바(포커스 열에 적용), 행/열 추가·삭제도 툴바. 구조 변경 시 `_gridVersion`(key) bump으로 재빌드(편집은 _data로 보존). 직렬화/파싱은 기존(`serializeMarkdownTable`/`tableAtOffset`) 재사용.
+- **critical 수정(독립 리뷰가 pluto 소스로 실증)**: `setEditing(false)`는 편집 TextField 값을 cell.value에 커밋하지 않음 → 셀 타이핑 후 Enter/Tab 없이 Save/툴바 클릭하면 입력 유실. 수정: `_syncFromGrid`에서 읽기 전 `sm.textEditingController.text`를 `changeCellValue`로 현재 셀에 직접 커밋. 회귀 테스트(타이핑→Enter 없이 Save→캡처) 추가.
+- 검증: 표 다이얼로그 위젯테스트 6(렌더/초기 직렬화/행·열 추가/blank/취소/편집 캡처), analyze clean, 전체 211 통과, macOS 빌드(pluto 포함)+스모크, 독립 적대 리뷰(critical 1 발견·수정, 나머지 sound).
+- 트레이드오프: pluto는 스프레드시트 키보드 내비를 주지만 마크다운의 편집형 헤더·열별 정렬은 "헤더=틴트된 첫 행 + 정렬 툴바"로 우회. 이전 커스텀 그리드 다이얼로그를 대체.

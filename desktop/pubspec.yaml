@@ -38,6 +38,7 @@ dependencies:
   highlight: ^0.7.0
   markdown: ^7.2.2
   http: ^1.6.0
+  pluto_grid: ^8.1.0
   intl: ^0.20.2
   path_provider: ^2.1.5
   url_launcher: ^6.3.2
