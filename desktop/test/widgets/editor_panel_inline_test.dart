@@ -358,4 +358,106 @@ void main() {
     expect(_contentController(tester).text, 'before\nafter');
     expect(find.byType(InlineTableView), findsNothing);
   });
+
+  // The inline cell editor lives inside the table widget; the main content
+  // field has the editor hint, so this targets the cell's own TextField.
+  Finder cellField() => find.descendant(
+        of: find.byType(InlineTableView),
+        matching: find.byType(TextField),
+      );
+
+  testWidgets('tapping a cell lets you type its content into the markdown', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    // Activate, then tap the 'a' body cell → it turns into an editable field.
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    expect(cellField(), findsNothing); // not editing yet
+    await tester.tap(find.text('a'));
+    await tester.pump();
+    expect(cellField(), findsOneWidget);
+
+    // Typing rewrites that one cell in place, leaving the rest of the table.
+    await tester.enterText(cellField(), 'apple');
+    await tester.pump();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| apple | b |');
+
+    await tester.pump(const Duration(seconds: 2)); // flush autosave timer
+  });
+
+  testWidgets('a pipe typed into a cell is escaped so the table survives', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('a'));
+    await tester.pump();
+
+    await tester.enterText(cellField(), 'x|y');
+    await tester.pump();
+
+    // The pipe is escaped in the source so the column structure is preserved…
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| x\\|y | b |');
+    // …and the table still parses to a single two-column table widget.
+    expect(find.byType(InlineTableView), findsOneWidget);
+    expect(find.text('b'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('Enter commits the cell and closes the inline editor', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('a'));
+    await tester.pump();
+    expect(cellField(), findsOneWidget);
+
+    // Enter submits → the cell editor closes (caret stays in the active table).
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(cellField(), findsNothing);
+    expect(find.byTooltip('행 추가'), findsOneWidget); // still active
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('the cell stays editable across the per-keystroke rebuild', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('a'));
+    await tester.pump();
+
+    // A commit rewrites the source, which rebuilds the whole table overlay…
+    await tester.enterText(cellField(), 'one');
+    await tester.pump();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| one | b |');
+    // …yet the same cell is still being edited (the keyed State survived) so a
+    // follow-up keystroke lands in the same cell rather than being dropped.
+    expect(cellField(), findsOneWidget);
+    await tester.enterText(cellField(), 'two');
+    await tester.pump();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| two | b |');
+
+    await tester.pump(const Duration(seconds: 2));
+  });
 }

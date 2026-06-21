@@ -9,9 +9,10 @@ import '../theme/app_colors.dart';
 /// over its (hidden) markdown source.
 ///
 /// When [active] (the caret is inside the table) it shows a `+` button on the
-/// right (add column) and one at the bottom (add row); tapping the table when it
-/// is inactive calls [onActivate] so the editor can move the caret into it. Cell
-/// CONTENT is read-only here — it is edited via the toolbar's grid dialog.
+/// right (add column), one at the bottom (add row), a red `×` at the top-left
+/// (remove the table), and each cell becomes editable: tap a cell to type its
+/// content directly — every keystroke is committed to the markdown via
+/// [onCellChanged]. Tapping the table when it is inactive calls [onActivate].
 class InlineTableView extends StatefulWidget {
   const InlineTableView({
     super.key,
@@ -22,6 +23,7 @@ class InlineTableView extends StatefulWidget {
     required this.onAddRow,
     required this.onAddColumn,
     required this.onRemove,
+    required this.onCellChanged,
   });
 
   final MarkdownTableData data;
@@ -32,6 +34,9 @@ class InlineTableView extends StatefulWidget {
   final VoidCallback onAddColumn;
   final VoidCallback onRemove;
 
+  /// Called with the new text whenever an editable cell changes.
+  final void Function(int row, int col, String value) onCellChanged;
+
   /// Columns are at least this wide; past that the table scrolls horizontally.
   static const double minColumnWidth = 132;
 
@@ -41,17 +46,68 @@ class InlineTableView extends StatefulWidget {
 
 class _InlineTableViewState extends State<InlineTableView> {
   final ScrollController _hScroll = ScrollController();
+  final TextEditingController _cellCtrl = TextEditingController();
+  final FocusNode _cellFocus = FocusNode();
+
+  /// The (row, col) currently being edited, or null. Survives the frequent
+  /// overlay rebuilds because the State is keyed by the table's start offset.
+  ({int row, int col})? _editingCell;
+
+  @override
+  void initState() {
+    super.initState();
+    _cellFocus.addListener(_handleCellFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(InlineTableView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final editing = _editingCell;
+    // Stop editing if the table deactivated or the cell no longer exists
+    // (e.g. its row/column was removed).
+    if (editing != null &&
+        (!widget.active ||
+            editing.row >= widget.data.rows.length ||
+            editing.col >= widget.data.columns)) {
+      _editingCell = null;
+    }
+  }
 
   @override
   void dispose() {
+    _cellFocus.removeListener(_handleCellFocusChange);
+    _cellFocus.dispose();
+    _cellCtrl.dispose();
     _hScroll.dispose();
     super.dispose();
+  }
+
+  void _handleCellFocusChange() {
+    // The value is committed on each keystroke, so blur just exits edit mode.
+    if (!_cellFocus.hasFocus && _editingCell != null && mounted) {
+      setState(() => _editingCell = null);
+    }
+  }
+
+  void _startEdit(int row, int col, String value) {
+    setState(() {
+      _editingCell = (row: row, col: col);
+      _cellCtrl.text = value;
+      _cellCtrl.selection = TextSelection.collapsed(offset: value.length);
+    });
+    _cellFocus.requestFocus();
   }
 
   Alignment _cellAlignment(MarkdownTableAlign a) => switch (a) {
         MarkdownTableAlign.left => Alignment.centerLeft,
         MarkdownTableAlign.center => Alignment.center,
         MarkdownTableAlign.right => Alignment.centerRight,
+      };
+
+  TextAlign _textAlign(MarkdownTableAlign a) => switch (a) {
+        MarkdownTableAlign.left => TextAlign.left,
+        MarkdownTableAlign.center => TextAlign.center,
+        MarkdownTableAlign.right => TextAlign.right,
       };
 
   @override
@@ -169,27 +225,72 @@ class _InlineTableViewState extends State<InlineTableView> {
     return Row(
       children: [
         for (var k = 0; k < data.columns; k++)
-          Container(
-            width: colW,
-            alignment: _cellAlignment(data.aligns[k]),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: isHeader ? c.accentSubtle : null,
-              border: Border(
-                right: k < data.columns - 1
-                    ? BorderSide(color: c.border)
-                    : BorderSide.none,
-                bottom: !isLastRow ? BorderSide(color: c.border) : BorderSide.none,
+          _cell(c, data, r, k, colW, isHeader, isLastRow,
+              isHeader ? headerStyle : bodyStyle),
+      ],
+    );
+  }
+
+  Widget _cell(
+    AppColorsExtension c,
+    MarkdownTableData data,
+    int r,
+    int k,
+    double colW,
+    bool isHeader,
+    bool isLastRow,
+    TextStyle style,
+  ) {
+    final value = k < data.rows[r].length ? data.rows[r][k] : '';
+    final editing =
+        widget.active && _editingCell?.row == r && _editingCell?.col == k;
+
+    final Widget child = editing
+        ? TextField(
+            controller: _cellCtrl,
+            focusNode: _cellFocus,
+            maxLines: 1,
+            textAlign: _textAlign(data.aligns[k]),
+            style: style,
+            cursorColor: c.accent,
+            decoration: const InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (text) => widget.onCellChanged(r, k, text),
+            onSubmitted: (_) => _cellFocus.unfocus(), // Enter exits the cell
+          )
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.active ? () => _startEdit(r, k, value) : null,
+            child: Align(
+              alignment: _cellAlignment(data.aligns[k]),
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
               ),
             ),
-            child: Text(
-              k < data.rows[r].length ? data.rows[r][k] : '',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: isHeader ? headerStyle : bodyStyle,
-            ),
-          ),
-      ],
+          );
+
+    return Container(
+      width: colW,
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: isHeader
+            ? c.accentSubtle
+            : (editing ? c.surfaceLight : null),
+        border: Border(
+          right: k < data.columns - 1
+              ? BorderSide(color: c.border)
+              : BorderSide.none,
+          bottom: !isLastRow ? BorderSide(color: c.border) : BorderSide.none,
+        ),
+      ),
+      alignment: Alignment.centerLeft,
+      child: child,
     );
   }
 }
