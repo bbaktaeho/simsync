@@ -24,6 +24,8 @@ class InlineTableView extends StatefulWidget {
     required this.onAddColumn,
     required this.onRemove,
     required this.onCellChanged,
+    required this.onRemoveRow,
+    required this.onRemoveColumn,
   });
 
   final MarkdownTableData data;
@@ -36,6 +38,12 @@ class InlineTableView extends StatefulWidget {
 
   /// Called with the new text whenever an editable cell changes.
   final void Function(int row, int col, String value) onCellChanged;
+
+  /// Removes the given body row (index >= 1; the header row is never removable).
+  final void Function(int row) onRemoveRow;
+
+  /// Removes the given column (only offered when more than one column exists).
+  final void Function(int col) onRemoveColumn;
 
   /// Columns are at least this wide; past that the table scrolls horizontally.
   static const double minColumnWidth = 132;
@@ -57,19 +65,39 @@ class _InlineTableViewState extends State<InlineTableView> {
   void initState() {
     super.initState();
     _cellFocus.addListener(_handleCellFocusChange);
+    // The column − buttons live in the outer stack but must stay over their
+    // (horizontally scrollable) columns, so reposition them as the table scrolls.
+    _hScroll.addListener(_handleHScroll);
+  }
+
+  void _handleHScroll() {
+    if (mounted) setState(() {});
   }
 
   @override
   void didUpdateWidget(InlineTableView oldWidget) {
     super.didUpdateWidget(oldWidget);
     final editing = _editingCell;
-    // Stop editing if the table deactivated or the cell no longer exists
-    // (e.g. its row/column was removed).
-    if (editing != null &&
-        (!widget.active ||
-            editing.row >= widget.data.rows.length ||
-            editing.col >= widget.data.columns)) {
+    if (editing == null) return;
+    // Exit edit mode if the table deactivated, the edited cell fell out of
+    // bounds, or the row/column structure changed. A structural change (a row or
+    // column was added/removed) shifts cell indices, so leaving the editor open
+    // would write the in-progress text into a different cell than is on screen.
+    // Per-keystroke commits only change a cell's text, not the counts, so they
+    // keep the editor open.
+    final structureChanged =
+        oldWidget.data.rows.length != widget.data.rows.length ||
+            oldWidget.data.columns != widget.data.columns;
+    if (!widget.active ||
+        structureChanged ||
+        editing.row >= widget.data.rows.length ||
+        editing.col >= widget.data.columns) {
       _editingCell = null;
+      if (_cellFocus.hasFocus) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _editingCell == null) _cellFocus.unfocus();
+        });
+      }
     }
   }
 
@@ -78,6 +106,7 @@ class _InlineTableViewState extends State<InlineTableView> {
     _cellFocus.removeListener(_handleCellFocusChange);
     _cellFocus.dispose();
     _cellCtrl.dispose();
+    _hScroll.removeListener(_handleHScroll);
     _hScroll.dispose();
     super.dispose();
   }
@@ -130,6 +159,9 @@ class _InlineTableViewState extends State<InlineTableView> {
         final colW =
             math.max(InlineTableView.minColumnWidth, constraints.maxWidth / cols);
         final totalWidth = colW * cols;
+        // Rows split the measured band evenly; column buttons offset by scroll.
+        final rowH = constraints.maxHeight / data.rows.length;
+        final scrollX = _hScroll.hasClients ? _hScroll.offset : 0.0;
 
         final grid = Container(
           decoration: BoxDecoration(
@@ -204,6 +236,39 @@ class _InlineTableViewState extends State<InlineTableView> {
                     onTap: widget.onRemove,
                   ),
                 ),
+                // Remove a body row — blue − on the left of each row (the header
+                // row, index 0, is intentionally not removable). Hugs the edge
+                // (centre stays inside the bounds so the button stays tappable).
+                for (var r = 1; r < data.rows.length; r++)
+                  Positioned(
+                    left: -8,
+                    top: (r + 0.5) * rowH - 12,
+                    child: _CornerButton(
+                      color: c.accent,
+                      icon: Icons.remove_rounded,
+                      tooltip: '행 제거',
+                      onTap: () => widget.onRemoveRow(r),
+                    ),
+                  ),
+                // Remove a column — blue − above each column (only when there is
+                // more than one). Tracks the horizontal scroll. Skipped within a
+                // corner-button width of either edge so it can never stack on top
+                // of the × (top-left) or +col (right) and steal their taps.
+                if (cols > 1)
+                  for (var k = 0; k < cols; k++)
+                    if ((k + 0.5) * colW - scrollX >= 36 &&
+                        (k + 0.5) * colW - scrollX <=
+                            constraints.maxWidth - 36)
+                      Positioned(
+                        top: -8,
+                        left: (k + 0.5) * colW - scrollX - 12,
+                        child: _CornerButton(
+                          color: c.accent,
+                          icon: Icons.remove_rounded,
+                          tooltip: '열 제거',
+                          onTap: () => widget.onRemoveColumn(k),
+                        ),
+                      ),
               ],
             ],
           ),

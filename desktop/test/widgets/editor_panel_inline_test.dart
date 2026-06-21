@@ -460,4 +460,95 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets('the − controls remove a body row but never the header', (
+    tester,
+  ) async {
+    await _pump(tester,
+        note: _note(
+            content: '| H1 | H2 |\n| --- | --- |\n| a | b |\n| c | d |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    // One − per body row; the header row (index 0) gets none.
+    expect(find.byTooltip('행 제거'), findsNWidgets(2));
+
+    // Remove the first body row (a|b).
+    await tester.tap(find.byTooltip('행 제거').first);
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| c | d |');
+    expect(find.byTooltip('행 제거'), findsOneWidget);
+
+    // Remove the last body row → a header-only table remains (no row − left).
+    await tester.tap(find.byTooltip('행 제거').first);
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text, '| H1 | H2 |\n| --- | --- |');
+    expect(find.byType(InlineTableView), findsOneWidget);
+    expect(find.byTooltip('행 제거'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('the − control removes a column from every row', (tester) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 | H3 |\n'
+            '| --- | --- | --- |\n'
+            '| a | b | c |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    // One − per column while there is more than one.
+    expect(find.byTooltip('열 제거'), findsNWidgets(3));
+
+    // Remove the first column (H1 / a).
+    await tester.tap(find.byTooltip('열 제거').first);
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text,
+        '| H2 | H3 |\n| --- | --- |\n| b | c |');
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('a single-column table offers no column − control', (
+    tester,
+  ) async {
+    await _pump(tester, note: _note(content: '| H1 |\n| --- |\n| a |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('열 제거'), findsNothing);
+    // The body row can still be removed and the table/X control still exist.
+    expect(find.byTooltip('행 제거'), findsOneWidget);
+    expect(find.byTooltip('테이블 삭제'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('removing a row while editing a cell exits edit (no wrong write)',
+      (tester) async {
+    await _pump(tester,
+        note: _note(content: '| H1 | H2 |\n| --- | --- |\n'
+            '| a | b |\n| c | d |\n| e | f |'));
+
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    // Edit the MIDDLE body row so removing the row above shifts (but does not
+    // out-of-bounds) the edited index — the case that silently mis-wrote before.
+    await tester.tap(find.text('c'));
+    await tester.pump();
+    expect(cellField(), findsOneWidget);
+
+    // Remove the row above ('a|b') while the editor is open.
+    await tester.tap(find.byTooltip('행 제거').first);
+    await tester.pumpAndSettle();
+
+    // The structural change closed the editor, so no stray field can write into
+    // the now-shifted 'e' row; only 'a|b' was removed.
+    expect(cellField(), findsNothing);
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| c | d |\n| e | f |');
+
+    await tester.pump(const Duration(seconds: 2));
+  });
 }
