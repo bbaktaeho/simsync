@@ -191,3 +191,11 @@ related:
 - 스코프(명시): 인라인은 +열/+행 구조 편집(사용자 "그거 클릭하면 열·행 추가되면 되는거지"). 셀 내용은 다이얼로그.
 - **독립 적대 리뷰: critical 0**. 최고 위험(오버레이가 필드 위 → 본문 탭 패스스루)은 안전(Stack/Positioned만, opaque 배경 없음 → 빈 영역 hit 통과; 텍스트 선택/캐럿 정상). minor 3: (1) active 중 캐럿이 숨은 마크다운에 있어 타이핑 시 표 변형(복구 가능·드묾), (2) 측정 밴드가 strut-floor된 구분선 포함해 표 ~1줄 높음(시각만, 갭/겹침 없음), (3) 키 입력당 레이아웃 2회(짧은 노트 무방). 모두 수용.
 - 검증: 표 테스트(InlineTableView 렌더/탭 활성화+행·열 추가 정확 마크다운/툴바 버튼 편집/bare-`---` 필터/char-보존), analyze clean, 전체 223 통과, macOS 빌드+스모크, 독립 리뷰(critical 0). 시각/상호작용 느낌은 스크린샷 없어 사용자 확인 필요(정렬·스크롤·버튼 동작은 결정적).
+
+## 검색 기능 고도화 (역색인 최적화 + 필터 UI 재디자인)
+
+- 요구: (1) 최적화(인덱싱 미리), (2) 태그 검색·from/to 날짜 UI를 보기 좋게(미니 캘린더 + 직접 입력). /frontend-design.
+- **최적화**: NoteSearchIndex를 쿼리마다 substring 선형 스캔 → **역색인**(token→ids prefix-AND + tag→ids)으로. upsert/remove 증분 유지. NoteSearchQuery.tag(단일)→tags(멀티 AND). token-prefix AND라 순서무관 다중어 + type-ahead. 검색 입력 120ms 디바운스.
+- **필터 UI**: AlertDialog → 필터 버튼에 앵커된 **popover**(OverlayEntry + CompositedTransformFollower). SearchFilterPanel: 멀티 태그 칩, 프리셋(오늘/최근7일/이번달), From/To(YYYY-MM-DD 직접 입력 + 인라인 MiniCalendar 선택, 범위 하이라이트), 라이브 적용. MiniCalendar/SearchFilterPanel 위젯 신규.
+- 검증: 패널을 PNG로 렌더해 디자인 시각 확인(칩 선택/프리셋/날짜필드/캘린더 범위 하이라이트 의도대로). 인덱스 테스트(prefix/순서무관/멀티태그/allTags/하이라이트 오프셋), 패널 테스트(칩/프리셋/직접입력/캘린더탭/초기화/클램프), MiniCalendar 테스트. analyze clean, 전체 239, 빌드+스모크.
+- **독립 적대 리뷰 critical 0**(오버레이 누수/디바운스 레이스/역색인 증분 모두 안전 확인). minor 수정: 직접 입력 start>end 클램프(캘린더와 일치), 선행 공백 하이라이트 오프셋. 나머지(좁은 창 popover 클램프 없음, 기호 쿼리 분리)는 수용.

@@ -17,9 +17,7 @@ void main() {
         home: Scaffold(
           body: NoteSearchSection(
             query: 'release',
-            tag: 'work',
-            startDate: DateTime(2026, 3, 1),
-            endDate: DateTime(2026, 3, 10),
+            hasActiveFilters: true,
             onQueryChanged: (value) => changedQuery = value,
             onClear: () => clearCalls++,
             onOpenFilters: () => filterCalls++,

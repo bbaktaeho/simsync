@@ -23,6 +23,7 @@ import '../widgets/editor_panel.dart';
 import '../widgets/editor_tab_bar.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
+import '../widgets/search_filter_panel.dart';
 import '../widgets/search_results_panel.dart';
 import '../widgets/weekly_view_panel.dart';
 import 'settings_screen.dart';
@@ -114,6 +115,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   final AnthropicApiService _anthropicService = AnthropicApiService();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
+  Timer? _searchDebounce;
+  final LayerLink _filterLink = LayerLink();
+  OverlayEntry? _filterOverlay;
   int _loadGeneration = 0;
 
   void _handleSettingsChanged() {
@@ -163,6 +167,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _searchDebounce?.cancel();
+    _filterOverlay?.remove();
     _searchController.dispose();
     _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
@@ -865,14 +871,24 @@ class _DocumentScreenState extends State<DocumentScreen> {
       // Typing a query never opens or switches editor tabs — the open documents
       // stay put. The user taps a search result to open it in a tab.
     });
+    // Keep an open filter popover in sync with the latest query + tag list.
+    _filterOverlay?.markNeedsBuild();
   }
 
   void _onSearchTextChanged(String value) {
-    _applySearchQuery(_searchQuery.copyWith(text: value));
+    // Debounce typing so the index isn't queried on every keystroke; the field
+    // still shows the text immediately via its controller.
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      _applySearchQuery(_searchQuery.copyWith(text: value));
+    });
   }
 
   void _clearSearch() {
+    _searchDebounce?.cancel();
     _searchController.clear();
+    _closeSearchFilters();
     _applySearchQuery(const NoteSearchQuery());
   }
 
@@ -891,143 +907,46 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _openNote(result.note);
   }
 
-  Future<void> _openSearchFilters() async {
-    final tagController = TextEditingController(text: _searchQuery.tag);
-    DateTime? startDate = _searchQuery.startDate;
-    DateTime? endDate = _searchQuery.endDate;
-
-    final result = await showDialog<NoteSearchQuery>(
-      context: context,
+  void _openSearchFilters() {
+    if (_filterOverlay != null) {
+      _closeSearchFilters();
+      return;
+    }
+    final overlay = Overlay.of(context);
+    _filterOverlay = OverlayEntry(
       builder: (context) {
-        final c = context.colors;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> pickStartDate() async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: startDate ?? _selectedDate ?? DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-              );
-              if (picked == null) return;
-
-              setState(() {
-                startDate = DateTime(picked.year, picked.month, picked.day);
-                if (endDate != null && endDate!.isBefore(startDate!)) {
-                  endDate = startDate;
-                }
-              });
-            }
-
-            Future<void> pickEndDate() async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate:
-                    endDate ?? startDate ?? _selectedDate ?? DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-              );
-              if (picked == null) return;
-
-              setState(() {
-                endDate = DateTime(picked.year, picked.month, picked.day);
-                if (startDate != null && startDate!.isAfter(endDate!)) {
-                  startDate = endDate;
-                }
-              });
-            }
-
-            return AlertDialog(
-              backgroundColor: c.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
-                side: BorderSide(color: c.border),
+        return Stack(
+          children: [
+            // Dismiss when tapping outside the panel.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _closeSearchFilters,
               ),
-              title: const Text('Search Filters'),
-              content: SizedBox(
-                width: 360,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: tagController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tag',
-                        hintText: 'work',
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMd),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: pickStartDate,
-                            child: Text(
-                              startDate == null
-                                  ? 'Start date'
-                                  : _formatDate(startDate),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: AppDimensions.spacingSm),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: pickEndDate,
-                            child: Text(
-                              endDate == null
-                                  ? 'End date'
-                                  : _formatDate(endDate),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            ),
+            CompositedTransformFollower(
+              link: _filterLink,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(0, AppDimensions.spacingSm),
+              child: SearchFilterPanel(
+                query: _searchQuery,
+                availableTags: _searchIndex.allTags,
+                onChanged: _applySearchQuery,
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    tagController.clear();
-                    Navigator.of(context).pop(
-                      _searchQuery.copyWith(
-                        tag: '',
-                        startDate: null,
-                        endDate: null,
-                      ),
-                    );
-                  },
-                  child: const Text('Clear'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(
-                      _searchQuery.copyWith(
-                        tag: tagController.text.trim(),
-                        startDate: startDate,
-                        endDate: endDate,
-                      ),
-                    );
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          },
+            ),
+          ],
         );
       },
     );
+    overlay.insert(_filterOverlay!);
+    setState(() {});
+  }
 
-    tagController.dispose();
-
-    if (result != null) {
-      _applySearchQuery(result);
-    }
+  void _closeSearchFilters() {
+    _filterOverlay?.remove();
+    _filterOverlay = null;
+    if (mounted) setState(() {});
   }
 
   String _formatDate(DateTime? value) {
@@ -1238,12 +1157,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
               controller: _searchController,
               focusNode: _searchFocusNode,
               query: _searchQuery.text,
-              tag: _searchQuery.tag,
-              startDate: _searchQuery.startDate,
-              endDate: _searchQuery.endDate,
+              hasActiveFilters: _searchQuery.hasFilters,
+              filterLink: _filterLink,
               onQueryChanged: _onSearchTextChanged,
               onClear: _clearSearch,
-              onOpenFilters: () => unawaited(_openSearchFilters()),
+              onOpenFilters: _openSearchFilters,
             ),
           ),
           const Spacer(),

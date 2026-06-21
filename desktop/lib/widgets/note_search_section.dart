@@ -16,9 +16,8 @@ class NoteSearchSection extends StatefulWidget {
     this.controller,
     this.focusNode,
     required this.query,
-    this.tag = '',
-    this.startDate,
-    this.endDate,
+    this.hasActiveFilters = false,
+    this.filterLink,
     required this.onQueryChanged,
     required this.onClear,
     required this.onOpenFilters,
@@ -27,9 +26,11 @@ class NoteSearchSection extends StatefulWidget {
   final TextEditingController? controller;
   final FocusNode? focusNode;
   final String query;
-  final String tag;
-  final DateTime? startDate;
-  final DateTime? endDate;
+  final bool hasActiveFilters;
+
+  /// Anchors the filter popover to the filter button (the parent owns the link
+  /// and the overlay).
+  final LayerLink? filterLink;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onClear;
   final VoidCallback onOpenFilters;
@@ -78,10 +79,7 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
     super.dispose();
   }
 
-  bool get _hasActiveFilters =>
-      widget.tag.trim().isNotEmpty ||
-      widget.startDate != null ||
-      widget.endDate != null;
+  bool get _hasActiveFilters => widget.hasActiveFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -150,28 +148,37 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
           ),
         ),
         const SizedBox(width: AppDimensions.spacingSm),
-        InkWell(
-          onTap: widget.onOpenFilters,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-          child: Container(
-            width: _controlHeight,
-            height: _controlHeight,
-            decoration: BoxDecoration(
-              color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-              border: Border.all(
-                color: _hasActiveFilters ? c.accent : c.border,
+        _maybeLink(
+          InkWell(
+            onTap: widget.onOpenFilters,
+            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            child: Container(
+              width: _controlHeight,
+              height: _controlHeight,
+              decoration: BoxDecoration(
+                color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
+                borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+                border: Border.all(
+                  color: _hasActiveFilters ? c.accent : c.border,
+                ),
               ),
-            ),
-            child: Icon(
-              Icons.tune_rounded,
-              size: 16,
-              color: _hasActiveFilters ? c.accent : c.textSecondary,
+              child: Icon(
+                Icons.tune_rounded,
+                size: 16,
+                color: _hasActiveFilters ? c.accent : c.textSecondary,
+              ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  Widget _maybeLink(Widget child) {
+    final link = widget.filterLink;
+    return link == null
+        ? child
+        : CompositedTransformTarget(link: link, child: child);
   }
 }
 
