@@ -68,6 +68,30 @@ void main() {
       expect(capturedArgs, containsAllInOrder(['--model', 'sonnet']));
     });
 
+    test('denies file/shell tools so it cannot read other paths', () async {
+      List<String>? capturedArgs;
+      final service = ClaudeCodeService(
+        runner: (executable, arguments, {stdinText, timeout}) async {
+          capturedArgs = arguments;
+          return const ClaudeProcessResult(
+            exitCode: 0,
+            stdout: 'ok',
+            stderr: '',
+          );
+        },
+      );
+
+      await service.summarizeWeek(instruction: 'go', notesContext: 'notes');
+
+      expect(capturedArgs, contains('--disallowedTools'));
+      // The file/shell/network tools are denied — only the piped notes are seen.
+      expect(capturedArgs, containsAll(['Read', 'Bash', 'WebFetch', 'Task']));
+      // No resumable session is left on disk.
+      expect(capturedArgs, contains('--no-session-persistence'));
+      // The instruction is still the final positional prompt.
+      expect(capturedArgs!.last, 'go');
+    });
+
     test('throws a friendly error on non-zero exit', () async {
       final service = ClaudeCodeService(
         runner: (executable, arguments, {stdinText, timeout}) async {

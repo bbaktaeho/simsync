@@ -207,3 +207,10 @@ related:
 - 첫 화면(login_screen)을 `edit_note` 아이콘 → `AppLogoMark(size:48)`로 교체.
 - 제너레이터가 전 플랫폼 생성: macOS(squircle, fullBleed=false), iOS(full-bleed — iOS가 모서리 마스킹), Android legacy ic_launcher(full-bleed) + adaptive(그라디언트 배경 XML + 흰 마크 foreground PNG + anydpi XML).
 - 검증: iOS 1024·macOS 512 PNG를 Read로 시각 확인(full-bleed/­squircle 모두 의도대로, macOS 회귀 없음), 모바일 크기·XML 확인, analyze clean, 전체 239, 빌드+스모크. iOS App Store 제출 시 alpha 제거는 추후 고려(개발 빌드 무관).
+
+## 위클리 컨텍스트 스코핑 (다른 경로 차단 + 권한 프롬프트 제거)
+
+- 요구: 주간 요약 컨텍스트는 그 주의 노트만. 다른 경로 파일 읽지 말 것. 권한 요구 대응. 로컬 동기화 노트 사용 확인. 설정 지침 반영 확인.
+- 확인: 금주 노트는 stdin 파이프(로컬 `_weekNotes`, GitHub 아님). 지침은 `settings.weeklyInstruction`(설정>Weekly>위클리 지침)이 prompt로 전달 — 둘 다 이미 동작.
+- 개선(ClaudeCodeService): CLI 호출에 `--disallowedTools`(Read/Edit/Write/Bash/Glob/Grep/WebFetch/WebSearch/Task/NotebookEdit) 추가 → 파일/셸/네트워크 도구 전면 차단(다른 경로·repo·CLAUDE.md 못 읽음) + headless 권한 프롬프트 제거. `_defaultRunner`는 격리된 빈 임시 디렉토리에서 실행(`-p` trust skip + CLAUDE.md 미로드) + `--no-session-persistence`.
+- 검증: claude --help로 플래그 실재 확인, mock runner 테스트(도구 차단 args), analyze clean, 전체 240, 빌드+스모크. 실제 CLI 호출은 CLAUDECODE 가드로 세션 내 런타임 테스트 불가.

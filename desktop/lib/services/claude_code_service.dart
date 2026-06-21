@@ -54,6 +54,24 @@ class ClaudeCodeService {
   /// bounded even when a week holds an unusually large amount of text.
   static const int maxContextChars = 200000;
 
+  /// Every file/shell/network/sub-agent tool. The week's notes are piped in via
+  /// stdin, so the model never needs to touch the filesystem — denying these
+  /// guarantees it cannot read other notes, the repo, or any path outside the
+  /// provided context, and (since nothing requires approval) it never blocks on
+  /// a permission prompt in headless mode.
+  static const List<String> deniedTools = [
+    'Read',
+    'Edit',
+    'Write',
+    'Bash',
+    'Glob',
+    'Grep',
+    'WebFetch',
+    'WebSearch',
+    'Task',
+    'NotebookEdit',
+  ];
+
   String _resolveExecutable(String? cliPath) {
     final trimmed = cliPath?.trim() ?? '';
     if (trimmed.isNotEmpty) return trimmed;
@@ -140,8 +158,14 @@ class ClaudeCodeService {
     final model0 = model?.trim() ?? '';
     final args = <String>[
       '--print',
+      // Deny every file/shell/network tool (the variadic flag stops at the next
+      // option). The notes are the only context, provided on stdin.
+      '--disallowedTools',
+      ...deniedTools,
       '--output-format',
       'text',
+      // One-off run — don't leave a resumable session on disk.
+      '--no-session-persistence',
       if (model0.isNotEmpty) ...['--model', model0],
       trimmedInstruction,
     ];
@@ -185,46 +209,59 @@ class ClaudeCodeService {
     String? stdinText,
     Duration? timeout,
   }) async {
-    final process = await Process.start(
-      executable,
-      arguments,
-      environment: {
-        'PATH': buildPathEnv(
-          executable,
-          Platform.environment['PATH'],
-          Platform.environment['HOME'],
-        ),
-      },
-    );
-
-    // Feed stdin then close it. The process may close its stdin reader early
-    // (e.g. on error); swallow the resulting broken-pipe error.
+    // Run in a throwaway empty directory so Claude Code trusts an isolated
+    // workspace (the `-p` trust dialog is skipped) and loads no project
+    // CLAUDE.md / has no local files to wander into.
+    final workDir = await Directory.systemTemp.createTemp('simsync_weekly_');
     try {
-      if (stdinText != null && stdinText.isNotEmpty) {
-        process.stdin.write(stdinText);
-      }
-      await process.stdin.close();
-    } catch (_) {
-      // ignore broken-pipe style failures.
-    }
-
-    final stdoutFuture = process.stdout.transform(utf8.decoder).join();
-    final stderrFuture = process.stderr.transform(utf8.decoder).join();
-
-    Future<int> exitFuture = process.exitCode;
-    if (timeout != null) {
-      exitFuture = exitFuture.timeout(
-        timeout,
-        onTimeout: () {
-          process.kill();
-          throw TimeoutException('Claude Code process timed out', timeout);
+      final process = await Process.start(
+        executable,
+        arguments,
+        workingDirectory: workDir.path,
+        environment: {
+          'PATH': buildPathEnv(
+            executable,
+            Platform.environment['PATH'],
+            Platform.environment['HOME'],
+          ),
         },
       );
-    }
 
-    final exitCode = await exitFuture;
-    final out = await stdoutFuture;
-    final err = await stderrFuture;
-    return ClaudeProcessResult(exitCode: exitCode, stdout: out, stderr: err);
+      // Feed stdin then close it. The process may close its stdin reader early
+      // (e.g. on error); swallow the resulting broken-pipe error.
+      try {
+        if (stdinText != null && stdinText.isNotEmpty) {
+          process.stdin.write(stdinText);
+        }
+        await process.stdin.close();
+      } catch (_) {
+        // ignore broken-pipe style failures.
+      }
+
+      final stdoutFuture = process.stdout.transform(utf8.decoder).join();
+      final stderrFuture = process.stderr.transform(utf8.decoder).join();
+
+      Future<int> exitFuture = process.exitCode;
+      if (timeout != null) {
+        exitFuture = exitFuture.timeout(
+          timeout,
+          onTimeout: () {
+            process.kill();
+            throw TimeoutException('Claude Code process timed out', timeout);
+          },
+        );
+      }
+
+      final exitCode = await exitFuture;
+      final out = await stdoutFuture;
+      final err = await stderrFuture;
+      return ClaudeProcessResult(exitCode: exitCode, stdout: out, stderr: err);
+    } finally {
+      try {
+        await workDir.delete(recursive: true);
+      } catch (_) {
+        // best-effort cleanup
+      }
+    }
   }
 }
