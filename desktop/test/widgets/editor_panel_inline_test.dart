@@ -4,6 +4,7 @@ import 'package:simsync/models/note.dart';
 import 'package:simsync/theme/app_theme.dart';
 import 'package:simsync/widgets/editor_block_decorations.dart';
 import 'package:simsync/widgets/editor_panel.dart';
+import 'package:simsync/widgets/inline_table_view.dart';
 import 'package:simsync/widgets/markdown_editing_controller.dart';
 import 'package:simsync/widgets/markdown_preview.dart';
 
@@ -265,34 +266,31 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('a body table is rendered by the decoration painter', (
+  testWidgets('a body table renders as an inline table widget', (
     tester,
   ) async {
     await _pump(tester,
         note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
 
-    // The decoration layer is active (not the empty SizedBox) and the editor
-    // wired the parsed table through to the painter.
-    final painters = tester
-        .widgetList<CustomPaint>(find.byType(CustomPaint))
-        .where((w) => w.painter is EditorBlockDecorationPainter)
-        .map((w) => w.painter as EditorBlockDecorationPainter);
-    expect(painters, isNotEmpty);
-    expect(painters.first.tables, hasLength(1));
+    expect(find.byType(InlineTableView), findsOneWidget);
+    // The cell values are shown by the table widget (not the raw pipes).
+    expect(find.text('H1'), findsOneWidget);
+    expect(find.text('a'), findsOneWidget);
   });
 
   testWidgets('a pipe-less --- table separator is not drawn as a rule', (
     tester,
   ) async {
     await _pump(tester, note: _note(content: '| H |\n---\n| a |'));
-    final painter = tester
+    expect(find.byType(InlineTableView), findsOneWidget);
+    // No `---` rule is painted under the table (it was filtered as a separator).
+    final rules = tester
         .widgetList<CustomPaint>(find.byType(CustomPaint))
         .map((w) => w.painter)
         .whereType<EditorBlockDecorationPainter>()
-        .first;
-    expect(painter.tables, hasLength(1));
-    expect(
-        painter.regions.where((r) => r.kind == EditorBlockKind.rule), isEmpty);
+        .expand((p) => p.regions)
+        .where((r) => r.kind == EditorBlockKind.rule);
+    expect(rules, isEmpty);
   });
 
   testWidgets('table button edits the table at the caret instead of inserting',
@@ -300,7 +298,7 @@ void main() {
     await _pump(tester,
         note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
 
-    // Put the caret inside the table, then hit the table button.
+    // Put the caret inside the table, then hit the toolbar table button.
     _contentController(tester).selection =
         const TextSelection.collapsed(offset: 3);
     await tester.pump();
@@ -308,7 +306,7 @@ void main() {
     await tester.tap(find.byTooltip('표 삽입 / 편집'));
     await tester.pumpAndSettle();
 
-    // The grid opens in EDIT mode with the existing cells loaded.
+    // The grid dialog opens in EDIT mode with the existing cells loaded.
     expect(find.text('표 편집'), findsOneWidget);
     expect(find.text('H1'), findsWidgets);
 
@@ -316,20 +314,31 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('tapping directly on a rendered table opens the editor', (
+  testWidgets('tapping a table activates it; + buttons add a row and column', (
     tester,
   ) async {
     await _pump(tester,
         note: _note(content: '| H1 | H2 |\n| --- | --- |\n| a | b |'));
 
-    // Tap on the first (header) row of the rendered table. The caret lands in
-    // the hidden markdown, which _handleContentTap turns into an edit.
-    final topLeft = tester.getTopLeft(_contentFinder);
-    await tester.tapAt(topLeft + const Offset(24, 10));
-    await tester.pumpAndSettle();
+    // Inactive: no inline controls.
+    expect(find.byTooltip('행 추가'), findsNothing);
 
-    expect(find.text('표 편집'), findsOneWidget);
-    await tester.tap(find.text('취소'));
+    // Tap the table → caret moves inside → it renders active with + controls.
+    await tester.tap(find.byType(InlineTableView));
     await tester.pumpAndSettle();
+    expect(find.byTooltip('열 추가'), findsOneWidget);
+    expect(find.byTooltip('행 추가'), findsOneWidget);
+
+    // + row appends an empty body row to the markdown.
+    await tester.tap(find.byTooltip('행 추가'));
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |\n| --- | --- |\n| a | b |\n|  |  |');
+
+    // + column appends an empty cell to every row.
+    await tester.tap(find.byTooltip('열 추가'));
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text,
+        '| H1 | H2 |  |\n| --- | --- | --- |\n| a | b |  |\n|  |  |  |');
   });
 }

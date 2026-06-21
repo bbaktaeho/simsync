@@ -182,3 +182,12 @@ related:
 - **독립 적대 리뷰가 critical 1 실증**(시각 결함, 내가 못 봄): 공유 strut가 라인 높이를 floor → 구분선이 fontSize 0.1로도 collapse 안 됨 → 모든 표에 헤더-본문 사이 ~14px 빈 띠(리뷰어가 box 측정으로 입증: header[0.2,24], sep[24,38]=14px, body[38,62]). 수정: painter가 예약 밴드를 논리 행 수로 균등 분할해 slack 흡수(셀 텍스트는 painter가 직접 그려 숨은 라인 Y 비종속) → 빈 띠 수학적 제거 + 행 높이 균일. minor: bare `---` 구분선이 rule로 중복 렌더 → editor_panel에서 표 구분선과 겹치는 rule 영역 제외.
 - 검증: findTableRegions 5, 컨트롤러 표 숨김+char보존, painter 표 그리기 no-crash, editor 인라인(painter 배선/캐럿 편집/직접 탭 편집/bare-`---` 필터), analyze clean, 전체 222 통과, macOS 빌드+스모크, 독립 리뷰(critical 1 수정·나머지 sound, char-보존 불변식 확인). pluto 6 테스트 유지(라이브러리 정상).
 - 시각 픽셀 정확도는 스크린샷 없이 확정 불가 → 사용자 눈 확인 필요(밴드 제거·정렬은 결정적으로 보장).
+
+## 후속: 표를 인라인 오버레이 위젯으로 교체 (좌우 스크롤 + 커서 시 +열/+행)
+
+- 요구: 별도 오버레이(pluto 다이얼로그) 말고 **기존 에디터 화면에서** 표 수정. 커서가 표에 있으면 우측 +열/하단 +행 버튼으로 추가, 커서 밖이면 뷰만, 우측 상단 버튼 유지, 넓은 표는 좌우 스크롤.
+- 판단: 좌우 스크롤·인라인 +버튼은 그려진(CustomPaint) 표로는 불가(정적). → 표를 **실제 위젯 오버레이**(`InlineTableView`)로 교체. 단일 TextField는 유지(텍스트 편집 회귀 방지)하고, 표 마크다운은 컨트롤러가 숨긴 채 측정된 rect 위에 위젯을 띄움.
+- 구현: `measureTableRegions`(필드와 동일 레이아웃으로 표 rect 측정, painter에서 표 그리기 제거) → `editor_panel._buildTableOverlays`가 텍스트/캐럿/스크롤에 동기화해 `Positioned`로 InlineTableView 배치. 위젯: 가로 스크롤(colW=max(132,폭/열)), 헤더 틴트, active 시 +열(우)/+행(하) 버튼 → `_mutateTable`이 마크다운 in-place 교체(캐럿 유지로 active 지속). 탭=활성화(`_activateTable`). 셀 내용 편집은 우측 상단 버튼→pluto 다이얼로그 유지(사용자 명시). 필드 onTap(다이얼로그) 제거.
+- 스코프(명시): 인라인은 +열/+행 구조 편집(사용자 "그거 클릭하면 열·행 추가되면 되는거지"). 셀 내용은 다이얼로그.
+- **독립 적대 리뷰: critical 0**. 최고 위험(오버레이가 필드 위 → 본문 탭 패스스루)은 안전(Stack/Positioned만, opaque 배경 없음 → 빈 영역 hit 통과; 텍스트 선택/캐럿 정상). minor 3: (1) active 중 캐럿이 숨은 마크다운에 있어 타이핑 시 표 변형(복구 가능·드묾), (2) 측정 밴드가 strut-floor된 구분선 포함해 표 ~1줄 높음(시각만, 갭/겹침 없음), (3) 키 입력당 레이아웃 2회(짧은 노트 무방). 모두 수용.
+- 검증: 표 테스트(InlineTableView 렌더/탭 활성화+행·열 추가 정확 마크다운/툴바 버튼 편집/bare-`---` 필터/char-보존), analyze clean, 전체 223 통과, macOS 빌드+스모크, 독립 리뷰(critical 0). 시각/상호작용 느낌은 스크린샷 없어 사용자 확인 필요(정렬·스크롤·버튼 동작은 결정적).

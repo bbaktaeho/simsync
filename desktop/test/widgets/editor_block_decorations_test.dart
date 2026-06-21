@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simsync/services/markdown_editing.dart';
@@ -75,30 +73,8 @@ void main() {
     });
   });
 
-  group('EditorBlockDecorationPainter table rendering', () {
-    EditorBlockDecorationPainter buildPainter(InlineSpan span, String text) =>
-        EditorBlockDecorationPainter(
-          span: span,
-          regions: const [],
-          tables: findTableRegions(text),
-          strutStyle: StrutStyle.fromTextStyle(const TextStyle(fontSize: 14)),
-          textScaler: TextScaler.noScaling,
-          scrollController: ScrollController(),
-          codeBackground: const Color(0xFFEEEEEE),
-          codeBorder: const Color(0xFFCCCCCC),
-          ruleColor: const Color(0xFFCCCCCC),
-          quoteBar: const Color(0xFF999999),
-          tableFill: const Color(0xFFFFFFFF),
-          tableHeaderFill: const Color(0xFFEFEFEF),
-          tableBorder: const Color(0xFFCCCCCC),
-          tableTextStyle: const TextStyle(fontSize: 14, color: Color(0xFF111111)),
-          tableHeaderStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF111111)),
-        );
-
-    testWidgets('measures table rows and paints a grid without error', (
+  group('measureTableRegions', () {
+    testWidgets('returns one vertical extent per table, ordered by position', (
       tester,
     ) async {
       const text =
@@ -116,15 +92,27 @@ void main() {
         ),
       );
 
-      final painter = buildPainter(span, text);
-      final recorder = ui.PictureRecorder();
-      // Lays out the span, measures each row's box, draws fills/grid/cell text.
-      // A throw here (bad index, null deref, layout error) fails the test.
-      painter.paint(Canvas(recorder), const Size(420, 240));
-      recorder.endRecording().dispose();
+      final measured = measureTableRegions(
+        span,
+        findTableRegions(text),
+        StrutStyle.fromTextStyle(const TextStyle(fontSize: 14)),
+        TextScaler.noScaling,
+        420,
+      );
+      expect(measured, hasLength(1));
+      // The table sits below the 'intro' prose, so its top is positive, and it
+      // spans a real (positive) height covering its rows.
+      expect(measured.first.top, greaterThan(0));
+      expect(measured.first.bottom, greaterThan(measured.first.top));
+      expect(measured.first.table.table.columns, 2);
+    });
 
-      // A different table count must trigger a repaint.
-      expect(painter.shouldRepaint(buildPainter(span, 'no table here')), isTrue);
+    test('returns empty for text with no tables', () {
+      expect(
+        measureTableRegions(const TextSpan(text: 'no table'), const [],
+            const StrutStyle(), TextScaler.noScaling, 400),
+        isEmpty,
+      );
     });
   });
 }

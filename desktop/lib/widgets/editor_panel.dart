@@ -11,6 +11,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
+import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
 import 'table_editor_dialog.dart';
 
@@ -238,17 +239,49 @@ class _EditorPanelState extends State<EditorPanel> {
     _replaceRange(found.start, found.end, markdown);
   }
 
-  // A rendered table hides its raw markdown, so a tap inside it would land the
-  // caret on invisible pipe syntax (and typing would corrupt the table). When a
-  // tap settles inside a table, open the grid editor instead.
-  void _handleContentTap() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final sel = _contentController.selection;
-      if (!sel.isValid || !sel.isCollapsed) return;
-      final found = tableAtOffset(_contentController.text, sel.baseOffset);
-      if (found != null) unawaited(_editTableAt(found));
-    });
+  // Tapping a rendered table moves the caret into it, which marks it active and
+  // reveals the +col/+row controls (the table widget hides its raw markdown).
+  void _activateTable(TableRegion table) {
+    if (widget.isReadOnly) return;
+    _contentFocusNode.requestFocus();
+    _contentController.selection =
+        TextSelection.collapsed(offset: table.start.clamp(0, _contentController.text.length));
+  }
+
+  void _addTableRow(TableRegion table) {
+    final data = table.table;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [...data.rows, List.filled(data.columns, '')],
+        data.aligns,
+      ),
+    );
+  }
+
+  void _addTableColumn(TableRegion table) {
+    final data = table.table;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [for (final row in data.rows) [...row, '']],
+        [...data.aligns, MarkdownTableAlign.left],
+      ),
+    );
+  }
+
+  // Replaces the table's markdown in place and keeps the caret inside it so it
+  // stays active (the +col/+row controls remain visible after the change).
+  void _mutateTable(TableRegion table, MarkdownTableData next) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = table.start.clamp(0, text.length);
+    final e = table.end.clamp(s, text.length);
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, serializeMarkdownTable(next)),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
   }
 
   void _replaceRange(int start, int end, String replacement) {
@@ -499,7 +532,6 @@ class _EditorPanelState extends State<EditorPanel> {
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
-      onTap: widget.isReadOnly ? null : _handleContentTap,
       readOnly: widget.isReadOnly,
       inputFormatters:
           widget.isReadOnly ? null : [MarkdownListInputFormatter()],
@@ -543,7 +575,7 @@ class _EditorPanelState extends State<EditorPanel> {
                         .where((r) => !(r.kind == EditorBlockKind.rule &&
                             sepStarts.contains(r.start)))
                         .toList();
-                if (regions.isEmpty && tables.isEmpty) {
+                if (regions.isEmpty) {
                   return const SizedBox.expand();
                 }
                 return CustomPaint(
@@ -553,7 +585,6 @@ class _EditorPanelState extends State<EditorPanel> {
                       withComposing: false,
                     ),
                     regions: regions,
-                    tables: tables,
                     strutStyle: strut,
                     textScaler: textScaler,
                     scrollController: _contentScrollController,
@@ -561,12 +592,6 @@ class _EditorPanelState extends State<EditorPanel> {
                     codeBorder: c.border,
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
-                    tableFill: c.surface,
-                    tableHeaderFill: c.accentSubtle,
-                    tableBorder: c.border,
-                    tableTextStyle: bodyStyle,
-                    tableHeaderStyle:
-                        bodyStyle.copyWith(fontWeight: FontWeight.w600),
                   ),
                 );
               },
@@ -574,6 +599,12 @@ class _EditorPanelState extends State<EditorPanel> {
           ),
         ),
         field,
+        // Tables render as real, scrollable widgets over their hidden markdown,
+        // on top of the field so they can take taps and show the +col/+row
+        // controls when the caret is inside them.
+        Positioned.fill(
+          child: _buildTableOverlays(c, bodyStyle, strut, textScaler),
+        ),
       ],
     );
 
@@ -583,6 +614,60 @@ class _EditorPanelState extends State<EditorPanel> {
         padding: const EdgeInsets.all(AppDimensions.spacingLg),
         child: body,
       ),
+    );
+  }
+
+  // Positions an [InlineTableView] over each table's hidden markdown. It rebuilds
+  // on every text/caret/scroll change so the overlays follow the content; the
+  // table containing the caret renders active (with the +col/+row controls).
+  Widget _buildTableOverlays(
+    AppColorsExtension c,
+    TextStyle bodyStyle,
+    StrutStyle strut,
+    TextScaler textScaler,
+  ) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_contentController, _contentScrollController]),
+      builder: (context, _) {
+        final tables = findTableRegions(_contentController.text);
+        if (tables.isEmpty) return const SizedBox.shrink();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final span = _contentController.buildTextSpan(
+                context: context, withComposing: false);
+            final measured = measureTableRegions(
+                span, tables, strut, textScaler, constraints.maxWidth);
+            final scrollY = _contentScrollController.hasClients
+                ? _contentScrollController.offset
+                : 0.0;
+            final sel = _contentController.selection;
+            final caret = sel.isValid ? sel.baseOffset : -1;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final m in measured)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: m.top - scrollY,
+                    height: m.bottom - m.top,
+                    child: InlineTableView(
+                      key: ValueKey(m.table.start),
+                      data: m.table.table,
+                      active: !widget.isReadOnly &&
+                          caret >= m.table.start &&
+                          caret <= m.table.end,
+                      cellStyle: bodyStyle,
+                      onActivate: () => _activateTable(m.table),
+                      onAddRow: () => _addTableRow(m.table),
+                      onAddColumn: () => _addTableColumn(m.table),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
