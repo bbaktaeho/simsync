@@ -284,6 +284,21 @@ class _EditorPanelState extends State<EditorPanel> {
     _onContentChanged();
   }
 
+  // Removes the whole table (the X control). Also drops the table's trailing
+  // newline so no blank line is left where it was. Undoable via the editor.
+  void _removeTable(TableRegion table) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = table.start.clamp(0, text.length);
+    var e = table.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
+  }
+
   void _replaceRange(int start, int end, String replacement) {
     final text = _contentController.text;
     final s = start.clamp(0, text.length);
@@ -661,6 +676,7 @@ class _EditorPanelState extends State<EditorPanel> {
                       onActivate: () => _activateTable(m.table),
                       onAddRow: () => _addTableRow(m.table),
                       onAddColumn: () => _addTableColumn(m.table),
+                      onRemove: () => _removeTable(m.table),
                     ),
                   ),
               ],

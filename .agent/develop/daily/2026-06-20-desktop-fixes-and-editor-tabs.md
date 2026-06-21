@@ -214,3 +214,10 @@ related:
 - 확인: 금주 노트는 stdin 파이프(로컬 `_weekNotes`, GitHub 아님). 지침은 `settings.weeklyInstruction`(설정>Weekly>위클리 지침)이 prompt로 전달 — 둘 다 이미 동작.
 - 개선(ClaudeCodeService): CLI 호출에 `--disallowedTools`(Read/Edit/Write/Bash/Glob/Grep/WebFetch/WebSearch/Task/NotebookEdit) 추가 → 파일/셸/네트워크 도구 전면 차단(다른 경로·repo·CLAUDE.md 못 읽음) + headless 권한 프롬프트 제거. `_defaultRunner`는 격리된 빈 임시 디렉토리에서 실행(`-p` trust skip + CLAUDE.md 미로드) + `--no-session-persistence`.
 - 검증: claude --help로 플래그 실재 확인, mock runner 테스트(도구 차단 args), analyze clean, 전체 240, 빌드+스모크. 실제 CLI 호출은 CLAUDECODE 가드로 세션 내 런타임 테스트 불가.
+
+## 표 전체 삭제 X 버튼 (좌측 상단)
+
+- 요구: 테이블 수정 가능 상태(active)에서 좌측 상단 모서리에 전체 삭제 X 버튼. +버튼과 동일 스타일이되 빨간 원 + 흰 X.
+- 구현: `_PlusButton` → `_CornerButton`(color/icon 파라미터)로 일반화 → +열/+행은 `c.accent`+add, X는 `c.error`+close. 좌측 상단(`Positioned(top:-1,left:-1)`)에 배치. `onRemove` prop 추가.
+- `_removeTable`(editor_panel): 표 범위 + 후행 `\n` 제거(빈 줄 안 남김), 캐럿 table.start, 에디터 undo 가능.
+- 검증: 위젯 테스트(X 탭 → before\nafter, InlineTableView 사라짐), 활성 테이블 PNG 렌더로 빨간 원·좌측상단·동일 스타일 확인, analyze clean, 전체 241, 빌드+스모크.

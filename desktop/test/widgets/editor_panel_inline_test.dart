@@ -341,4 +341,21 @@ void main() {
     expect(_contentController(tester).text,
         '| H1 | H2 |  |\n| --- | --- | --- |\n| a | b |  |\n|  |  |  |');
   });
+
+  testWidgets('the X control removes the whole table', (tester) async {
+    await _pump(tester,
+        note: _note(
+            content: 'before\n| H1 | H2 |\n| --- | --- |\n| a | b |\nafter'));
+
+    // Activate → the red remove control appears at the top-left corner.
+    await tester.tap(find.byType(InlineTableView));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('테이블 삭제'), findsOneWidget);
+
+    // Remove → the table and its trailing newline are gone; no table remains.
+    await tester.tap(find.byTooltip('테이블 삭제'));
+    await tester.pumpAndSettle();
+    expect(_contentController(tester).text, 'before\nafter');
+    expect(find.byType(InlineTableView), findsNothing);
+  });
 }

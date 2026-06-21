@@ -21,6 +21,7 @@ class InlineTableView extends StatefulWidget {
     required this.onActivate,
     required this.onAddRow,
     required this.onAddColumn,
+    required this.onRemove,
   });
 
   final MarkdownTableData data;
@@ -29,6 +30,7 @@ class InlineTableView extends StatefulWidget {
   final VoidCallback onActivate;
   final VoidCallback onAddRow;
   final VoidCallback onAddColumn;
+  final VoidCallback onRemove;
 
   /// Columns are at least this wide; past that the table scrolls horizontally.
   static const double minColumnWidth = 132;
@@ -114,7 +116,9 @@ class _InlineTableViewState extends State<InlineTableView> {
                   bottom: 14,
                   right: -1,
                   child: Center(
-                    child: _PlusButton(
+                    child: _CornerButton(
+                      color: c.accent,
+                      icon: Icons.add_rounded,
                       tooltip: '열 추가',
                       onTap: widget.onAddColumn,
                     ),
@@ -125,10 +129,23 @@ class _InlineTableViewState extends State<InlineTableView> {
                   right: 14,
                   bottom: -1,
                   child: Center(
-                    child: _PlusButton(
+                    child: _CornerButton(
+                      color: c.accent,
+                      icon: Icons.add_rounded,
                       tooltip: '행 추가',
                       onTap: widget.onAddRow,
                     ),
+                  ),
+                ),
+                // Remove the whole table (top-left corner).
+                Positioned(
+                  top: -1,
+                  left: -1,
+                  child: _CornerButton(
+                    color: c.error,
+                    icon: Icons.close_rounded,
+                    tooltip: '테이블 삭제',
+                    onTap: widget.onRemove,
                   ),
                 ),
               ],
@@ -177,28 +194,36 @@ class _InlineTableViewState extends State<InlineTableView> {
   }
 }
 
-class _PlusButton extends StatelessWidget {
-  const _PlusButton({required this.tooltip, required this.onTap});
+/// A round 24px overlay button (white glyph) shown on a table edge while the
+/// table is active — `+` for add row/column, red `×` for removing the table.
+class _CornerButton extends StatelessWidget {
+  const _CornerButton({
+    required this.color,
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
 
+  final Color color;
+  final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: c.accent,
+        color: color,
         shape: const CircleBorder(),
         elevation: 1,
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
-          child: const SizedBox(
+          child: SizedBox(
             width: 24,
             height: 24,
-            child: Icon(Icons.add_rounded, size: 16, color: Colors.white),
+            child: Icon(icon, size: 16, color: Colors.white),
           ),
         ),
       ),
