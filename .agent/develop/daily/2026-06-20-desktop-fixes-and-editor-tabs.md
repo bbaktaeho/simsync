@@ -199,3 +199,11 @@ related:
 - **필터 UI**: AlertDialog → 필터 버튼에 앵커된 **popover**(OverlayEntry + CompositedTransformFollower). SearchFilterPanel: 멀티 태그 칩, 프리셋(오늘/최근7일/이번달), From/To(YYYY-MM-DD 직접 입력 + 인라인 MiniCalendar 선택, 범위 하이라이트), 라이브 적용. MiniCalendar/SearchFilterPanel 위젯 신규.
 - 검증: 패널을 PNG로 렌더해 디자인 시각 확인(칩 선택/프리셋/날짜필드/캘린더 범위 하이라이트 의도대로). 인덱스 테스트(prefix/순서무관/멀티태그/allTags/하이라이트 오프셋), 패널 테스트(칩/프리셋/직접입력/캘린더탭/초기화/클램프), MiniCalendar 테스트. analyze clean, 전체 239, 빌드+스모크.
 - **독립 적대 리뷰 critical 0**(오버레이 누수/디바운스 레이스/역색인 증분 모두 안전 확인). minor 수정: 직접 입력 start>end 클램프(캘린더와 일치), 선행 공백 하이라이트 오프셋. 나머지(좁은 창 popover 클램프 없음, 기호 쿼리 분리)는 수용.
+
+## 아이콘 통일 (데스크탑+모바일, 첫 화면 로고)
+
+- 요구: 앱 아이콘(sync 루프)을 모바일·데스크탑 통일 + 데스크탑 첫 시작 화면 로고도 동일하게.
+- 단일 소스 painter 추출: `desktop/lib/widgets/app_logo_mark.dart`(paintSyncIcon/paintSyncForeground + AppLogoMark 위젯). 제너레이터·인앱 로고가 모두 이걸 사용 → 절대 안 갈림.
+- 첫 화면(login_screen)을 `edit_note` 아이콘 → `AppLogoMark(size:48)`로 교체.
+- 제너레이터가 전 플랫폼 생성: macOS(squircle, fullBleed=false), iOS(full-bleed — iOS가 모서리 마스킹), Android legacy ic_launcher(full-bleed) + adaptive(그라디언트 배경 XML + 흰 마크 foreground PNG + anydpi XML).
+- 검증: iOS 1024·macOS 512 PNG를 Read로 시각 확인(full-bleed/­squircle 모두 의도대로, macOS 회귀 없음), 모바일 크기·XML 확인, analyze clean, 전체 239, 빌드+스모크. iOS App Store 제출 시 alpha 제거는 추후 고려(개발 빌드 무관).
