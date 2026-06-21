@@ -221,3 +221,11 @@ related:
 - 구현: `_PlusButton` → `_CornerButton`(color/icon 파라미터)로 일반화 → +열/+행은 `c.accent`+add, X는 `c.error`+close. 좌측 상단(`Positioned(top:-1,left:-1)`)에 배치. `onRemove` prop 추가.
 - `_removeTable`(editor_panel): 표 범위 + 후행 `\n` 제거(빈 줄 안 남김), 캐럿 table.start, 에디터 undo 가능.
 - 검증: 위젯 테스트(X 탭 → before\nafter, InlineTableView 사라짐), 활성 테이블 PNG 렌더로 빨간 원·좌측상단·동일 스타일 확인, analyze clean, 전체 241, 빌드+스모크.
+
+## 설정 JSON 보기/편집 + 동기화 준비 (Phase 1)
+
+- 요구: 설정을 JSON으로 만들어 로딩, 설정창은 그대로 두고 JSON edit 버튼 추가, 문서처럼 settings/(notes와 동일 레벨)에 동기화.
+- **보안 설계(중요)**: 설정엔 anthropicApiKey(비밀) + localNotePath/claudeCliPath(기기별 경로)가 있음. GitHub로 동기화하면 키 노출/경로 덮어쓰기 → 동기화 JSON에서 **제외**하고 portable subset만. AppSettings.toSyncJson()이 8개 portable 필드만 직렬화.
+- Phase 1(이번): AppSettings.toSyncJson() + AppSettingsController.exportSyncJson()/importSyncJson()(필드별 검증·클램프, secret/unknown 무시) + SettingsJsonDialog(모노스페이스 편집기, 적용 시 파싱·검증, 보안 안내) + 설정 nav rail 하단 "JSON으로 편집" 버튼.
+- Phase 2(다음): settings/settings.json을 github_api_client.putFile로 쓰고 sync/load 시 읽어 importSyncJson 적용(notes 경로 notes/<YYYY-MM>/<DD>와 동일 레벨에 settings/). putFile 프리미티브·경로 확인 완료.
+- 검증: toSyncJson secret 제외, importSyncJson 클램프/무시, export→import round-trip 테스트, analyze clean, 전체 244, 빌드+스모크.

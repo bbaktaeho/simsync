@@ -10,6 +10,7 @@ import '../services/claude_code_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
+import '../widgets/settings_json_dialog.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -355,11 +356,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          TextButton.icon(
+            onPressed: () =>
+                SettingsJsonDialog.show(context, widget.settingsController),
+            icon: Icon(Icons.data_object_rounded,
+                size: 15, color: c.textSecondary),
+            label: const Text('JSON으로 편집'),
+            style: TextButton.styleFrom(
+              foregroundColor: c.textSecondary,
+              padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
+              textStyle: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
               foregroundColor: c.textSecondary,
               padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
             ),
             child: Text(
               'Done',

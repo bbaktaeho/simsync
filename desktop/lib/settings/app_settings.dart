@@ -90,6 +90,35 @@ class AppSettings {
     );
   }
 
+  /// The portable, device-agnostic settings — the only fields that are exported
+  /// to JSON and synced via `settings/settings.json`.
+  ///
+  /// Deliberately EXCLUDES [anthropicApiKey] (a secret that must never be
+  /// committed to the synced repo) and [localNotePath] / [claudeCliPath]
+  /// (device-specific paths that differ per machine). Those stay local-only.
+  Map<String, Object?> toSyncJson() => {
+        'contentScale': contentScale,
+        'syncIntervalSeconds': syncIntervalSeconds,
+        'syncEnabled': syncEnabled,
+        'searchContextLines': searchContextLines,
+        'weeklyInstruction': weeklyInstruction,
+        'claudeCodeEnabled': claudeCodeEnabled,
+        'weeklyProvider': weeklyProvider,
+        'anthropicModel': anthropicModel,
+      };
+
+  /// Keys carried by [toSyncJson]; used to validate/round-trip imports.
+  static const List<String> syncJsonKeys = [
+    'contentScale',
+    'syncIntervalSeconds',
+    'syncEnabled',
+    'searchContextLines',
+    'weeklyInstruction',
+    'claudeCodeEnabled',
+    'weeklyProvider',
+    'anthropicModel',
+  ];
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
