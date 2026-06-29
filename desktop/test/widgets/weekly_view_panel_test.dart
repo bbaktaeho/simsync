@@ -126,4 +126,58 @@ void main() {
 
     expect(find.textContaining('done in the background'), findsWidgets);
   });
+
+  group('MonthlyViewPanel', () {
+    final month = DateTime(2026, 6, 1);
+
+    Future<void> pumpMonthly(
+      WidgetTester tester, {
+      required ReviewController controller,
+      VoidCallback? onGenerate,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          home: Scaffold(
+            body: SizedBox(
+              width: 820,
+              height: 640,
+              child: MonthlyViewPanel(
+                month: month,
+                monthNotes: const [],
+                reviewController: controller,
+                claudeEnabled: true,
+                onGenerate: onGenerate,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('renders a done monthly review held by the controller',
+        (tester) async {
+      final controller = ReviewController()
+        ..setLoadedMonthly(month, 'June was **productive**.');
+
+      await pumpMonthly(tester, controller: controller, onGenerate: () {});
+
+      expect(find.text('Monthly View'), findsOneWidget);
+      expect(find.text('Monthly Summary'), findsOneWidget);
+      expect(find.textContaining('productive'), findsWidgets);
+      expect(find.text('Regenerate'), findsOneWidget);
+    });
+
+    testWidgets('pressing Generate invokes onGenerate', (tester) async {
+      var calls = 0;
+      await pumpMonthly(tester,
+          controller: ReviewController(), onGenerate: () => calls++);
+
+      await tester.tap(find.text('Generate'));
+      await tester.pump();
+
+      expect(calls, 1);
+    });
+  });
 }

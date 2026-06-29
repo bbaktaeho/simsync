@@ -79,4 +79,34 @@ void main() {
     expect(remote.files[path], '# R');
     expect(await svc.loadWeekly(monday), '# R');
   });
+
+  group('monthly', () {
+    final month = DateTime(2026, 6, 15);
+    const monthlyPath = 'notes/2026-06/monthly-review.md';
+
+    test('saveMonthly writes to both stores at the monthly path', () async {
+      final remote = _MemStorage();
+      final local = _MemStorage();
+      final svc = ReviewService(storage: remote, localStorage: local);
+
+      await svc.saveMonthly(month, '# Monthly');
+
+      expect(remote.files[monthlyPath], '# Monthly');
+      expect(local.files[monthlyPath], '# Monthly');
+    });
+
+    test('loadMonthly prefers synced, falls back to local, else null', () async {
+      final remote = _MemStorage();
+      final local = _MemStorage()..files[monthlyPath] = 'local';
+      final svc = ReviewService(storage: remote, localStorage: local);
+
+      expect(await svc.loadMonthly(month), 'local');
+
+      remote.files[monthlyPath] = 'remote';
+      expect(await svc.loadMonthly(month), 'remote');
+
+      expect(await ReviewService(storage: _MemStorage()).loadMonthly(month),
+          isNull);
+    });
+  });
 }

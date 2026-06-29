@@ -13,6 +13,7 @@ import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
+import '../services/review_paths.dart';
 import '../services/review_service.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
@@ -108,6 +109,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   bool _sidebarOpen = true;
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
+  bool _monthlyViewActive = false;
   bool _memoTabActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
@@ -316,6 +318,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _openNote(Note note) {
     setState(() {
       _weeklyViewActive = false;
+      _monthlyViewActive = false;
       final existing = _openTabIds.indexOf(note.id);
       if (existing == -1) {
         if (_openTabIds.length >= _maxTabs) {
@@ -422,17 +425,39 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return DateTime(date.year, date.month, date.day - (weekday - 1));
   }
 
-  List<Note> get _weekNotes {
-    final start = _weekStart;
-    final end = start.add(const Duration(days: 7));
+  List<Note> _weekNotesFor(DateTime weekStart) {
+    final end = weekStart.add(const Duration(days: 7));
+    return _allNotes.where((n) {
+      final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
+      return !d.isBefore(weekStart) && d.isBefore(end);
+    }).toList()
+      ..sort((a, b) {
+        final cmp = a.noteDate.compareTo(b.noteDate);
+        if (cmp != 0) return cmp;
+        return a.createdAt.compareTo(b.createdAt);
+      });
+  }
+
+  List<Note> get _weekNotes => _weekNotesFor(_weekStart);
+
+  /// First day of the month of the selected date (the monthly review's month).
+  DateTime get _monthStart {
+    final d = _selectedDate ?? DateTime.now();
+    return DateTime(d.year, d.month, 1);
+  }
+
+  List<Note> get _monthNotes {
+    final start = _monthStart;
+    final end = DateTime(start.year, start.month + 1, 1);
     return _allNotes.where((n) {
       final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
       return !d.isBefore(start) && d.isBefore(end);
-    }).toList()..sort((a, b) {
-      final cmp = a.noteDate.compareTo(b.noteDate);
-      if (cmp != 0) return cmp;
-      return a.createdAt.compareTo(b.createdAt);
-    });
+    }).toList()
+      ..sort((a, b) {
+        final cmp = a.noteDate.compareTo(b.noteDate);
+        if (cmp != 0) return cmp;
+        return a.createdAt.compareTo(b.createdAt);
+      });
   }
 
   // ── Sidebar resize ──
@@ -484,6 +509,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     // When viewing the weekly panel, switching dates may move to another week —
     // load that week's saved review.
     if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
+    if (_monthlyViewActive) unawaited(_loadMonthlyReview(_monthStart));
     // Date-oriented one-click flow: open the date's default note in a tab.
     // Existing tabs stay open (revisiting a date just re-activates its tab),
     // and an empty date leaves the current tabs untouched — the user creates a
@@ -706,7 +732,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _toggleWeeklyView() {
     setState(() {
       _weeklyViewActive = !_weeklyViewActive;
-      if (_weeklyViewActive) _memoTabActive = false;
+      if (_weeklyViewActive) {
+        _memoTabActive = false;
+        _monthlyViewActive = false;
+      }
     });
     if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
   }
@@ -719,9 +748,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _reviewController.setLoadedWeekly(weekStart, content);
   }
 
-  /// Formats the current week's notes as the context fed to Claude Code.
-  String _buildWeekNotesContext() {
-    final notes = _weekNotes;
+  /// Formats [notes] as the markdown context fed to the summary model.
+  String _buildNotesContext(List<Note> notes) {
     final buffer = StringBuffer();
     for (final note in notes) {
       final date = _formatDate(note.noteDate);
@@ -736,6 +764,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
     return buffer.toString().trim();
   }
+
+  /// The current week's notes as context.
+  String _buildWeekNotesContext() => _buildNotesContext(_weekNotes);
 
   /// Runs the weekly summary for the given [settings] and pre-built [context].
   /// Independent of widget state so it is safe to keep running in the background
@@ -771,6 +802,71 @@ class _DocumentScreenState extends State<DocumentScreen> {
     ));
   }
 
+  void _toggleMonthlyView() {
+    setState(() {
+      _monthlyViewActive = !_monthlyViewActive;
+      if (_monthlyViewActive) {
+        _memoTabActive = false;
+        _weeklyViewActive = false;
+      }
+    });
+    if (_monthlyViewActive) unawaited(_loadMonthlyReview(_monthStart));
+  }
+
+  /// Loads any saved monthly review for [month] into the controller so the
+  /// panel shows it. Skips if a generation for that month is already running.
+  Future<void> _loadMonthlyReview(DateTime month) async {
+    final content = await _reviewService.loadMonthly(month);
+    if (!mounted) return;
+    _reviewController.setLoadedMonthly(month, content);
+  }
+
+  /// Combines per-week reviews into a monthly review via the configured provider
+  /// using [AppSettings.monthlyInstruction]. Independent of widget state, so it
+  /// is safe to keep running in the background after the panel is closed.
+  Future<String> _runMonthlySynthesis(
+      AppSettings settings, List<String> weeklyReviews) {
+    final buffer = StringBuffer();
+    for (var i = 0; i < weeklyReviews.length; i++) {
+      buffer.writeln('## ${i + 1}주차');
+      buffer.writeln(weeklyReviews[i].trim());
+      buffer.writeln();
+    }
+    final context = buffer.toString().trim();
+    if (settings.weeklyProvider == AppSettings.providerCli) {
+      return _claudeService.summarizeWeek(
+        instruction: settings.monthlyInstruction,
+        notesContext: context,
+        cliPath: settings.claudeCliPath,
+      );
+    }
+    return _anthropicService.summarizeWeek(
+      apiKey: settings.anthropicApiKey,
+      instruction: settings.monthlyInstruction,
+      notesContext: context,
+      model: settings.anthropicModel,
+    );
+  }
+
+  /// Starts a background monthly-review generation: for each week of the month
+  /// (in parallel) reuse a saved weekly review or summarize that week, then
+  /// synthesize the per-week reviews and persist. Runs via [ReviewController]
+  /// so it survives the panel closing or another note being opened.
+  void _onGenerateMonthly() {
+    final month = _monthStart;
+    final settings = widget.settingsController.value;
+    final weekStarts = weekStartsForMonth(month.year, month.month);
+    unawaited(_reviewController.generateMonthly(
+      month,
+      weekStarts: weekStarts,
+      loadWeekly: (w) => _reviewService.loadWeekly(w),
+      generateWeekly: (w) =>
+          _runWeeklySummary(settings, _buildNotesContext(_weekNotesFor(w))),
+      synthesize: (reviews) => _runMonthlySynthesis(settings, reviews),
+      persist: (content) => _reviewService.saveMonthly(month, content),
+    ));
+  }
+
   void _onMemoTabChanged(bool active) {
     if (_memoTabActive == active) return;
     setState(() {
@@ -778,6 +874,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _currentPage = 0;
       if (active) {
         _weeklyViewActive = false;
+        _monthlyViewActive = false;
       }
       if (_searchController.text.isNotEmpty || !_searchQuery.isEmpty) {
         _searchController.clear();
@@ -1110,6 +1207,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
       );
     }
 
+    if (_monthlyViewActive) {
+      return MonthlyViewPanel(
+        month: _monthStart,
+        monthNotes: _monthNotes,
+        reviewController: _reviewController,
+        onNoteTap: _onWeeklyNoteTap,
+        claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
+        onGenerate: _onGenerateMonthly,
+        onOpenSettings: () => unawaited(_openSettings()),
+      );
+    }
+
     final editor = EditorPanel(
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
@@ -1249,15 +1358,25 @@ class _DocumentScreenState extends State<DocumentScreen> {
             onPreviousMonth: _previousMonth,
             onNextMonth: _nextMonth,
           ),
-          _WeeklyViewButton(
+          _ReviewViewButton(
+            icon: Icons.calendar_view_week_rounded,
+            label: 'Weekly View',
             isActive: _weeklyViewActive,
             onTap: _toggleWeeklyView,
+          ),
+          _ReviewViewButton(
+            icon: Icons.calendar_month_rounded,
+            label: 'Monthly View',
+            isActive: _monthlyViewActive,
+            onTap: _toggleMonthlyView,
           ),
           Divider(height: 1, color: c.border),
           Expanded(
             child: NoteListSection(
               notes: _paginatedNotes,
-              selectedNoteId: _weeklyViewActive ? null : _selectedNote?.id,
+              selectedNoteId: (_weeklyViewActive || _monthlyViewActive)
+                  ? null
+                  : _selectedNote?.id,
               currentPage: _currentPage,
               totalPages: _totalPages,
               totalCount: _visibleNotes.length,
@@ -1320,17 +1439,24 @@ class _ResizeHandleState extends State<_ResizeHandle> {
 }
 
 /// Weekly view toggle button placed between calendar and note list.
-class _WeeklyViewButton extends StatefulWidget {
+class _ReviewViewButton extends StatefulWidget {
+  final IconData icon;
+  final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _WeeklyViewButton({required this.isActive, required this.onTap});
+  const _ReviewViewButton({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
-  State<_WeeklyViewButton> createState() => _WeeklyViewButtonState();
+  State<_ReviewViewButton> createState() => _ReviewViewButtonState();
 }
 
-class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
+class _ReviewViewButtonState extends State<_ReviewViewButton> {
   bool _isHovered = false;
 
   @override
@@ -1370,13 +1496,13 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
           child: Row(
             children: [
               Icon(
-                Icons.calendar_view_week_rounded,
+                widget.icon,
                 size: 14,
                 color: widget.isActive ? c.accent : c.textMuted,
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                'Weekly View',
+                widget.label,
                 style: AppTextStyles.microSemibold.copyWith(color: widget.isActive ? c.accent : c.textSecondary),
               ),
             ],

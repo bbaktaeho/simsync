@@ -84,4 +84,81 @@ class ReviewController extends ChangeNotifier {
         : ReviewEntry(ReviewPhase.done, content: content);
     notifyListeners();
   }
+
+  // ── Monthly ──
+
+  final Map<String, ReviewEntry> _monthly = {};
+
+  static String _monthKey(DateTime month) => 'm:${month.year}-${month.month}';
+
+  /// Current monthly state for [month] (idle if untouched).
+  ReviewEntry monthly(DateTime month) =>
+      _monthly[_monthKey(month)] ?? const ReviewEntry.idle();
+
+  /// Generates the monthly review in the background.
+  ///
+  /// For each week in [weekStarts], in parallel, it reuses a saved weekly review
+  /// ([loadWeekly]) or generates one ([generateWeekly]); the per-week reviews are
+  /// then combined by [synthesize] and saved via [persist]. A week that yields
+  /// nothing (no notes → [generateWeekly] throws) is skipped. No-op if a monthly
+  /// generation is already in flight; survives view rebuilds/unmounts.
+  Future<void> generateMonthly(
+    DateTime month, {
+    required List<DateTime> weekStarts,
+    required Future<String?> Function(DateTime weekStart) loadWeekly,
+    required Future<String> Function(DateTime weekStart) generateWeekly,
+    required Future<String> Function(List<String> weeklyReviews) synthesize,
+    required Future<void> Function(String content) persist,
+  }) async {
+    final key = _monthKey(month);
+    if (_monthly[key]?.phase == ReviewPhase.generating) return;
+    _monthly[key] = const ReviewEntry(ReviewPhase.generating);
+    notifyListeners();
+
+    final String text;
+    try {
+      // Per week, in parallel: prefer the saved weekly review, else generate
+      // one. A week with no notes contributes an empty string and is dropped.
+      final perWeek = await Future.wait(weekStarts.map((w) async {
+        final existing = await loadWeekly(w);
+        if (existing != null && existing.trim().isNotEmpty) return existing;
+        try {
+          return await generateWeekly(w);
+        } catch (_) {
+          return '';
+        }
+      }));
+      final reviews = perWeek.where((r) => r.trim().isNotEmpty).toList();
+      if (reviews.isEmpty) {
+        throw Exception('이번 달에 요약할 노트가 없습니다.');
+      }
+      text = await synthesize(reviews);
+    } catch (e) {
+      _monthly[key] = ReviewEntry(ReviewPhase.error, error: e.toString());
+      notifyListeners();
+      return;
+    }
+
+    _monthly[key] = ReviewEntry(ReviewPhase.done, content: text);
+    notifyListeners();
+    try {
+      await persist(text);
+    } catch (_) {
+      // Swallow: the generated result remains shown.
+    }
+  }
+
+  /// Seeds a previously-saved monthly review for [month] (or resets to idle when
+  /// [content] is null), without disturbing an in-flight generation or clobbering
+  /// an already-shown result with an empty load.
+  void setLoadedMonthly(DateTime month, String? content) {
+    final key = _monthKey(month);
+    final phase = _monthly[key]?.phase;
+    if (phase == ReviewPhase.generating) return;
+    if (content == null && phase == ReviewPhase.done) return;
+    _monthly[key] = content == null
+        ? const ReviewEntry.idle()
+        : ReviewEntry(ReviewPhase.done, content: content);
+    notifyListeners();
+  }
 }

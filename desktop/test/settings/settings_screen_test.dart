@@ -79,13 +79,14 @@ void main() {
     expect(find.text('Content zoom'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
 
-    await tester.tap(find.text('Sync'));
+    // Weekly and Monthly panes (both above the fold — no nav scrolling needed).
+    await tester.tap(find.text('Weekly'));
     await tester.pumpAndSettle();
+    expect(find.text('Weekly summary'), findsOneWidget);
 
-    expect(find.text('Sync'), findsOneWidget);
-    expect(find.text('Background sync'), findsOneWidget);
-    expect(find.text('GitHub sync interval'), findsOneWidget);
-    expect(find.text('5s'), findsOneWidget);
+    await tester.tap(find.text('Monthly'));
+    await tester.pumpAndSettle();
+    expect(find.text('Monthly summary'), findsOneWidget);
 
     await tester.tap(find.text('Storage').first);
     await tester.pumpAndSettle();
