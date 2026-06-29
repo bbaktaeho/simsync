@@ -164,6 +164,20 @@ class NoteService implements NoteStorage {
     return _parseNoteFile(file);
   }
 
+  @override
+  Future<String?> readTextFile(String relativePath) async {
+    final file = File('$_basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    final file = File('$_basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(content);
+  }
+
   // ── Helpers ──
 
   String _dateDirPath(DateTime date) {

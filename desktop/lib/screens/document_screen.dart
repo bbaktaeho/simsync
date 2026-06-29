@@ -12,6 +12,8 @@ import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/note_service.dart';
+import '../services/review_controller.dart';
+import '../services/review_service.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
@@ -83,6 +85,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return _storage;
   }
 
+  /// Storage wrapper for AI review files (synced store + optional local mirror).
+  /// Rebuilt each access so it tracks a changed local path.
+  ReviewService get _reviewService =>
+      ReviewService(storage: _storage, localStorage: widget.localStorage);
+
   List<Note> _allNotes = [];
   Note? _selectedNote;
 
@@ -113,6 +120,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
   final ClaudeCodeService _claudeService = ClaudeCodeService();
   final AnthropicApiService _anthropicService = AnthropicApiService();
+  // Owns weekly/monthly review generation state so it survives the weekly panel
+  // being closed or another note being opened (background generation).
+  final ReviewController _reviewController = ReviewController();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
   Timer? _searchDebounce;
@@ -174,6 +184,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     widget.refreshSignal?.removeListener(_onRefreshSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
+    _reviewController.dispose();
     super.dispose();
   }
 
@@ -470,6 +481,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _currentPage = 0;
       }
     });
+    // When viewing the weekly panel, switching dates may move to another week —
+    // load that week's saved review.
+    if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
     // Date-oriented one-click flow: open the date's default note in a tab.
     // Existing tabs stay open (revisiting a date just re-activates its tab),
     // and an empty date leaves the current tabs untouched — the user creates a
@@ -694,6 +708,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _weeklyViewActive = !_weeklyViewActive;
       if (_weeklyViewActive) _memoTabActive = false;
     });
+    if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
+  }
+
+  /// Loads any saved weekly review for [weekStart] into the controller so the
+  /// panel shows it. Skips if a generation for that week is already running.
+  Future<void> _loadWeeklyReview(DateTime weekStart) async {
+    final content = await _reviewService.loadWeekly(weekStart);
+    if (!mounted) return;
+    _reviewController.setLoadedWeekly(weekStart, content);
   }
 
   /// Formats the current week's notes as the context fed to Claude Code.
@@ -714,12 +737,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return buffer.toString().trim();
   }
 
-  /// Runs the Claude Code weekly summary. Invoked from the weekly panel's
-  /// Generate button (explicit user consent). The result is shown in the panel
-  /// only — it is never written back over the original notes.
-  Future<String> _generateWeeklySummary() async {
-    final settings = widget.settingsController.value;
-    final context = _buildWeekNotesContext();
+  /// Runs the weekly summary for the given [settings] and pre-built [context].
+  /// Independent of widget state so it is safe to keep running in the background
+  /// after the weekly panel is closed.
+  Future<String> _runWeeklySummary(AppSettings settings, String context) async {
     if (settings.weeklyProvider == AppSettings.providerCli) {
       return _claudeService.summarizeWeek(
         instruction: settings.weeklyInstruction,
@@ -733,6 +754,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
       notesContext: context,
       model: settings.anthropicModel,
     );
+  }
+
+  /// Starts a background weekly-review generation for the current week and
+  /// persists it. Invoked from the weekly panel's Generate button (explicit
+  /// consent). Runs via [ReviewController] so it survives the panel closing or
+  /// another note being opened; the context is snapshotted now.
+  void _onGenerateWeekly() {
+    final weekStart = _weekStart;
+    final settings = widget.settingsController.value;
+    final context = _buildWeekNotesContext();
+    unawaited(_reviewController.generateWeekly(
+      weekStart,
+      generate: () => _runWeeklySummary(settings, context),
+      persist: (content) => _reviewService.saveWeekly(weekStart, content),
+    ));
   }
 
   void _onMemoTabChanged(bool active) {
@@ -1066,9 +1102,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return WeeklyViewPanel(
         weekStart: _weekStart,
         weekNotes: _weekNotes,
+        reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
         claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
-        onGenerateSummary: _generateWeeklySummary,
+        onGenerate: _onGenerateWeekly,
         onOpenSettings: () => unawaited(_openSettings()),
       );
     }

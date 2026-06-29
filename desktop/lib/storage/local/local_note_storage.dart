@@ -156,4 +156,18 @@ class LocalNoteStorage implements NoteStorage {
     _noteCache.remove(path);
     _idToPath.remove(note.id);
   }
+
+  @override
+  Future<String?> readTextFile(String relativePath) async {
+    final file = File('$basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    final file = File('$basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(content);
+  }
 }

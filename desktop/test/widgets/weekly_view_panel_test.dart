@@ -1,12 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:simsync/services/review_controller.dart';
 import 'package:simsync/theme/app_theme.dart';
 import 'package:simsync/widgets/weekly_view_panel.dart';
+
+final _weekStart = DateTime(2026, 6, 15);
 
 Future<void> _pump(
   WidgetTester tester, {
   required bool claudeEnabled,
-  Future<String> Function()? onGenerate,
+  required ReviewController controller,
+  VoidCallback? onGenerate,
+  bool settle = true,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -16,56 +23,107 @@ Future<void> _pump(
           width: 820,
           height: 640,
           child: WeeklyViewPanel(
-            weekStart: DateTime(2026, 6, 15),
+            weekStart: _weekStart,
             weekNotes: const [],
+            reviewController: controller,
             claudeEnabled: claudeEnabled,
-            onGenerateSummary: onGenerate,
+            onGenerate: onGenerate,
           ),
         ),
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  // A spinner animates forever, so callers in the generating state pass
+  // settle: false and pump a single frame instead.
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+  }
 }
 
 void main() {
   testWidgets('Generate button appears only when the summary is enabled', (
     tester,
   ) async {
-    await _pump(tester, claudeEnabled: false, onGenerate: () async => 'x');
+    await _pump(tester,
+        claudeEnabled: false, controller: ReviewController(), onGenerate: () {});
     expect(find.text('Generate'), findsNothing);
 
-    await _pump(tester, claudeEnabled: true, onGenerate: () async => 'x');
+    await _pump(tester,
+        claudeEnabled: true, controller: ReviewController(), onGenerate: () {});
     expect(find.text('Generate'), findsOneWidget);
   });
 
-  testWidgets('pressing Generate shows the returned summary', (tester) async {
-    await _pump(
-      tester,
-      claudeEnabled: true,
-      onGenerate: () async => 'This week was productive.',
-    );
+  testWidgets('pressing Generate invokes onGenerate', (tester) async {
+    var calls = 0;
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: ReviewController(),
+        onGenerate: () => calls++);
 
     await tester.tap(find.text('Generate'));
-    await tester.pump(); // enter loading
-    await tester.pumpAndSettle(); // resolve the future
+    await tester.pump();
+
+    expect(calls, 1);
+  });
+
+  testWidgets('renders a done review held by the controller', (tester) async {
+    final controller = ReviewController()
+      ..setLoadedWeekly(_weekStart, 'This week was **productive**.');
+
+    await _pump(tester,
+        claudeEnabled: true, controller: controller, onGenerate: () {});
 
     expect(find.textContaining('productive'), findsWidgets);
     // The button flips to Regenerate once there's a result.
     expect(find.text('Regenerate'), findsOneWidget);
   });
 
-  testWidgets('pressing Generate surfaces an error message', (tester) async {
-    await _pump(
-      tester,
-      claudeEnabled: true,
-      onGenerate: () async => throw Exception('API 키가 없습니다'),
-    );
+  testWidgets('shows progress while a generation is running', (tester) async {
+    final controller = ReviewController();
+    final gen = Completer<String>();
+    // Never-completing generation → stays in the generating phase.
+    unawaited(controller.generateWeekly(_weekStart,
+        generate: () => gen.future, persist: (_) async {}));
 
-    await tester.tap(find.text('Generate'));
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerate: () {},
+        settle: false);
+
+    expect(find.textContaining('정리하는 중'), findsOneWidget);
+
+    // Let it finish so no timer is left pending.
+    gen.complete('done');
     await tester.pump();
-    await tester.pumpAndSettle();
+  });
+
+  testWidgets('surfaces an error held by the controller', (tester) async {
+    final controller = ReviewController();
+    await controller.generateWeekly(_weekStart,
+        generate: () async => throw Exception('API 키가 없습니다'),
+        persist: (_) async {});
+
+    await _pump(tester,
+        claudeEnabled: true, controller: controller, onGenerate: () {});
 
     expect(find.textContaining('API 키가 없습니다'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a generation finished before the panel mounts is shown when it mounts',
+      (tester) async {
+    // Background-survival property: the controller holds the result, so a panel
+    // built later (e.g. after navigating away and back) still shows it.
+    final controller = ReviewController();
+    await controller.generateWeekly(_weekStart,
+        generate: () async => 'done in the background', persist: (_) async {});
+
+    await _pump(tester,
+        claudeEnabled: true, controller: controller, onGenerate: () {});
+
+    expect(find.textContaining('done in the background'), findsWidgets);
   });
 }
