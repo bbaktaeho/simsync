@@ -551,4 +551,80 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
   });
+
+  testWidgets(
+      'decoration painter measures with the field\'s effective text style', (
+    tester,
+  ) async {
+    // Regression: a Material TextField merges its style onto the theme body
+    // style, injecting letterSpacing + an even leading distribution. The
+    // decoration painter lays out its own TextPainter; if it measures with a
+    // different style than the visible text uses, code boxes / rules / table
+    // overlays drift from the text (wrapping + baseline diverge). Lock the
+    // painter's span style to the field's effective style.
+    await _pump(
+      tester,
+      note: _note(content: 'intro\n\n```go\nfunc main() {}\n```\n\n---\n\nend'),
+    );
+
+    final etFinder =
+        find.descendant(of: _contentFinder, matching: find.byType(EditableText));
+    final fieldStyle = tester.widget<EditableText>(etFinder).style;
+
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((cp) => cp.painter)
+        .whereType<EditorBlockDecorationPainter>()
+        .first;
+    final spanStyle = (painter.span as TextSpan).style!;
+
+    expect(spanStyle.fontSize, fieldStyle.fontSize);
+    expect(spanStyle.height, fieldStyle.height);
+    expect(spanStyle.fontFamily, fieldStyle.fontFamily);
+    expect(spanStyle.letterSpacing, fieldStyle.letterSpacing);
+    expect(spanStyle.leadingDistribution, fieldStyle.leadingDistribution);
+
+    await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('code box decoration sits exactly on the code text', (
+    tester,
+  ) async {
+    // End-to-end alignment: the painter must measure each code line at the same
+    // y the field renders it, or the box drifts from the text. Compares the
+    // field's RenderEditable caret position to the painter's own TextPainter.
+    const content = 'intro\n\n```go\nfunc main() {}\n```\n\nend';
+    await _pump(tester, note: _note(content: content));
+
+    final etFinder =
+        find.descendant(of: _contentFinder, matching: find.byType(EditableText));
+    final codeStart = content.indexOf('func');
+    final codeEnd = codeStart + 'func main() {}'.length;
+
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final reStart = re.getLocalRectForCaret(TextPosition(offset: codeStart));
+    final reEnd = re.getLocalRectForCaret(TextPosition(offset: codeEnd));
+
+    final painter = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((cp) => cp.painter)
+        .whereType<EditorBlockDecorationPainter>()
+        .first;
+    final width = tester.getSize(_contentFinder).width;
+    final tp = TextPainter(
+      text: painter.span,
+      textDirection: TextDirection.ltr,
+      strutStyle: painter.strutStyle,
+      textScaler: painter.textScaler,
+    )..layout(maxWidth: width - 3.0);
+    final tpStart =
+        tp.getOffsetForCaret(TextPosition(offset: codeStart), Rect.zero);
+    final tpEnd = tp.getOffsetForCaret(TextPosition(offset: codeEnd), Rect.zero);
+    tp.dispose();
+
+    expect(tpStart.dy, closeTo(reStart.top, 0.5));
+    expect(tpEnd.dy, closeTo(reEnd.top, 0.5));
+
+    await tester.pump(const Duration(seconds: 2));
+  });
 }
