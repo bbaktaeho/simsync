@@ -598,8 +598,18 @@ class _EditorPanelState extends State<EditorPanel> {
     // The controller renders markdown styling inline as you type (Notion /
     // Obsidian style) — there is no separate preview pane.
     _contentController.scale = widget.contentScale;
-    final bodyStyle =
+    final baseStyle =
         AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
+    // A Material TextField does not render with the raw `style` we pass — it
+    // merges it onto the theme's body style, which injects extras like
+    // `letterSpacing` and an even `leadingDistribution`. The decoration painter
+    // and table overlays lay out their OWN TextPainter, so they must measure
+    // with the SAME effective style the field's RenderEditable uses; otherwise
+    // wrapping and baseline diverge and the code boxes / rules / table overlays
+    // drift from the text. Mirror the field's merge here and share the result.
+    final bodyStyle =
+        (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+            .merge(baseStyle);
     // The decoration painter lays out an identical TextPainter, so the field and
     // the painter must share strut + text scaler + width for the boxes to align.
     // The strut mirrors the body style so the caret lines up with the text.
@@ -661,6 +671,7 @@ class _EditorPanelState extends State<EditorPanel> {
                   painter: EditorBlockDecorationPainter(
                     span: _contentController.buildTextSpan(
                       context: context,
+                      style: bodyStyle,
                       withComposing: false,
                     ),
                     regions: regions,
@@ -713,7 +724,7 @@ class _EditorPanelState extends State<EditorPanel> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final span = _contentController.buildTextSpan(
-                context: context, withComposing: false);
+                context: context, style: bodyStyle, withComposing: false);
             final measured = measureTableRegions(
                 span, tables, strut, textScaler, constraints.maxWidth);
             final scrollY = _contentScrollController.hasClients
