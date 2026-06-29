@@ -4,6 +4,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
+import '../services/review_controller.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
@@ -19,9 +20,13 @@ class WeeklyViewPanel extends StatelessWidget {
   /// Whether the Claude Code weekly-summary integration is enabled in settings.
   final bool claudeEnabled;
 
-  /// Generates the weekly summary. Returns the summary text, or throws with a
-  /// user-facing message. Null disables the summary affordance entirely.
-  final Future<String> Function()? onGenerateSummary;
+  /// Holds weekly review state (idle/generating/done/error) OUTSIDE this widget
+  /// so generation continues across panel rebuilds / unmounts.
+  final ReviewController reviewController;
+
+  /// Starts a background weekly-review generation for [weekStart]. Null disables
+  /// the affordance entirely.
+  final VoidCallback? onGenerate;
 
   /// Opens settings so the user can enable / configure Claude Code.
   final VoidCallback? onOpenSettings;
@@ -30,9 +35,10 @@ class WeeklyViewPanel extends StatelessWidget {
     super.key,
     required this.weekStart,
     required this.weekNotes,
+    required this.reviewController,
     this.onNoteTap,
     this.claudeEnabled = false,
-    this.onGenerateSummary,
+    this.onGenerate,
     this.onOpenSettings,
   });
 
@@ -71,7 +77,9 @@ class WeeklyViewPanel extends StatelessWidget {
       children: [
         _WeeklySummarySection(
           claudeEnabled: claudeEnabled,
-          onGenerate: onGenerateSummary,
+          controller: reviewController,
+          weekStart: weekStart,
+          onGenerate: onGenerate,
           onOpenSettings: onOpenSettings,
         ),
         const SizedBox(height: AppDimensions.spacingXl),
@@ -165,19 +173,24 @@ class WeeklyViewPanel extends StatelessWidget {
 
 /// Claude Code weekly summary card shown at the top of the weekly view.
 ///
-/// The summary is requested only on an explicit user action (the Generate
-/// button), satisfying the "explicit consent before AI summary" rule, and the
-/// result lives only in this widget — it is never written back over the
-/// original notes.
+/// Generation is requested only on an explicit user action (the Generate
+/// button, "explicit consent before AI summary" rule) and runs in the
+/// background via [ReviewController], so it survives this panel being closed or
+/// another note being opened. The card reflects the controller's state for
+/// [weekStart]; the result is persisted separately from the original notes.
 class _WeeklySummarySection extends StatefulWidget {
   const _WeeklySummarySection({
     required this.claudeEnabled,
+    required this.controller,
+    required this.weekStart,
     required this.onGenerate,
     required this.onOpenSettings,
   });
 
   final bool claudeEnabled;
-  final Future<String> Function()? onGenerate;
+  final ReviewController controller;
+  final DateTime weekStart;
+  final VoidCallback? onGenerate;
   final VoidCallback? onOpenSettings;
 
   @override
@@ -185,9 +198,6 @@ class _WeeklySummarySection extends StatefulWidget {
 }
 
 class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
-  bool _loading = false;
-  String? _summary;
-  String? _error;
   late final TapGestureRecognizer _settingsTapRecognizer;
 
   @override
@@ -202,72 +212,58 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
     super.dispose();
   }
 
-  Future<void> _generate() async {
-    final generate = widget.onGenerate;
-    if (generate == null || _loading) return;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final result = await generate();
-      if (!mounted) return;
-      setState(() {
-        _summary = result;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final canGenerate = widget.claudeEnabled && widget.onGenerate != null;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
-        border: Border.all(color: c.border),
-      ),
-      padding: const EdgeInsets.all(AppDimensions.spacingLg),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // Subscribe to the controller so the card updates as the background
+    // generation progresses — even if it started before this panel was built.
+    return AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) {
+        final entry = widget.controller.weekly(widget.weekStart);
+        return Container(
+          decoration: BoxDecoration(
+            color: c.surfaceLight,
+            borderRadius:
+                BorderRadius.circular(AppDimensions.radiusComfortable),
+            border: Border.all(color: c.border),
+          ),
+          padding: const EdgeInsets.all(AppDimensions.spacingLg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.auto_awesome_rounded, size: 16, color: c.accent),
-              const SizedBox(width: AppDimensions.spacingSm),
-              Text(
-                'Weekly Summary',
-                style: Theme.of(context).textTheme.titleSmall!.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: c.textPrimary,
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome_rounded, size: 16, color: c.accent),
+                  const SizedBox(width: AppDimensions.spacingSm),
+                  Text(
+                    'Weekly Summary',
+                    style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: c.textPrimary,
+                        ),
+                  ),
+                  const Spacer(),
+                  if (canGenerate)
+                    _GenerateButton(
+                      loading: entry.phase == ReviewPhase.generating,
+                      hasResult: entry.phase == ReviewPhase.done,
+                      onTap: widget.onGenerate!,
                     ),
+                ],
               ),
-              const Spacer(),
-              if (canGenerate)
-                _GenerateButton(
-                  loading: _loading,
-                  hasResult: _summary != null,
-                  onTap: _generate,
-                ),
+              const SizedBox(height: AppDimensions.spacingMd),
+              _buildContent(c, entry),
             ],
           ),
-          const SizedBox(height: AppDimensions.spacingMd),
-          _buildContent(c),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildContent(AppColorsExtension c) {
+  Widget _buildContent(AppColorsExtension c, ReviewEntry entry) {
     if (!widget.claudeEnabled) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +294,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
       );
     }
 
-    if (_loading) {
+    if (entry.phase == ReviewPhase.generating) {
       return Row(
         children: [
           SizedBox(
@@ -315,7 +311,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
       );
     }
 
-    if (_error != null) {
+    if (entry.phase == ReviewPhase.error) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(AppDimensions.spacingMd),
@@ -331,7 +327,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
             const SizedBox(width: AppDimensions.spacingSm),
             Expanded(
               child: Text(
-                _error!,
+                entry.error ?? '오류가 발생했습니다.',
                 style:
                     AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
               ),
@@ -341,12 +337,12 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
       );
     }
 
-    if (_summary != null) {
+    if (entry.phase == ReviewPhase.done && entry.content != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           MarkdownBody(
-            data: _summary!,
+            data: entry.content!,
             selectable: true,
             styleSheet: MarkdownStyleSheet(
               p: AppTextStyles.mdBody(1.0).copyWith(color: c.textPrimary),
@@ -359,7 +355,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
-            'Claude Code가 생성 · 원본 노트와 별도로 보관됩니다',
+            'Claude Code가 생성 · 원본 노트와 별도로 저장됩니다',
             style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
         ],

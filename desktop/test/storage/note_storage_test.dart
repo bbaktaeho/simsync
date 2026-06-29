@@ -54,6 +54,17 @@ class FakeNoteStorage implements NoteStorage {
   Future<void> deleteNote(Note note) async {
     _notes.remove(note.id);
   }
+
+  final Map<String, String> _textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      _textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    _textFiles[relativePath] = content;
+  }
 }
 
 Note _createNote({
@@ -155,5 +166,13 @@ void main() {
     expect(dates.length, 2);
     expect(dates[0], DateTime(2026, 3, 5));
     expect(dates[1], DateTime(2026, 3, 10));
+  });
+
+  test('writeTextFile then readTextFile round-trips; missing path is null',
+      () async {
+    const path = 'notes/2026-06/1주차/weekly-review.md';
+    expect(await storage.readTextFile(path), isNull);
+    await storage.writeTextFile(path, '# Weekly Review');
+    expect(await storage.readTextFile(path), '# Weekly Review');
   });
 }

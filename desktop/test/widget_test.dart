@@ -640,6 +640,17 @@ class _FakeNoteStorage implements NoteStorage {
 
   @override
   Future<void> saveNote(Note note) async {}
+
+  final Map<String, String> _textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      _textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    _textFiles[relativePath] = content;
+  }
 }
 
 class _MemoryNoteStorage implements NoteStorage {
@@ -716,6 +727,17 @@ class _MemoryNoteStorage implements NoteStorage {
     saveCalls += 1;
     _notes.removeWhere((item) => item.id == note.id);
     _notes.add(note);
+  }
+
+  final Map<String, String> _textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      _textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    _textFiles[relativePath] = content;
   }
 }
 

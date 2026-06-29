@@ -193,6 +193,16 @@ class GitHubNoteStorage implements NoteStorage {
     return title.replaceAll(RegExp(r'[/\\:*?"<>|]'), '');
   }
 
+  /// Matches a day-note path `notes/YYYY-MM/DD/<file>.md`. Review files live in
+  /// non-numeric folders (`notes/YYYY-MM/N주차/...`) or directly under the month
+  /// (`notes/YYYY-MM/monthly-review.md`), so they don't match and stay out of
+  /// the note list.
+  static final RegExp _dailyNotePathRe =
+      RegExp(r'^notes/\d{4}-\d{2}/\d{1,2}/[^/]+\.md$');
+
+  static bool _isDailyNotePath(String path) =>
+      _dailyNotePathRe.hasMatch(path);
+
   /// Builds the file path for a note.
   static String _buildPath(Note note) {
     final yearMonth =
@@ -332,6 +342,34 @@ class GitHubNoteStorage implements NoteStorage {
   // --- NoteStorage implementation ---
 
   @override
+  Future<String?> readTextFile(String relativePath) async {
+    try {
+      final file = await _client.getFile(relativePath);
+      return file.decodedContent;
+    } on GitHubNotFoundException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    // Resolve the current sha (if the file exists) so the PUT updates instead
+    // of failing; reviews are not tracked in `_treeMap`, so fetch it directly.
+    String? sha;
+    try {
+      sha = (await _client.getFile(relativePath)).sha;
+    } on GitHubNotFoundException {
+      sha = null;
+    }
+    await _client.putFile(
+      path: relativePath,
+      content: content,
+      message: 'Save review: $relativePath',
+      sha: sha,
+    );
+  }
+
+  @override
   Future<List<Note>> listAllNotes() async {
     final tree = await _ensureTree();
     if (tree != null) {
@@ -341,7 +379,10 @@ class GitHubNoteStorage implements NoteStorage {
   }
 
   Future<List<Note>> _listAllNotesFromTree(Map<String, String> tree) async {
-    final paths = tree.keys.toList();
+    // Only `notes/YYYY-MM/DD/*.md` are day notes. Files in non-day folders
+    // (e.g. review files under `notes/YYYY-MM/N주차/`) are excluded so they
+    // never surface in the note list — and are not needlessly fetched/parsed.
+    final paths = tree.keys.where(_isDailyNotePath).toList();
     await _hydrateNotesFromTree(paths: paths, tree: tree);
     _pruneStaleEntries(currentPaths: paths.toSet());
     final notes = paths

@@ -63,6 +63,17 @@ class _FakeNoteStorage implements NoteStorage {
 
   @override
   Future<void> saveNote(Note note) async {}
+
+  final Map<String, String> textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    textFiles[relativePath] = content;
+  }
 }
 
 class _FakeAuthService implements AuthService {
