@@ -15,6 +15,7 @@ class AppSettingsController extends ChangeNotifier {
   static const String syncEnabledKey = 'sync_enabled';
   static const String searchContextLinesKey = 'search_context_lines';
   static const String weeklyInstructionKey = 'weekly_instruction';
+  static const String monthlyInstructionKey = 'monthly_instruction';
   static const String claudeCodeEnabledKey = 'claude_code_enabled';
   static const String claudeCliPathKey = 'claude_cli_path';
   static const String weeklyProviderKey = 'weekly_provider';
@@ -61,6 +62,8 @@ class AppSettingsController extends ChangeNotifier {
       ),
       weeklyInstruction: prefs.getString(weeklyInstructionKey) ??
           AppSettings.defaultWeeklyInstruction,
+      monthlyInstruction: prefs.getString(monthlyInstructionKey) ??
+          AppSettings.defaultMonthlyInstruction,
       claudeCodeEnabled: prefs.getBool(claudeCodeEnabledKey) ?? false,
       claudeCliPath: prefs.getString(claudeCliPathKey) ?? '',
       weeklyProvider:
@@ -135,6 +138,17 @@ class AppSettingsController extends ChangeNotifier {
       next = next.copyWith(weeklyInstruction: v);
       await prefs.setString(weeklyInstructionKey, v);
       applied.add('weeklyInstruction');
+    }
+
+    final monthlyInstruction = json['monthlyInstruction'];
+    if (monthlyInstruction is String) {
+      final trimmed = monthlyInstruction.trim();
+      final v = trimmed.isEmpty
+          ? AppSettings.defaultMonthlyInstruction
+          : trimmed;
+      next = next.copyWith(monthlyInstruction: v);
+      await prefs.setString(monthlyInstructionKey, v);
+      applied.add('monthlyInstruction');
     }
 
     final claudeCodeEnabled = json['claudeCodeEnabled'];
@@ -243,6 +257,17 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(weeklyInstructionKey, next);
+  }
+
+  Future<void> setMonthlyInstruction(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty
+        ? AppSettings.defaultMonthlyInstruction
+        : trimmed;
+    _value = _value.copyWith(monthlyInstruction: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(monthlyInstructionKey, next);
   }
 
   Future<void> setClaudeCodeEnabled(bool value) async {

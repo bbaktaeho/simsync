@@ -17,7 +17,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 
-enum _SettingsPane { storage, editor, weekly, sync, shortcuts }
+enum _SettingsPane { storage, editor, weekly, monthly, sync, shortcuts }
 
 /// Outcome of a Claude Code CLI availability probe shown in the Weekly pane.
 enum _ClaudeProbe { idle, checking, available, unavailable }
@@ -70,6 +70,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final TextEditingController _connectController = TextEditingController();
   final TextEditingController _createController = TextEditingController();
   late final TextEditingController _weeklyInstructionController;
+  late final TextEditingController _monthlyInstructionController;
   late final TextEditingController _claudeCliPathController;
   late final TextEditingController _apiKeyController;
   late final TextEditingController _modelController;
@@ -89,6 +90,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final settings = widget.settingsController.value;
     _weeklyInstructionController =
         TextEditingController(text: settings.weeklyInstruction);
+    _monthlyInstructionController =
+        TextEditingController(text: settings.monthlyInstruction);
     _claudeCliPathController =
         TextEditingController(text: settings.claudeCliPath);
     _apiKeyController = TextEditingController(text: settings.anthropicApiKey);
@@ -101,6 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _connectController.dispose();
     _createController.dispose();
     _weeklyInstructionController.dispose();
+    _monthlyInstructionController.dispose();
     _claudeCliPathController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
@@ -334,6 +338,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: AppDimensions.spacingSm),
                   _NavigationItem(
+                    selectionKey: 'monthly',
+                    label: 'Monthly',
+                    description: 'Monthly synthesis instruction',
+                    icon: Icons.calendar_month_rounded,
+                    isSelected: _selectedPane == _SettingsPane.monthly,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.monthly),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
                     selectionKey: 'sync',
                     label: 'Sync',
                     description: 'Polling and cadence',
@@ -399,11 +413,62 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildEditorPane(c, settings);
       case _SettingsPane.weekly:
         return _buildWeeklyPane(c, settings);
+      case _SettingsPane.monthly:
+        return _buildMonthlyPane(c, settings);
       case _SettingsPane.sync:
         return _buildSyncPane(c, settings);
       case _SettingsPane.shortcuts:
         return _buildShortcutsPane(c);
     }
+  }
+
+  Widget _buildMonthlyPane(AppColorsExtension c, AppSettings settings) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.monthly),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Monthly summary',
+            description:
+                '캘린더 아래 Monthly 버튼을 누르면 이번 달을 주별로 분석한 뒤 아래 '
+                '지침대로 종합합니다. 해당 주에 위클리 리뷰가 있으면 활용하고, 없으면 '
+                '그 주 노트로 요약을 생성합니다. 연동 방식(API/CLI)은 Weekly 설정을 '
+                '공유합니다.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: '먼슬리 지침',
+            description:
+                '월별 종합 생성 시 모델에 전달되는 지침입니다. 그 달의 주간 리뷰들이 '
+                '컨텍스트로 함께 전달됩니다.',
+            action: _ActionButton(
+              label: 'Reset',
+              onTap: () {
+                _monthlyInstructionController.text =
+                    AppSettings.defaultMonthlyInstruction;
+                widget.settingsController.setMonthlyInstruction(
+                  AppSettings.defaultMonthlyInstruction,
+                );
+              },
+            ),
+            child: TextField(
+              controller: _monthlyInstructionController,
+              minLines: 3,
+              maxLines: 8,
+              style: AppTextStyles.caption
+                  .copyWith(color: c.textPrimary, height: 1.5),
+              decoration: const InputDecoration(
+                hintText: '이번 달의 성과와 다음 달 목표를 정리해 주세요...',
+              ),
+              onChanged: (value) =>
+                  widget.settingsController.setMonthlyInstruction(value),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildWeeklyPane(AppColorsExtension c, AppSettings settings) {

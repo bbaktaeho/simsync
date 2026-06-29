@@ -51,6 +51,7 @@ void main() {
       expect(navBackground('Sync'), Colors.transparent);
 
       // Click Sync, then advance only a single mid-animation frame.
+      await tester.ensureVisible(find.text('Sync'));
       await tester.tap(find.text('Sync'));
       await tester.pump(const Duration(milliseconds: 16));
 

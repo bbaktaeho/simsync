@@ -75,10 +75,13 @@ class WeeklyViewPanel extends StatelessWidget {
         vertical: AppDimensions.spacingLg,
       ),
       children: [
-        _WeeklySummarySection(
-          claudeEnabled: claudeEnabled,
+        _ReviewSummarySection(
+          enabled: claudeEnabled,
           controller: reviewController,
-          weekStart: weekStart,
+          entryOf: () => reviewController.weekly(weekStart),
+          title: 'Weekly Summary',
+          emptyHint: 'Generate를 눌러 이번 주 노트를 지침대로 요약하세요.',
+          generatingLabel: 'Claude Code가 이번 주를 정리하는 중...',
           onGenerate: onGenerate,
           onOpenSettings: onOpenSettings,
         ),
@@ -178,26 +181,35 @@ class WeeklyViewPanel extends StatelessWidget {
 /// background via [ReviewController], so it survives this panel being closed or
 /// another note being opened. The card reflects the controller's state for
 /// [weekStart]; the result is persisted separately from the original notes.
-class _WeeklySummarySection extends StatefulWidget {
-  const _WeeklySummarySection({
-    required this.claudeEnabled,
+class _ReviewSummarySection extends StatefulWidget {
+  const _ReviewSummarySection({
+    required this.enabled,
     required this.controller,
-    required this.weekStart,
+    required this.entryOf,
+    required this.title,
+    required this.emptyHint,
+    required this.generatingLabel,
     required this.onGenerate,
     required this.onOpenSettings,
   });
 
-  final bool claudeEnabled;
+  final bool enabled;
   final ReviewController controller;
-  final DateTime weekStart;
+
+  /// Reads the relevant entry from [controller] (weekly(weekStart) or
+  /// monthly(month)) — kept as a callback so this widget is period-agnostic.
+  final ReviewEntry Function() entryOf;
+  final String title;
+  final String emptyHint;
+  final String generatingLabel;
   final VoidCallback? onGenerate;
   final VoidCallback? onOpenSettings;
 
   @override
-  State<_WeeklySummarySection> createState() => _WeeklySummarySectionState();
+  State<_ReviewSummarySection> createState() => _ReviewSummarySectionState();
 }
 
-class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
+class _ReviewSummarySectionState extends State<_ReviewSummarySection> {
   late final TapGestureRecognizer _settingsTapRecognizer;
 
   @override
@@ -215,14 +227,14 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final canGenerate = widget.claudeEnabled && widget.onGenerate != null;
+    final canGenerate = widget.enabled && widget.onGenerate != null;
 
     // Subscribe to the controller so the card updates as the background
     // generation progresses — even if it started before this panel was built.
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
-        final entry = widget.controller.weekly(widget.weekStart);
+        final entry = widget.entryOf();
         return Container(
           decoration: BoxDecoration(
             color: c.surfaceLight,
@@ -239,7 +251,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
                   Icon(Icons.auto_awesome_rounded, size: 16, color: c.accent),
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
-                    'Weekly Summary',
+                    widget.title,
                     style: Theme.of(context).textTheme.titleSmall!.copyWith(
                           fontWeight: FontWeight.w600,
                           color: c.textPrimary,
@@ -264,7 +276,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
   }
 
   Widget _buildContent(AppColorsExtension c, ReviewEntry entry) {
-    if (!widget.claudeEnabled) {
+    if (!widget.enabled) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -304,7 +316,7 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
           ),
           const SizedBox(width: AppDimensions.spacingMd),
           Text(
-            'Claude Code가 이번 주를 정리하는 중...',
+            widget.generatingLabel,
             style: AppTextStyles.caption.copyWith(color: c.textSecondary),
           ),
         ],
@@ -363,8 +375,148 @@ class _WeeklySummarySectionState extends State<_WeeklySummarySection> {
     }
 
     return Text(
-      'Generate를 눌러 이번 주 노트를 지침대로 요약하세요.',
+      widget.emptyHint,
       style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
+    );
+  }
+}
+
+/// Displays a month's notes (grouped by date) with an optional monthly AI
+/// summary at the top. Mirrors [WeeklyViewPanel] but for a calendar month, and
+/// shares the journal + summary widgets.
+class MonthlyViewPanel extends StatelessWidget {
+  final DateTime month; // any day within the month
+  final List<Note> monthNotes;
+  final ValueChanged<Note>? onNoteTap;
+  final bool claudeEnabled;
+  final ReviewController reviewController;
+  final VoidCallback? onGenerate;
+  final VoidCallback? onOpenSettings;
+
+  const MonthlyViewPanel({
+    super.key,
+    required this.month,
+    required this.monthNotes,
+    required this.reviewController,
+    this.onNoteTap,
+    this.claudeEnabled = false,
+    this.onGenerate,
+    this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      children: [
+        _buildHeader(context, c),
+        Divider(height: 1, color: c.border),
+        Expanded(child: _buildBody(context, c)),
+      ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context, AppColorsExtension c) {
+    final grouped = <DateTime, List<Note>>{};
+    for (final note in monthNotes) {
+      final dateKey =
+          DateTime(note.noteDate.year, note.noteDate.month, note.noteDate.day);
+      grouped.putIfAbsent(dateKey, () => []).add(note);
+    }
+    final sortedDates = grouped.keys.toList()..sort();
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingXl,
+        vertical: AppDimensions.spacingLg,
+      ),
+      children: [
+        _ReviewSummarySection(
+          enabled: claudeEnabled,
+          controller: reviewController,
+          entryOf: () => reviewController.monthly(month),
+          title: 'Monthly Summary',
+          emptyHint: 'Generate를 눌러 이번 달을 주별로 분석해 종합하세요.',
+          generatingLabel: 'Claude Code가 이번 달을 정리하는 중...',
+          onGenerate: onGenerate,
+          onOpenSettings: onOpenSettings,
+        ),
+        const SizedBox(height: AppDimensions.spacingXl),
+        if (monthNotes.isEmpty)
+          _buildInlineEmptyState(context, c)
+        else
+          for (var i = 0; i < sortedDates.length; i++)
+            _DateGroup(
+              date: sortedDates[i],
+              notes: grouped[sortedDates[i]]!,
+              isLast: i == sortedDates.length - 1,
+              onNoteTap: onNoteTap,
+            ),
+      ],
+    );
+  }
+
+  Widget _buildInlineEmptyState(BuildContext context, AppColorsExtension c) {
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimensions.spacingXl),
+      child: Column(
+        children: [
+          Icon(Icons.calendar_month_rounded, size: 40, color: c.textMuted),
+          const SizedBox(height: AppDimensions.spacingMd),
+          Text(
+            'No notes this month',
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                  fontWeight: FontWeight.w500,
+                  color: c.textMuted,
+                ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
+          Text(
+            'Select a date and start writing',
+            style: AppTextStyles.caption.copyWith(color: c.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, AppColorsExtension c) {
+    final monthStr = DateFormat('MMMM yyyy').format(month);
+    final noteCount = monthNotes.length;
+
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingLg),
+      color: c.surface,
+      child: Row(
+        children: [
+          Icon(Icons.calendar_month_rounded, size: 16, color: c.accent),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Text(
+            'Monthly View',
+            style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                fontWeight: FontWeight.w600, color: c.textPrimary),
+          ),
+          const SizedBox(width: AppDimensions.spacingMd),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spacingSm, vertical: 2),
+            decoration: BoxDecoration(
+              color: c.accentSubtle,
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            ),
+            child: Text(
+              monthStr,
+              style: AppTextStyles.microMedium.copyWith(color: c.accent),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '$noteCount note${noteCount != 1 ? 's' : ''}',
+            style: AppTextStyles.micro.copyWith(color: c.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }

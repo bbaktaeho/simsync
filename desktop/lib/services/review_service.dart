@@ -1,7 +1,7 @@
 import '../storage/note_storage.dart';
 import 'review_paths.dart';
 
-/// Persists and loads AI review markdown files.
+/// Persists and loads AI review markdown files (weekly + monthly).
 ///
 /// Reviews are plain markdown (no frontmatter) written to review paths under
 /// `notes/` (see [review_paths]); they are kept out of the note list by the
@@ -16,22 +16,16 @@ class ReviewService {
   /// Optional local mirror written alongside the synced store.
   final NoteStorage? localStorage;
 
-  /// Saves the weekly review for the week beginning [weekStart] (a Monday).
-  ///
   /// Writes the local mirror first (fast, offline-safe) then the synced store,
   /// so a synced-write failure still leaves the review recoverable locally.
-  Future<void> saveWeekly(DateTime weekStart, String content) async {
-    final path = weeklyReviewPath(weekStart);
+  Future<void> _save(String path, String content) async {
     await localStorage?.writeTextFile(path, content);
     await storage.writeTextFile(path, content);
   }
 
-  /// Loads the saved weekly review for [weekStart], or null if none exists.
-  ///
   /// Prefers the synced store (multi-device source of truth); falls back to the
   /// local mirror if the synced read is empty or fails (offline/permission).
-  Future<String?> loadWeekly(DateTime weekStart) async {
-    final path = weeklyReviewPath(weekStart);
+  Future<String?> _load(String path) async {
     try {
       final remote = await storage.readTextFile(path);
       if (remote != null) return remote;
@@ -40,4 +34,18 @@ class ReviewService {
     }
     return localStorage?.readTextFile(path);
   }
+
+  /// Weekly review for the week beginning [weekStart] (a Monday).
+  Future<void> saveWeekly(DateTime weekStart, String content) =>
+      _save(weeklyReviewPath(weekStart), content);
+
+  Future<String?> loadWeekly(DateTime weekStart) =>
+      _load(weeklyReviewPath(weekStart));
+
+  /// Monthly review for [month] (only year+month are used).
+  Future<void> saveMonthly(DateTime month, String content) =>
+      _save(monthlyReviewPath(month), content);
+
+  Future<String?> loadMonthly(DateTime month) =>
+      _load(monthlyReviewPath(month));
 }

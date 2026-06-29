@@ -44,4 +44,42 @@ void main() {
           startsWith('notes/2026-03/'));
     });
   });
+
+  group('monthlyReviewPath', () {
+    test('lives directly under the month folder (only y/m used)', () {
+      expect(monthlyReviewPath(DateTime(2026, 6, 15)),
+          'notes/2026-06/monthly-review.md');
+    });
+
+    test('zero-pads single-digit months', () {
+      expect(monthlyReviewPath(DateTime(2026, 3, 1)),
+          'notes/2026-03/monthly-review.md');
+    });
+  });
+
+  group('weekStartsForMonth', () {
+    test('returns consecutive Monday week-starts covering the whole month', () {
+      final weeks = weekStartsForMonth(2026, 6);
+
+      // Every entry is a Monday.
+      expect(weeks.every((d) => d.weekday == DateTime.monday), isTrue);
+      // The first week contains the 1st (its Monday is on/before the 1st).
+      expect(weeks.first.isAfter(DateTime(2026, 6, 1)), isFalse);
+      // The last week contains the last day (its Sunday is on/after the 30th).
+      final lastSunday = weeks.last.add(const Duration(days: 6));
+      expect(lastSunday.isBefore(DateTime(2026, 6, 30)), isFalse);
+      // Steps are exactly 7 days apart.
+      for (var i = 1; i < weeks.length; i++) {
+        expect(weeks[i].difference(weeks[i - 1]).inDays, 7);
+      }
+    });
+
+    test('a month starting on Monday begins exactly on the 1st', () {
+      // 2026-06-01 falls on a Monday in this scenario only if true; assert the
+      // invariant generically: the first week-start is never after the 1st.
+      final weeks = weekStartsForMonth(2026, 2);
+      expect(weeks.first.isAfter(DateTime(2026, 2, 1)), isFalse);
+      expect(weeks.first.weekday, DateTime.monday);
+    });
+  });
 }

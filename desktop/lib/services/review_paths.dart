@@ -21,3 +21,28 @@ String weekLabel(DateTime weekStart) => '${weekOfMonth(weekStart)}주차';
 /// [weekStart] (Monday).
 String weeklyReviewPath(DateTime weekStart) =>
     'notes/${_ym(weekStart)}/${weekLabel(weekStart)}/weekly-review.md';
+
+/// Repo/basePath-relative path of the monthly review for [month]. Lives directly
+/// under the month folder (a non-day, non-week location) so it stays out of the
+/// note list. Only year+month are used.
+String monthlyReviewPath(DateTime month) =>
+    'notes/${_ym(month)}/monthly-review.md';
+
+/// All Monday week-starts whose week overlaps [year]-[month] — from the Monday
+/// of the 1st through the Monday of the last day. Splits a month into the weeks
+/// a monthly review is built from (each week may already have a saved weekly
+/// review, or is summarized on demand). Weeks at the month boundary are
+/// included so no day of the month is dropped.
+List<DateTime> weekStartsForMonth(int year, int month) {
+  DateTime mondayOf(DateTime d) =>
+      DateTime(d.year, d.month, d.day - (d.weekday - 1));
+  final firstWeek = mondayOf(DateTime(year, month, 1));
+  final lastWeek = mondayOf(DateTime(year, month + 1, 0));
+  final weeks = <DateTime>[];
+  for (var w = firstWeek;
+      !w.isAfter(lastWeek);
+      w = w.add(const Duration(days: 7))) {
+    weeks.add(w);
+  }
+  return weeks;
+}
