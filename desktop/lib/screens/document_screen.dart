@@ -774,15 +774,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
   /// the API a low reasoning effort is requested when the model supports it
   /// (Haiku does not). Independent of widget state — safe to keep running in the
   /// background after the panel is closed.
+  ///
+  /// When [cliUseDefaultModel] is true and the CLI provider is active, no
+  /// `--model` is passed so the CLI runs on whatever its subscription provides.
+  /// Stage 2 uses this: the user's API model id may not exist on the Claude Code
+  /// subscription, which otherwise fails the run — letting the CLI pick its own
+  /// model just works (like stage 1).
   Future<String> _runSummary(
       AppSettings settings, String instruction, String context,
-      {required String model}) {
+      {required String model, bool cliUseDefaultModel = false}) {
     if (settings.weeklyProvider == AppSettings.providerCli) {
       return _claudeService.summarizeWeek(
         instruction: instruction,
         notesContext: context,
         cliPath: settings.claudeCliPath,
-        model: _cliModelAlias(model),
+        model: cliUseDefaultModel ? null : _cliModelAlias(model),
       );
     }
     return _anthropicService.summarizeWeek(
@@ -791,6 +797,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
       notesContext: context,
       model: model,
       effort: model.contains('haiku') ? null : 'low',
+      onModelFallback: _onModelFallback,
+    );
+  }
+
+  /// Tells the user once when a configured model was unavailable and the review
+  /// was generated on the default model instead. Background-safe (guards mount).
+  void _onModelFallback(String requested, String used) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("AI 모델 '$requested'을(를) 사용할 수 없어 기본 모델 '$used'로 생성했습니다."),
+      ),
     );
   }
 
@@ -830,7 +848,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     unawaited(_reviewController.generateWeeklyReview(
       weekStart,
       generate: () => _runSummary(settings, settings.weeklyInstruction, checked,
-          model: settings.anthropicModel),
+          model: settings.anthropicModel, cliUseDefaultModel: true),
       persist: (content) => _reviewService.saveWeekly(weekStart, content),
     ));
   }
@@ -841,6 +859,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final outline = _reviewController.weekly(weekStart).outline.content;
     if (outline == null) return;
     final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setWeeklyOutlineContent(weekStart, updated);
+    unawaited(_reviewService.saveWeeklyOutline(weekStart, updated));
+  }
+
+  /// Checks or clears every stage-1 weekly checkbox at once and persists it.
+  void _onToggleAllWeeklyOutlineItems(bool checked) {
+    final weekStart = _weekStart;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final updated = setAllOutlineItems(outline, checked);
     _reviewController.setWeeklyOutlineContent(weekStart, updated);
     unawaited(_reviewService.saveWeeklyOutline(weekStart, updated));
   }
@@ -923,7 +951,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     unawaited(_reviewController.generateMonthlyReview(
       month,
       generate: () => _runSummary(settings, settings.monthlyInstruction, checked,
-          model: settings.anthropicModel),
+          model: settings.anthropicModel, cliUseDefaultModel: true),
       persist: (content) => _reviewService.saveMonthly(month, content),
     ));
   }
@@ -934,6 +962,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final outline = _reviewController.monthly(month).outline.content;
     if (outline == null) return;
     final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setMonthlyOutlineContent(month, updated);
+    unawaited(_reviewService.saveMonthlyOutline(month, updated));
+  }
+
+  /// Checks or clears every stage-1 monthly checkbox at once and persists it.
+  void _onToggleAllMonthlyOutlineItems(bool checked) {
+    final month = _monthStart;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final updated = setAllOutlineItems(outline, checked);
     _reviewController.setMonthlyOutlineContent(month, updated);
     unawaited(_reviewService.saveMonthlyOutline(month, updated));
   }
@@ -1276,6 +1314,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         onGenerateOutline: _onGenerateWeeklyOutline,
         onGenerateReview: _onGenerateWeeklyReview,
         onToggleOutlineItem: _onToggleWeeklyOutlineItem,
+        onToggleAllOutlineItems: _onToggleAllWeeklyOutlineItems,
         onOpenSettings: () => unawaited(_openSettings()),
       );
     }
@@ -1290,6 +1329,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         onGenerateOutline: _onGenerateMonthlyOutline,
         onGenerateReview: _onGenerateMonthlyReview,
         onToggleOutlineItem: _onToggleMonthlyOutlineItem,
+        onToggleAllOutlineItems: _onToggleAllMonthlyOutlineItems,
         onOpenSettings: () => unawaited(_openSettings()),
       );
     }

@@ -183,6 +183,118 @@ void main() {
         throwsA(isA<AnthropicApiException>()),
       );
     });
+
+    test('retries with the default model when the configured model is unknown',
+        () async {
+      final models = <String>[];
+      final service = AnthropicApiService(
+        client: MockClient((request) async {
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          models.add(body['model'] as String);
+          if (models.length == 1) {
+            return http.Response(
+              jsonEncode({
+                'type': 'error',
+                'error': {
+                  'type': 'not_found_error',
+                  'message': 'model: bogus-model',
+                },
+              }),
+              404,
+            );
+          }
+          return _msg('ok after fallback');
+        }),
+      );
+
+      final fallbacks = <List<String>>[];
+      final result = await service.summarizeWeek(
+        apiKey: 'sk-ant',
+        instruction: 'go',
+        notesContext: 'notes',
+        model: 'bogus-model',
+        onModelFallback: (requested, used) => fallbacks.add([requested, used]),
+      );
+
+      expect(result, 'ok after fallback');
+      // First the configured (bad) model, then the default fallback.
+      expect(models, ['bogus-model', AnthropicApiService.defaultModel]);
+      // The caller is told exactly once which model was swapped in.
+      expect(fallbacks, [
+        ['bogus-model', AnthropicApiService.defaultModel]
+      ]);
+    });
+
+    test('does not fire onModelFallback when the first attempt succeeds',
+        () async {
+      var fallbackCalls = 0;
+      final service = AnthropicApiService(
+        client: MockClient((request) async => _msg('ok')),
+      );
+
+      await service.summarizeWeek(
+        apiKey: 'sk-ant',
+        instruction: 'go',
+        notesContext: 'notes',
+        model: 'claude-opus-4-8',
+        onModelFallback: (_, _) => fallbackCalls++,
+      );
+
+      expect(fallbackCalls, 0);
+    });
+
+    test('does not retry when the unknown model is already the default',
+        () async {
+      var calls = 0;
+      final service = AnthropicApiService(
+        client: MockClient((request) async {
+          calls++;
+          return http.Response(
+            jsonEncode({
+              'error': {'type': 'not_found_error', 'message': 'model: x'},
+            }),
+            404,
+          );
+        }),
+      );
+
+      await expectLater(
+        service.summarizeWeek(
+          apiKey: 'sk-ant',
+          instruction: 'go',
+          notesContext: 'notes',
+          model: AnthropicApiService.defaultModel,
+        ),
+        throwsA(isA<AnthropicApiException>()),
+      );
+      expect(calls, 1); // no fallback loop
+    });
+
+    test('a non-model error (401) is not retried', () async {
+      var calls = 0;
+      final service = AnthropicApiService(
+        client: MockClient((request) async {
+          calls++;
+          return http.Response(
+            jsonEncode({
+              'error': {'type': 'authentication_error', 'message': 'bad key'},
+            }),
+            401,
+          );
+        }),
+      );
+
+      await expectLater(
+        service.summarizeWeek(
+          apiKey: 'sk-ant',
+          instruction: 'x',
+          notesContext: 'y',
+          model: 'claude-opus-4-8',
+        ),
+        throwsA(isA<AnthropicApiException>()),
+      );
+      expect(calls, 1);
+    });
   });
 
   group('AnthropicApiService.validateKey', () {

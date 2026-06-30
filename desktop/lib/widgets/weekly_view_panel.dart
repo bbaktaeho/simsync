@@ -34,6 +34,9 @@ class WeeklyViewPanel extends StatelessWidget {
   /// Toggles the stage-1 checkbox on the given line index.
   final ValueChanged<int>? onToggleOutlineItem;
 
+  /// Checks (true) or clears (false) every stage-1 checkbox at once.
+  final ValueChanged<bool>? onToggleAllOutlineItems;
+
   /// Opens settings so the user can enable / configure the AI provider.
   final VoidCallback? onOpenSettings;
 
@@ -47,6 +50,7 @@ class WeeklyViewPanel extends StatelessWidget {
     this.onGenerateOutline,
     this.onGenerateReview,
     this.onToggleOutlineItem,
+    this.onToggleAllOutlineItems,
     this.onOpenSettings,
   });
 
@@ -93,6 +97,7 @@ class WeeklyViewPanel extends StatelessWidget {
           onGenerateOutline: onGenerateOutline,
           onGenerateReview: onGenerateReview,
           onToggleItem: onToggleOutlineItem,
+          onToggleAll: onToggleAllOutlineItems,
           onOpenSettings: onOpenSettings,
         ),
         const SizedBox(height: AppDimensions.spacingXl),
@@ -203,6 +208,7 @@ class _TwoStageReviewSection extends StatefulWidget {
     required this.onGenerateOutline,
     required this.onGenerateReview,
     required this.onToggleItem,
+    required this.onToggleAll,
     required this.onOpenSettings,
   });
 
@@ -218,6 +224,7 @@ class _TwoStageReviewSection extends StatefulWidget {
   final VoidCallback? onGenerateOutline;
   final VoidCallback? onGenerateReview;
   final ValueChanged<int>? onToggleItem;
+  final ValueChanged<bool>? onToggleAll;
   final VoidCallback? onOpenSettings;
 
   @override
@@ -361,6 +368,7 @@ class _TwoStageReviewSectionState extends State<_TwoStageReviewSection> {
           return _OutlineChecklist(
             outline: content,
             onToggle: widget.onToggleItem,
+            onToggleAll: widget.onToggleAll,
           );
         }
         return _hint(c, '핵심 항목이 없습니다. 다시 생성해 보세요.');
@@ -482,10 +490,17 @@ class _StageCard extends StatelessWidget {
 /// Interactive checkbox list rendered from a stage-1 outline. Tapping a row
 /// toggles that item via [onToggle] (by its source line index).
 class _OutlineChecklist extends StatelessWidget {
-  const _OutlineChecklist({required this.outline, required this.onToggle});
+  const _OutlineChecklist({
+    required this.outline,
+    required this.onToggle,
+    this.onToggleAll,
+  });
 
   final String outline;
   final ValueChanged<int>? onToggle;
+
+  /// Checks (true) or clears (false) every item at once. Null hides the control.
+  final ValueChanged<bool>? onToggleAll;
 
   @override
   Widget build(BuildContext context) {
@@ -496,9 +511,24 @@ class _OutlineChecklist extends StatelessWidget {
       return _ReviewMarkdown(content: outline);
     }
     final checkedCount = items.where((it) => it.checked).length;
+    final allChecked = checkedCount == items.length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Master "select all" row, sitting above and column-aligned with the
+        // item checkboxes (left). Tri-state box: empty / dash (some) / check.
+        if (onToggleAll != null) ...[
+          _SelectAllRow(
+            allChecked: allChecked,
+            someChecked: checkedCount > 0 && !allChecked,
+            onToggle: () => onToggleAll!(!allChecked),
+          ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: AppDimensions.spacingXs),
+            color: c.borderSubtle,
+          ),
+        ],
         for (final item in items)
           _ChecklistRow(item: item, onToggle: onToggle),
         const SizedBox(height: AppDimensions.spacingSm),
@@ -507,6 +537,61 @@ class _OutlineChecklist extends StatelessWidget {
           style: AppTextStyles.micro.copyWith(color: c.textMuted),
         ),
       ],
+    );
+  }
+}
+
+/// Master checkbox row that selects / clears every item at once. Mirrors
+/// [_ChecklistRow]'s box so it lines up with the item checkbox column, and
+/// shows an indeterminate dash when only some items are checked.
+class _SelectAllRow extends StatelessWidget {
+  const _SelectAllRow({
+    required this.allChecked,
+    required this.someChecked,
+    required this.onToggle,
+  });
+
+  final bool allChecked;
+  final bool someChecked;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final active = allChecked || someChecked;
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+        child: Row(
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: active ? c.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: active ? c.accent : c.borderSubtle,
+                  width: 1.5,
+                ),
+              ),
+              child: allChecked
+                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  : someChecked
+                      ? const Icon(Icons.remove_rounded,
+                          size: 12, color: Colors.white)
+                      : null,
+            ),
+            const SizedBox(width: AppDimensions.spacingSm),
+            Text(
+              allChecked ? '전체 해제' : '전체 선택',
+              style: AppTextStyles.captionBold.copyWith(color: c.textSecondary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -668,6 +753,7 @@ class MonthlyViewPanel extends StatelessWidget {
   final VoidCallback? onGenerateOutline;
   final VoidCallback? onGenerateReview;
   final ValueChanged<int>? onToggleOutlineItem;
+  final ValueChanged<bool>? onToggleAllOutlineItems;
   final VoidCallback? onOpenSettings;
 
   const MonthlyViewPanel({
@@ -680,6 +766,7 @@ class MonthlyViewPanel extends StatelessWidget {
     this.onGenerateOutline,
     this.onGenerateReview,
     this.onToggleOutlineItem,
+    this.onToggleAllOutlineItems,
     this.onOpenSettings,
   });
 
@@ -720,6 +807,7 @@ class MonthlyViewPanel extends StatelessWidget {
           onGenerateOutline: onGenerateOutline,
           onGenerateReview: onGenerateReview,
           onToggleItem: onToggleOutlineItem,
+          onToggleAll: onToggleAllOutlineItems,
           onOpenSettings: onOpenSettings,
         ),
         const SizedBox(height: AppDimensions.spacingXl),

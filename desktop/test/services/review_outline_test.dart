@@ -50,6 +50,41 @@ void main() {
     });
   });
 
+  group('setAllOutlineItems', () {
+    test('checks every checkbox, leaving prose untouched', () {
+      final lines = setAllOutlineItems(sample, true).split('\n');
+      expect(lines[0], '- [x] 첫째 — 요약 A');
+      expect(lines[1], '- [x] 둘째 — 요약 B');
+      expect(lines[2], '잡담 줄 (체크박스 아님)'); // unchanged
+      expect(lines[3], '* [x] 셋째 — 요약 C');
+    });
+
+    test('clears every checkbox', () {
+      final out = setAllOutlineItems(sample, false);
+      final lines = out.split('\n');
+      expect(lines[0], '- [ ] 첫째 — 요약 A');
+      expect(lines[1], '- [ ] 둘째 — 요약 B');
+      expect(lines[3], '* [ ] 셋째 — 요약 C');
+      expect(hasCheckedItems(out), isFalse);
+    });
+
+    test('no-checkbox input is returned unchanged', () {
+      expect(setAllOutlineItems('# 제목\n그냥 글', true), '# 제목\n그냥 글');
+    });
+  });
+
+  group('allItemsChecked', () {
+    test('true only when every item is checked', () {
+      expect(allItemsChecked(sample), isFalse); // 첫째 is unchecked
+      expect(allItemsChecked(setAllOutlineItems(sample, true)), isTrue);
+    });
+
+    test('false when there are no items', () {
+      expect(allItemsChecked(''), isFalse);
+      expect(allItemsChecked('# 제목'), isFalse);
+    });
+  });
+
   group('hasCheckedItems / checkedItemsText', () {
     test('hasCheckedItems reflects whether any box is checked', () {
       expect(hasCheckedItems(sample), isTrue);
