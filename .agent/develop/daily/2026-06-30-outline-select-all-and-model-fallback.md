@@ -17,7 +17,7 @@ created: 2026-06-30
 - 구현:
   - `services/review_outline.dart`: 순수 헬퍼 `setAllOutlineItems(outline, checked)`(모든 체크박스 라인 set, prose는 보존), `allItemsChecked(outline)` 추가. 기존 `toggleOutlineItem` 패턴과 동일.
   - `screens/document_screen.dart`: `_onToggleAllWeeklyOutlineItems(bool)`, `_onToggleAllMonthlyOutlineItems(bool)` 추가 — 단일 toggle 핸들러와 같은 영속화 경로(`setXxxOutlineContent` + `saveXxxOutline`)를 사용.
-  - `widgets/weekly_view_panel.dart`: `WeeklyViewPanel`/`MonthlyViewPanel` → `_TwoStageReviewSection` → `_OutlineChecklist`로 `onToggleAll` 콜백을 연결. 체크리스트 우상단에 "전체 선택"/"전체 해제" 인라인 링크(accent) 추가. 모두 체크되어 있으면 "전체 해제", 아니면 "전체 선택"으로 토글.
+  - `widgets/weekly_view_panel.dart`: `WeeklyViewPanel`/`MonthlyViewPanel` → `_TwoStageReviewSection` → `_OutlineChecklist`로 `onToggleAll` 콜백을 연결. 체크리스트 맨 위, 항목 체크박스 컬럼과 좌측 정렬되는 마스터 select-all 행(`_SelectAllRow`) 추가. 항목 박스와 동일한 16px 박스에 tri-state(none=빈칸 / some=대시 / all=체크)를 표시하고 아래에 subtle divider로 구분. 모두 체크면 "전체 해제", 아니면 "전체 선택". (초기엔 우상단 인라인 링크였으나 UI/UX상 좌측 마스터 체크박스가 더 자연스러워 이동)
 - 결정: dead-end를 막기 위해 단순 체크-only가 아니라 전체 선택 ↔ 전체 해제 토글로 구현(단일 컨트롤). 개별 항목 toggle은 그대로 유지.
 - 테스트: `test/services/review_outline_test.dart`에 `setAllOutlineItems`/`allItemsChecked` 케이스 추가.
 
@@ -28,7 +28,8 @@ created: 2026-06-30
   - `AnthropicApiException`에 `modelUnavailable` 플래그 추가.
   - 요청 로직을 `_generate(...)`로 분리하고, `_isModelError(response)`로 모델 미존재 오류(404/`not_found_error`/메시지에 "model")를 식별.
   - `summarizeWeek`는 설정 모델로 먼저 시도하고, 모델 미존재 오류이면서 시도 모델이 default가 아닐 때만 default 모델로 1회 폴백. 유효한 모델은 그대로 존중(고정 모델 강제 아님), 무효일 때만 교체. 무한 재시도 없음.
-- 적용 범위: 위클리/먼슬리 stage-1·stage-2 모두 API provider 경로에서 자동 적용. CLI provider는 별도 변경 없음(빈 모델은 `--model` 생략).
+- 적용 범위: 위클리/먼슬리 stage-1·stage-2 모두 API provider 경로에서 자동 적용.
+- CLI provider(Claude Code) 추가 수정: stage-2가 사용자 설정 모델(`anthropicModel`)을 `--model`로 강제하면 구독에 없는 모델일 때 ClaudeCodeException으로 실패. stage-2 호출에 `cliUseDefaultModel: true`를 추가해 CLI 경로에서는 `--model`을 생략하고 CLI 기본 모델로 실행(stage-1처럼 그냥 동작). stage-1은 기존대로 haiku 유지. API 경로는 모델이 필수라 폴백 로직 유지.
 - 투명성: 폴백이 조용히 일어나는 문제를 보완하기 위해 `summarizeWeek`에 `onModelFallback(requested, used)` 콜백 추가. 폴백이 실제로 성공했을 때만 호출되며, `document_screen._onModelFallback`이 mounted 가드 후 SnackBar로 "AI 모델 'X'를 사용할 수 없어 기본 모델 'Y'로 생성했습니다"를 1회 노출. 첫 시도 성공 시에는 호출되지 않음.
 - 테스트: 무효 모델 → default 폴백 성공(+콜백 1회 호출) / 첫 시도 성공 시 콜백 미호출 / default가 무효일 때 재시도 안 함 / 비-모델 오류(401)는 재시도 안 함 케이스 추가.
 

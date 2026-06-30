@@ -132,6 +132,8 @@ void main() {
         onToggleAllOutlineItems: (v) => requested = v);
 
     expect(find.text('전체 선택'), findsOneWidget);
+    // Partial selection → the master box shows the indeterminate dash.
+    expect(find.byIcon(Icons.remove_rounded), findsOneWidget);
     await tester.tap(find.text('전체 선택'));
     await tester.pump();
 
@@ -151,6 +153,8 @@ void main() {
         onToggleAllOutlineItems: (v) => requested = v);
 
     expect(find.text('전체 해제'), findsOneWidget);
+    // Fully selected → no indeterminate dash on the master box.
+    expect(find.byIcon(Icons.remove_rounded), findsNothing);
     await tester.tap(find.text('전체 해제'));
     await tester.pump();
 

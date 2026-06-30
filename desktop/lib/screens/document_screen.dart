@@ -774,15 +774,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
   /// the API a low reasoning effort is requested when the model supports it
   /// (Haiku does not). Independent of widget state — safe to keep running in the
   /// background after the panel is closed.
+  ///
+  /// When [cliUseDefaultModel] is true and the CLI provider is active, no
+  /// `--model` is passed so the CLI runs on whatever its subscription provides.
+  /// Stage 2 uses this: the user's API model id may not exist on the Claude Code
+  /// subscription, which otherwise fails the run — letting the CLI pick its own
+  /// model just works (like stage 1).
   Future<String> _runSummary(
       AppSettings settings, String instruction, String context,
-      {required String model}) {
+      {required String model, bool cliUseDefaultModel = false}) {
     if (settings.weeklyProvider == AppSettings.providerCli) {
       return _claudeService.summarizeWeek(
         instruction: instruction,
         notesContext: context,
         cliPath: settings.claudeCliPath,
-        model: _cliModelAlias(model),
+        model: cliUseDefaultModel ? null : _cliModelAlias(model),
       );
     }
     return _anthropicService.summarizeWeek(
@@ -842,7 +848,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     unawaited(_reviewController.generateWeeklyReview(
       weekStart,
       generate: () => _runSummary(settings, settings.weeklyInstruction, checked,
-          model: settings.anthropicModel),
+          model: settings.anthropicModel, cliUseDefaultModel: true),
       persist: (content) => _reviewService.saveWeekly(weekStart, content),
     ));
   }
@@ -945,7 +951,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     unawaited(_reviewController.generateMonthlyReview(
       month,
       generate: () => _runSummary(settings, settings.monthlyInstruction, checked,
-          model: settings.anthropicModel),
+          model: settings.anthropicModel, cliUseDefaultModel: true),
       persist: (content) => _reviewService.saveMonthly(month, content),
     ));
   }

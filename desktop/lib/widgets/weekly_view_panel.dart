@@ -515,25 +515,20 @@ class _OutlineChecklist extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (onToggleAll != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: AppDimensions.spacingXs),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: InkWell(
-                onTap: () => onToggleAll!(!allChecked),
-                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
-                  child: Text(
-                    allChecked ? '전체 해제' : '전체 선택',
-                    style: AppTextStyles.captionBold.copyWith(color: c.accent),
-                  ),
-                ),
-              ),
-            ),
+        // Master "select all" row, sitting above and column-aligned with the
+        // item checkboxes (left). Tri-state box: empty / dash (some) / check.
+        if (onToggleAll != null) ...[
+          _SelectAllRow(
+            allChecked: allChecked,
+            someChecked: checkedCount > 0 && !allChecked,
+            onToggle: () => onToggleAll!(!allChecked),
           ),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: AppDimensions.spacingXs),
+            color: c.borderSubtle,
+          ),
+        ],
         for (final item in items)
           _ChecklistRow(item: item, onToggle: onToggle),
         const SizedBox(height: AppDimensions.spacingSm),
@@ -542,6 +537,61 @@ class _OutlineChecklist extends StatelessWidget {
           style: AppTextStyles.micro.copyWith(color: c.textMuted),
         ),
       ],
+    );
+  }
+}
+
+/// Master checkbox row that selects / clears every item at once. Mirrors
+/// [_ChecklistRow]'s box so it lines up with the item checkbox column, and
+/// shows an indeterminate dash when only some items are checked.
+class _SelectAllRow extends StatelessWidget {
+  const _SelectAllRow({
+    required this.allChecked,
+    required this.someChecked,
+    required this.onToggle,
+  });
+
+  final bool allChecked;
+  final bool someChecked;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final active = allChecked || someChecked;
+    return InkWell(
+      onTap: onToggle,
+      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+        child: Row(
+          children: [
+            Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: active ? c.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: active ? c.accent : c.borderSubtle,
+                  width: 1.5,
+                ),
+              ),
+              child: allChecked
+                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  : someChecked
+                      ? const Icon(Icons.remove_rounded,
+                          size: 12, color: Colors.white)
+                      : null,
+            ),
+            const SizedBox(width: AppDimensions.spacingSm),
+            Text(
+              allChecked ? '전체 해제' : '전체 선택',
+              style: AppTextStyles.captionBold.copyWith(color: c.textSecondary),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
