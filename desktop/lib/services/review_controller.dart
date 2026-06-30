@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 
-/// Lifecycle phase of a single review (weekly/monthly).
+/// Lifecycle phase of one stage of a review.
 enum ReviewPhase { idle, generating, done, error }
 
-/// Immutable snapshot of one review's state.
+/// Immutable state of a single stage (outline or review).
 @immutable
-class ReviewEntry {
-  const ReviewEntry(this.phase, {this.content, this.error});
-  const ReviewEntry.idle()
+class StageState {
+  const StageState(this.phase, {this.content, this.error});
+  const StageState.idle()
       : phase = ReviewPhase.idle,
         content = null,
         error = null;
@@ -17,51 +17,90 @@ class ReviewEntry {
   final String? error;
 }
 
-/// Owns AI review generation state OUTSIDE the view so it survives the weekly
-/// panel being closed or another note being opened — the generation keeps
-/// running in the background and its result is here when the view returns.
+/// Immutable snapshot of one period's two-stage review.
+///
+/// Stage 1 ([outline]) is a checkbox list of the period's key items, produced by
+/// the fixed system instruction; the user checks the items to keep. Stage 2
+/// ([review]) is the final write-up generated from the checked items by the
+/// user-editable instruction. Each stage can be (re)generated independently.
+@immutable
+class ReviewEntry {
+  const ReviewEntry({required this.outline, required this.review});
+  const ReviewEntry.idle()
+      : outline = const StageState.idle(),
+        review = const StageState.idle();
+
+  final StageState outline;
+  final StageState review;
+
+  ReviewEntry copyWith({StageState? outline, StageState? review}) => ReviewEntry(
+        outline: outline ?? this.outline,
+        review: review ?? this.review,
+      );
+}
+
+/// Owns two-stage AI review state OUTSIDE the view so generation survives the
+/// panel being closed or another note opened — it keeps running in the
+/// background and its result is here when the view returns.
 ///
 /// Held by a long-lived owner (the document screen state). Views subscribe and
-/// render [weekly]; the Generate action calls [generateWeekly].
+/// render [weekly]/[monthly]; the Generate actions call the generate* methods.
 class ReviewController extends ChangeNotifier {
   final Map<String, ReviewEntry> _weekly = {};
+  final Map<String, ReviewEntry> _monthly = {};
 
   static String _weekKey(DateTime weekStart) {
     final d = DateTime(weekStart.year, weekStart.month, weekStart.day);
     return 'w:${d.year}-${d.month}-${d.day}';
   }
 
-  /// Current state for the week beginning [weekStart] (idle if untouched).
+  static String _monthKey(DateTime month) => 'm:${month.year}-${month.month}';
+
+  /// Current two-stage state for the week beginning [weekStart] (idle if untouched).
   ReviewEntry weekly(DateTime weekStart) =>
       _weekly[_weekKey(weekStart)] ?? const ReviewEntry.idle();
 
-  /// Generates the weekly review in the background. [generate] produces the text
-  /// (e.g. Claude Code); [persist] saves it. No-op if a generation for this week
-  /// is already in flight. Survives view rebuilds/unmounts.
-  Future<void> generateWeekly(
-    DateTime weekStart, {
+  /// Current two-stage state for [month] (idle if untouched).
+  ReviewEntry monthly(DateTime month) =>
+      _monthly[_monthKey(month)] ?? const ReviewEntry.idle();
+
+  // ── Generation (background, survives view rebuilds/unmounts) ──
+
+  /// Generates one stage ([outline] true = stage 1, false = stage 2) in the
+  /// background. [generate] produces the text; [persist] saves it. No-op if that
+  /// stage is already in flight. A save failure never discards a generated
+  /// result — it stays shown and can be re-saved later.
+  Future<void> _generateStage(
+    Map<String, ReviewEntry> store,
+    String key, {
+    required bool outline,
     required Future<String> Function() generate,
     required Future<void> Function(String content) persist,
   }) async {
-    final key = _weekKey(weekStart);
-    if (_weekly[key]?.phase == ReviewPhase.generating) return;
-    _weekly[key] = const ReviewEntry(ReviewPhase.generating);
+    StageState stageOf(ReviewEntry e) => outline ? e.outline : e.review;
+    ReviewEntry withStage(ReviewEntry e, StageState s) =>
+        outline ? e.copyWith(outline: s) : e.copyWith(review: s);
+
+    final cur = store[key] ?? const ReviewEntry.idle();
+    if (stageOf(cur).phase == ReviewPhase.generating) return;
+    store[key] = withStage(cur, const StageState(ReviewPhase.generating));
     notifyListeners();
 
     final String text;
     try {
       text = await generate();
     } catch (e) {
-      _weekly[key] = ReviewEntry(ReviewPhase.error, error: e.toString());
+      final c = store[key] ?? const ReviewEntry.idle();
+      store[key] =
+          withStage(c, StageState(ReviewPhase.error, error: e.toString()));
       notifyListeners();
       return;
     }
 
-    _weekly[key] = ReviewEntry(ReviewPhase.done, content: text);
+    final c = store[key] ?? const ReviewEntry.idle();
+    store[key] = withStage(c, StageState(ReviewPhase.done, content: text));
     notifyListeners();
 
-    // Persist is best-effort: a save failure must not discard a generated
-    // review — it stays visible and can be regenerated / re-saved later.
     try {
       await persist(text);
     } catch (_) {
@@ -69,96 +108,93 @@ class ReviewController extends ChangeNotifier {
     }
   }
 
-  /// Seeds a previously-saved review for [weekStart] (or resets to idle when
-  /// [content] is null), without disturbing an in-flight generation.
-  void setLoadedWeekly(DateTime weekStart, String? content) {
-    final key = _weekKey(weekStart);
-    final phase = _weekly[key]?.phase;
-    // Never disturb an in-flight generation.
-    if (phase == ReviewPhase.generating) return;
-    // Don't clobber an already-shown result with an empty load — e.g. a freshly
-    // generated review whose save hasn't propagated to the read source yet.
-    if (content == null && phase == ReviewPhase.done) return;
-    _weekly[key] = content == null
-        ? const ReviewEntry.idle()
-        : ReviewEntry(ReviewPhase.done, content: content);
-    notifyListeners();
-  }
-
-  // ── Monthly ──
-
-  final Map<String, ReviewEntry> _monthly = {};
-
-  static String _monthKey(DateTime month) => 'm:${month.year}-${month.month}';
-
-  /// Current monthly state for [month] (idle if untouched).
-  ReviewEntry monthly(DateTime month) =>
-      _monthly[_monthKey(month)] ?? const ReviewEntry.idle();
-
-  /// Generates the monthly review in the background.
-  ///
-  /// For each week in [weekStarts], in parallel, it reuses a saved weekly review
-  /// ([loadWeekly]) or generates one ([generateWeekly]); the per-week reviews are
-  /// then combined by [synthesize] and saved via [persist]. A week that yields
-  /// nothing (no notes → [generateWeekly] throws) is skipped. No-op if a monthly
-  /// generation is already in flight; survives view rebuilds/unmounts.
-  Future<void> generateMonthly(
-    DateTime month, {
-    required List<DateTime> weekStarts,
-    required Future<String?> Function(DateTime weekStart) loadWeekly,
-    required Future<String> Function(DateTime weekStart) generateWeekly,
-    required Future<String> Function(List<String> weeklyReviews) synthesize,
+  /// Stage 1 (outline) for the week beginning [weekStart].
+  Future<void> generateWeeklyOutline(
+    DateTime weekStart, {
+    required Future<String> Function() generate,
     required Future<void> Function(String content) persist,
-  }) async {
-    final key = _monthKey(month);
-    if (_monthly[key]?.phase == ReviewPhase.generating) return;
-    _monthly[key] = const ReviewEntry(ReviewPhase.generating);
-    notifyListeners();
+  }) =>
+      _generateStage(_weekly, _weekKey(weekStart),
+          outline: true, generate: generate, persist: persist);
 
-    final String text;
-    try {
-      // Per week, in parallel: prefer the saved weekly review, else generate
-      // one. A week with no notes contributes an empty string and is dropped.
-      final perWeek = await Future.wait(weekStarts.map((w) async {
-        final existing = await loadWeekly(w);
-        if (existing != null && existing.trim().isNotEmpty) return existing;
-        try {
-          return await generateWeekly(w);
-        } catch (_) {
-          return '';
-        }
-      }));
-      final reviews = perWeek.where((r) => r.trim().isNotEmpty).toList();
-      if (reviews.isEmpty) {
-        throw Exception('이번 달에 요약할 노트가 없습니다.');
-      }
-      text = await synthesize(reviews);
-    } catch (e) {
-      _monthly[key] = ReviewEntry(ReviewPhase.error, error: e.toString());
-      notifyListeners();
-      return;
-    }
+  /// Stage 2 (review) for the week beginning [weekStart].
+  Future<void> generateWeeklyReview(
+    DateTime weekStart, {
+    required Future<String> Function() generate,
+    required Future<void> Function(String content) persist,
+  }) =>
+      _generateStage(_weekly, _weekKey(weekStart),
+          outline: false, generate: generate, persist: persist);
 
-    _monthly[key] = ReviewEntry(ReviewPhase.done, content: text);
-    notifyListeners();
-    try {
-      await persist(text);
-    } catch (_) {
-      // Swallow: the generated result remains shown.
-    }
-  }
+  /// Stage 1 (outline) for [month].
+  Future<void> generateMonthlyOutline(
+    DateTime month, {
+    required Future<String> Function() generate,
+    required Future<void> Function(String content) persist,
+  }) =>
+      _generateStage(_monthly, _monthKey(month),
+          outline: true, generate: generate, persist: persist);
 
-  /// Seeds a previously-saved monthly review for [month] (or resets to idle when
-  /// [content] is null), without disturbing an in-flight generation or clobbering
-  /// an already-shown result with an empty load.
-  void setLoadedMonthly(DateTime month, String? content) {
-    final key = _monthKey(month);
-    final phase = _monthly[key]?.phase;
-    if (phase == ReviewPhase.generating) return;
-    if (content == null && phase == ReviewPhase.done) return;
-    _monthly[key] = content == null
-        ? const ReviewEntry.idle()
-        : ReviewEntry(ReviewPhase.done, content: content);
+  /// Stage 2 (review) for [month].
+  Future<void> generateMonthlyReview(
+    DateTime month, {
+    required Future<String> Function() generate,
+    required Future<void> Function(String content) persist,
+  }) =>
+      _generateStage(_monthly, _monthKey(month),
+          outline: false, generate: generate, persist: persist);
+
+  // ── Outline edits (checkbox toggles) ──
+
+  /// Replaces the outline content in place (e.g. after a checkbox toggle). The
+  /// caller persists the new content. No-op while the outline is generating.
+  void _setOutlineContent(
+      Map<String, ReviewEntry> store, String key, String content) {
+    final cur = store[key] ?? const ReviewEntry.idle();
+    if (cur.outline.phase == ReviewPhase.generating) return;
+    store[key] =
+        cur.copyWith(outline: StageState(ReviewPhase.done, content: content));
     notifyListeners();
   }
+
+  void setWeeklyOutlineContent(DateTime weekStart, String content) =>
+      _setOutlineContent(_weekly, _weekKey(weekStart), content);
+
+  void setMonthlyOutlineContent(DateTime month, String content) =>
+      _setOutlineContent(_monthly, _monthKey(month), content);
+
+  // ── Seeding saved results ──
+
+  /// Seeds a previously-saved stage result (or resets to idle when [content] is
+  /// null), without disturbing an in-flight generation or clobbering an
+  /// already-shown result with an empty load.
+  void _setLoaded(
+    Map<String, ReviewEntry> store,
+    String key, {
+    required bool outline,
+    required String? content,
+  }) {
+    StageState stageOf(ReviewEntry e) => outline ? e.outline : e.review;
+    ReviewEntry withStage(ReviewEntry e, StageState s) =>
+        outline ? e.copyWith(outline: s) : e.copyWith(review: s);
+
+    final cur = store[key] ?? const ReviewEntry.idle();
+    if (stageOf(cur).phase == ReviewPhase.generating) return;
+    if (content == null && stageOf(cur).phase == ReviewPhase.done) return;
+    store[key] = withStage(
+        cur,
+        content == null
+            ? const StageState.idle()
+            : StageState(ReviewPhase.done, content: content));
+    notifyListeners();
+  }
+
+  void setLoadedWeeklyOutline(DateTime weekStart, String? content) =>
+      _setLoaded(_weekly, _weekKey(weekStart), outline: true, content: content);
+  void setLoadedWeeklyReview(DateTime weekStart, String? content) =>
+      _setLoaded(_weekly, _weekKey(weekStart), outline: false, content: content);
+  void setLoadedMonthlyOutline(DateTime month, String? content) =>
+      _setLoaded(_monthly, _monthKey(month), outline: true, content: content);
+  void setLoadedMonthlyReview(DateTime month, String? content) =>
+      _setLoaded(_monthly, _monthKey(month), outline: false, content: content);
 }

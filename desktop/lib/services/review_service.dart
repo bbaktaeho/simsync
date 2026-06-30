@@ -35,6 +35,22 @@ class ReviewService {
     return localStorage?.readTextFile(path);
   }
 
+  // ── Stage 1: outline (checkbox list of key items) ──
+
+  Future<void> saveWeeklyOutline(DateTime weekStart, String content) =>
+      _save(weeklyOutlinePath(weekStart), content);
+
+  Future<String?> loadWeeklyOutline(DateTime weekStart) =>
+      _load(weeklyOutlinePath(weekStart));
+
+  Future<void> saveMonthlyOutline(DateTime month, String content) =>
+      _save(monthlyOutlinePath(month), content);
+
+  Future<String?> loadMonthlyOutline(DateTime month) =>
+      _load(monthlyOutlinePath(month));
+
+  // ── Stage 2: review (final write-up) ──
+
   /// Weekly review for the week beginning [weekStart] (a Monday).
   Future<void> saveWeekly(DateTime weekStart, String content) =>
       _save(weeklyReviewPath(weekStart), content);

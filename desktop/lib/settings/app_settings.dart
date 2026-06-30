@@ -7,6 +7,43 @@ class AppSettings {
   static const int minSearchContextLines = 1;
   static const int maxSearchContextLines = 10;
 
+  /// SYSTEM instruction for stage 1 (the "outline" pass) of the WEEKLY review.
+  /// Fixed in code and NOT user-editable — only the stage-2 instruction
+  /// ([weeklyInstruction]) is. It exhaustively gathers everything done that week
+  /// and emits a GitHub-checkbox list of the key titles; the items the user
+  /// keeps checked then feed stage 2.
+  static const String weeklyOutlineSystemInstruction = '''
+당신은 한 주의 업무 기록을 빠짐없이 정리하는 보조자입니다.
+아래는 이번 주(월~일)에 작성된 노트와 메모입니다.
+
+수행할 작업:
+1. 이번 주에 다룬 주제, 활동, 결정, 이슈, 진행 상황을 빠짐없이 식별합니다. 사소해 보여도 누락하지 마세요.
+2. 비슷한 항목은 하나의 핵심 항목으로 묶되, 맥락이 다르면 분리합니다.
+3. 각 핵심 항목을 GitHub 체크박스 한 줄로 출력합니다: "- [ ] (MM-DD) 핵심 제목 — 한 줄 요약"
+
+규칙:
+- 출력은 체크박스 목록만 포함합니다. 서문, 맺음말, 그 외 설명을 넣지 마세요.
+- (MM-DD)는 그 항목과 관련된 날짜이며, 입력 노트의 날짜(YYYY-MM-DD)에 근거합니다. 하루면 "06-02", 여러 날에 걸치면 "06-02 ~ 06-05"처럼 범위로 적습니다.
+- 제목은 명사형으로 간결하게 쓰고, 요약은 실제 기록에 근거합니다. 추측하거나 지어내지 마세요.
+- 한국어로 작성합니다.''';
+
+  /// SYSTEM instruction for stage 1 of the MONTHLY review. Fixed in code. The
+  /// input is the month's weekly outlines/reviews (or notes when none exist).
+  static const String monthlyOutlineSystemInstruction = '''
+당신은 한 달의 업무 기록을 빠짐없이 정리하는 보조자입니다.
+아래는 이번 달의 주별 핵심 정리(또는 노트)입니다.
+
+수행할 작업:
+1. 이번 달에 다룬 주요 주제, 성과, 결정, 이슈, 진행 상황을 빠짐없이 식별합니다.
+2. 여러 주에 걸쳐 이어진 흐름은 하나의 핵심 항목으로 묶습니다.
+3. 각 핵심 항목을 GitHub 체크박스 한 줄로 출력합니다: "- [ ] (MM-DD) 핵심 제목 — 한 줄 요약"
+
+규칙:
+- 출력은 체크박스 목록만 포함합니다. 서문, 맺음말, 그 외 설명을 넣지 마세요.
+- (MM-DD)는 그 항목과 관련된 날짜(또는 범위)이며, 입력의 날짜에 근거합니다. 하루면 "06-02", 여러 날/주에 걸치면 "06-02 ~ 06-12"처럼 범위로 적습니다.
+- 실제 기록에 근거하며, 추측하거나 지어내지 마세요.
+- 한국어로 작성합니다.''';
+
   /// Default instruction used to generate the weekly summary.
   static const String defaultWeeklyInstruction =
       '아래는 이번 주(월~일) 동안 작성한 노트입니다. '
@@ -29,8 +66,12 @@ class AppSettings {
   static const String providerApi = 'api';
   static const String providerCli = 'cli';
 
-  /// Default Anthropic model for the API provider.
-  static const String defaultAnthropicModel = 'claude-opus-4-8';
+  /// Default model for the stage-2 review (Sonnet — balanced; Opus is overkill
+  /// for summarization). User-overridable in settings.
+  static const String defaultAnthropicModel = 'claude-sonnet-4-6';
+
+  /// Fixed fast, cheap model for the stage-1 outline (simple extraction/recall).
+  static const String outlineModel = 'claude-haiku-4-5';
 
   final String localNotePath;
   final double contentScale;

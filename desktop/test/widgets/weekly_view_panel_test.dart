@@ -12,7 +12,9 @@ Future<void> _pump(
   WidgetTester tester, {
   required bool claudeEnabled,
   required ReviewController controller,
-  VoidCallback? onGenerate,
+  VoidCallback? onGenerateOutline,
+  VoidCallback? onGenerateReview,
+  ValueChanged<int>? onToggleOutlineItem,
   bool settle = true,
 }) async {
   await tester.pumpWidget(
@@ -27,7 +29,9 @@ Future<void> _pump(
             weekNotes: const [],
             reviewController: controller,
             claudeEnabled: claudeEnabled,
-            onGenerate: onGenerate,
+            onGenerateOutline: onGenerateOutline,
+            onGenerateReview: onGenerateReview,
+            onToggleOutlineItem: onToggleOutlineItem,
           ),
         ),
       ),
@@ -43,24 +47,32 @@ Future<void> _pump(
 }
 
 void main() {
-  testWidgets('Generate button appears only when the summary is enabled', (
-    tester,
-  ) async {
+  testWidgets('stage cards appear only when the integration is enabled',
+      (tester) async {
     await _pump(tester,
-        claudeEnabled: false, controller: ReviewController(), onGenerate: () {});
+        claudeEnabled: false,
+        controller: ReviewController(),
+        onGenerateOutline: () {});
+    expect(find.text('핵심 정리'), findsNothing);
     expect(find.text('Generate'), findsNothing);
 
     await _pump(tester,
-        claudeEnabled: true, controller: ReviewController(), onGenerate: () {});
+        claudeEnabled: true,
+        controller: ReviewController(),
+        onGenerateOutline: () {});
+    expect(find.text('핵심 정리'), findsOneWidget);
+    expect(find.text('최종 리뷰'), findsOneWidget);
+    // Stage 1 has a Generate button; stage 2 has none until an item is checked.
     expect(find.text('Generate'), findsOneWidget);
   });
 
-  testWidgets('pressing Generate invokes onGenerate', (tester) async {
+  testWidgets('pressing stage-1 Generate invokes onGenerateOutline',
+      (tester) async {
     var calls = 0;
     await _pump(tester,
         claudeEnabled: true,
         controller: ReviewController(),
-        onGenerate: () => calls++);
+        onGenerateOutline: () => calls++);
 
     await tester.tap(find.text('Generate'));
     await tester.pump();
@@ -68,61 +80,105 @@ void main() {
     expect(calls, 1);
   });
 
-  testWidgets('renders a done review held by the controller', (tester) async {
+  testWidgets('renders the outline checklist held by the controller',
+      (tester) async {
     final controller = ReviewController()
-      ..setLoadedWeekly(_weekStart, 'This week was **productive**.');
+      ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째 항목\n- [ ] 둘째 항목');
 
     await _pump(tester,
-        claudeEnabled: true, controller: controller, onGenerate: () {});
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onGenerateReview: () {},
+        onToggleOutlineItem: (_) {});
 
-    expect(find.textContaining('productive'), findsWidgets);
-    // The button flips to Regenerate once there's a result.
+    expect(find.textContaining('첫째 항목'), findsOneWidget);
+    expect(find.textContaining('둘째 항목'), findsOneWidget);
+    expect(find.textContaining('선택됨'), findsOneWidget);
+    // Outline done → stage-1 button flips to Regenerate.
     expect(find.text('Regenerate'), findsOneWidget);
   });
 
-  testWidgets('shows progress while a generation is running', (tester) async {
+  testWidgets('tapping an outline item invokes onToggleOutlineItem with its line',
+      (tester) async {
+    int? toggled;
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [ ] 첫째\n- [ ] 둘째');
+
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onToggleOutlineItem: (i) => toggled = i);
+
+    await tester.tap(find.textContaining('둘째'));
+    await tester.pump();
+
+    expect(toggled, 1);
+  });
+
+  testWidgets('stage-2 Generate appears once an item is checked',
+      (tester) async {
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [x] 선택됨');
+
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onGenerateReview: () {});
+
+    expect(find.text('Regenerate'), findsOneWidget); // stage 1 (has a result)
+    expect(find.text('Generate'), findsOneWidget); // stage 2 (item is checked)
+  });
+
+  testWidgets('shows outline progress while stage 1 is running', (tester) async {
     final controller = ReviewController();
     final gen = Completer<String>();
-    // Never-completing generation → stays in the generating phase.
-    unawaited(controller.generateWeekly(_weekStart,
+    unawaited(controller.generateWeeklyOutline(_weekStart,
         generate: () => gen.future, persist: (_) async {}));
 
     await _pump(tester,
         claudeEnabled: true,
         controller: controller,
-        onGenerate: () {},
+        onGenerateOutline: () {},
         settle: false);
 
     expect(find.textContaining('정리하는 중'), findsOneWidget);
 
-    // Let it finish so no timer is left pending.
-    gen.complete('done');
+    gen.complete('- [ ] x');
     await tester.pump();
   });
 
-  testWidgets('surfaces an error held by the controller', (tester) async {
+  testWidgets('surfaces an outline error held by the controller',
+      (tester) async {
     final controller = ReviewController();
-    await controller.generateWeekly(_weekStart,
+    await controller.generateWeeklyOutline(_weekStart,
         generate: () async => throw Exception('API 키가 없습니다'),
         persist: (_) async {});
 
     await _pump(tester,
-        claudeEnabled: true, controller: controller, onGenerate: () {});
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {});
 
     expect(find.textContaining('API 키가 없습니다'), findsOneWidget);
   });
 
-  testWidgets(
-      'a generation finished before the panel mounts is shown when it mounts',
+  testWidgets('a review finished before the panel mounts is shown when it mounts',
       (tester) async {
     // Background-survival property: the controller holds the result, so a panel
     // built later (e.g. after navigating away and back) still shows it.
-    final controller = ReviewController();
-    await controller.generateWeekly(_weekStart,
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [x] a');
+    await controller.generateWeeklyReview(_weekStart,
         generate: () async => 'done in the background', persist: (_) async {});
 
     await _pump(tester,
-        claudeEnabled: true, controller: controller, onGenerate: () {});
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onGenerateReview: () {});
 
     expect(find.textContaining('done in the background'), findsWidgets);
   });
@@ -133,7 +189,9 @@ void main() {
     Future<void> pumpMonthly(
       WidgetTester tester, {
       required ReviewController controller,
-      VoidCallback? onGenerate,
+      VoidCallback? onGenerateOutline,
+      VoidCallback? onGenerateReview,
+      ValueChanged<int>? onToggleOutlineItem,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -147,7 +205,9 @@ void main() {
                 monthNotes: const [],
                 reviewController: controller,
                 claudeEnabled: true,
-                onGenerate: onGenerate,
+                onGenerateOutline: onGenerateOutline,
+                onGenerateReview: onGenerateReview,
+                onToggleOutlineItem: onToggleOutlineItem,
               ),
             ),
           ),
@@ -156,23 +216,28 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('renders a done monthly review held by the controller',
-        (tester) async {
+    testWidgets('renders both monthly stages and a done review', (tester) async {
       final controller = ReviewController()
-        ..setLoadedMonthly(month, 'June was **productive**.');
+        ..setLoadedMonthlyOutline(month, '- [x] a')
+        ..setLoadedMonthlyReview(month, 'June was **productive**.');
 
-      await pumpMonthly(tester, controller: controller, onGenerate: () {});
+      await pumpMonthly(tester,
+          controller: controller,
+          onGenerateOutline: () {},
+          onGenerateReview: () {});
 
       expect(find.text('Monthly View'), findsOneWidget);
       expect(find.text('Monthly Summary'), findsOneWidget);
+      expect(find.text('핵심 정리'), findsOneWidget);
+      expect(find.text('최종 리뷰'), findsOneWidget);
       expect(find.textContaining('productive'), findsWidgets);
-      expect(find.text('Regenerate'), findsOneWidget);
     });
 
-    testWidgets('pressing Generate invokes onGenerate', (tester) async {
+    testWidgets('pressing stage-1 Generate invokes onGenerateOutline',
+        (tester) async {
       var calls = 0;
       await pumpMonthly(tester,
-          controller: ReviewController(), onGenerate: () => calls++);
+          controller: ReviewController(), onGenerateOutline: () => calls++);
 
       await tester.tap(find.text('Generate'));
       await tester.pump();

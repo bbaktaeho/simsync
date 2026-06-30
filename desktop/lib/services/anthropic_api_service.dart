@@ -28,8 +28,9 @@ class AnthropicApiService {
   static const String modelsEndpoint = 'https://api.anthropic.com/v1/models';
   static const String apiVersion = '2023-06-01';
 
-  /// Default model. The model is user-configurable in settings.
-  static const String defaultModel = 'claude-opus-4-8';
+  /// Default model when a caller passes none (a fallback — callers normally pass
+  /// an explicit model). Sonnet is balanced; Opus is overkill for summarization.
+  static const String defaultModel = 'claude-sonnet-4-6';
 
   static const Duration summaryTimeout = Duration(seconds: 120);
   static const Duration validateTimeout = Duration(seconds: 20);
@@ -55,6 +56,7 @@ class AnthropicApiService {
     required String instruction,
     required String notesContext,
     String? model,
+    String? effort,
   }) async {
     final key = apiKey.trim();
     if (key.isEmpty) {
@@ -78,6 +80,10 @@ class AnthropicApiService {
     final body = jsonEncode({
       'model': _resolveModel(model),
       'max_tokens': maxOutputTokens,
+      // Lower reasoning effort = faster/cheaper; summarization needs no deep
+      // thinking. Sent only when provided — some models (e.g. Haiku) reject it.
+      if (effort != null && effort.isNotEmpty)
+        'output_config': {'effort': effort},
       'system': trimmedInstruction,
       'messages': [
         {'role': 'user', 'content': context},
