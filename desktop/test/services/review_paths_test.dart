@@ -57,6 +57,23 @@ void main() {
     });
   });
 
+  group('outline paths (stage 1)', () {
+    test('weekly outline sits beside the weekly review', () {
+      expect(weeklyOutlinePath(DateTime(2026, 6, 1)),
+          'notes/2026-06/1주차/weekly-outline.md');
+    });
+
+    test('a week whose Monday is in May files under May', () {
+      expect(weeklyOutlinePath(DateTime(2026, 5, 25)),
+          'notes/2026-05/4주차/weekly-outline.md');
+    });
+
+    test('monthly outline lives directly under the month folder', () {
+      expect(monthlyOutlinePath(DateTime(2026, 6, 15)),
+          'notes/2026-06/monthly-outline.md');
+    });
+  });
+
   group('weekStartsForMonth', () {
     test('returns consecutive Monday week-starts covering the whole month', () {
       final weeks = weekStartsForMonth(2026, 6);

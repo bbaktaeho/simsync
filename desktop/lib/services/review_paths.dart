@@ -2,9 +2,12 @@
 ///
 /// Reviews live alongside notes under `notes/`, but in NON-day directories so
 /// the note loader (which only recognizes numeric day folders) never mistakes
-/// them for notes:
-///   notes/{YYYY-MM}/{N}주차/weekly-review.md   (weekly)
-///   notes/{YYYY-MM}/monthly-review.md          (monthly, Phase 3)
+/// them for notes. Each period has a two-stage pipeline — a stage-1 "outline"
+/// (a checkbox list of key items) and a stage-2 "review" (the final write-up):
+///   notes/{YYYY-MM}/{N}주차/weekly-outline.md   (weekly stage 1)
+///   notes/{YYYY-MM}/{N}주차/weekly-review.md    (weekly stage 2)
+///   notes/{YYYY-MM}/monthly-outline.md          (monthly stage 1)
+///   notes/{YYYY-MM}/monthly-review.md           (monthly stage 2)
 library;
 
 String _ym(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}';
@@ -17,14 +20,28 @@ int weekOfMonth(DateTime weekStart) => ((weekStart.day - 1) ~/ 7) + 1;
 /// Directory label for the week beginning [weekStart], e.g. `3주차`.
 String weekLabel(DateTime weekStart) => '${weekOfMonth(weekStart)}주차';
 
-/// Repo/basePath-relative path of the weekly review for the week beginning
-/// [weekStart] (Monday).
-String weeklyReviewPath(DateTime weekStart) =>
-    'notes/${_ym(weekStart)}/${weekLabel(weekStart)}/weekly-review.md';
+/// Repo/basePath-relative directory holding both stages of the weekly review
+/// for the week beginning [weekStart] (Monday).
+String _weekDir(DateTime weekStart) =>
+    'notes/${_ym(weekStart)}/${weekLabel(weekStart)}';
 
-/// Repo/basePath-relative path of the monthly review for [month]. Lives directly
-/// under the month folder (a non-day, non-week location) so it stays out of the
-/// note list. Only year+month are used.
+/// Stage-1 weekly outline (checkbox list of key items) for the week beginning
+/// [weekStart] (Monday).
+String weeklyOutlinePath(DateTime weekStart) =>
+    '${_weekDir(weekStart)}/weekly-outline.md';
+
+/// Stage-2 weekly review (final write-up) for the week beginning [weekStart]
+/// (Monday).
+String weeklyReviewPath(DateTime weekStart) =>
+    '${_weekDir(weekStart)}/weekly-review.md';
+
+/// Stage-1 monthly outline for [month]. Lives directly under the month folder
+/// (a non-day, non-week location) so it stays out of the note list. Only
+/// year+month are used.
+String monthlyOutlinePath(DateTime month) =>
+    'notes/${_ym(month)}/monthly-outline.md';
+
+/// Stage-2 monthly review (final write-up) for [month]. Only year+month used.
 String monthlyReviewPath(DateTime month) =>
     'notes/${_ym(month)}/monthly-review.md';
 

@@ -41,8 +41,10 @@ void main() {
       expect(captured.headers['anthropic-version'], '2023-06-01');
 
       final body = jsonDecode(captured.body) as Map<String, dynamic>;
-      expect(body['model'], 'claude-opus-4-8'); // default
+      expect(body['model'], 'claude-sonnet-4-6'); // default fallback
       expect(body['system'], 'Summarize the week');
+      // No effort passed → no output_config in the request.
+      expect(body.containsKey('output_config'), isFalse);
       expect((body['messages'] as List).first['content'], '# 2026-06-15\nDid stuff');
     });
 
@@ -64,6 +66,47 @@ void main() {
 
       final body = jsonDecode(captured.body) as Map<String, dynamic>;
       expect(body['model'], 'claude-sonnet-4-6');
+    });
+
+    test('sends output_config.effort when an effort is given', () async {
+      late http.Request captured;
+      final service = AnthropicApiService(
+        client: MockClient((request) async {
+          captured = request;
+          return _msg('ok');
+        }),
+      );
+
+      await service.summarizeWeek(
+        apiKey: 'sk-ant',
+        instruction: 'go',
+        notesContext: 'notes',
+        model: 'claude-sonnet-4-6',
+        effort: 'low',
+      );
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body['output_config'], {'effort': 'low'});
+    });
+
+    test('omits output_config when no effort is given (e.g. Haiku)', () async {
+      late http.Request captured;
+      final service = AnthropicApiService(
+        client: MockClient((request) async {
+          captured = request;
+          return _msg('ok');
+        }),
+      );
+
+      await service.summarizeWeek(
+        apiKey: 'sk-ant',
+        instruction: 'go',
+        notesContext: 'notes',
+        model: 'claude-haiku-4-5',
+      );
+
+      final body = jsonDecode(captured.body) as Map<String, dynamic>;
+      expect(body.containsKey('output_config'), isFalse);
     });
 
     test('throws a friendly error on 401', () async {

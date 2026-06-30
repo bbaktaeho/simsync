@@ -5,30 +5,36 @@ import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../services/review_controller.dart';
+import '../services/review_outline.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'markdown_preview.dart';
 
 /// Displays all notes for a given week (Mon–Sun) in a scrollable journal view,
-/// with an optional Claude Code summary at the top.
+/// with an optional two-stage AI review at the top.
 class WeeklyViewPanel extends StatelessWidget {
   final DateTime weekStart; // Monday
   final List<Note> weekNotes;
   final ValueChanged<Note>? onNoteTap;
 
-  /// Whether the Claude Code weekly-summary integration is enabled in settings.
+  /// Whether the AI review integration is enabled in settings.
   final bool claudeEnabled;
 
-  /// Holds weekly review state (idle/generating/done/error) OUTSIDE this widget
-  /// so generation continues across panel rebuilds / unmounts.
+  /// Holds two-stage review state (outline + review) OUTSIDE this widget so
+  /// generation continues across panel rebuilds / unmounts.
   final ReviewController reviewController;
 
-  /// Starts a background weekly-review generation for [weekStart]. Null disables
-  /// the affordance entirely.
-  final VoidCallback? onGenerate;
+  /// Stage-1 (outline) generate/regenerate. Null disables the affordance.
+  final VoidCallback? onGenerateOutline;
 
-  /// Opens settings so the user can enable / configure Claude Code.
+  /// Stage-2 (review) generate/regenerate. Null disables the affordance.
+  final VoidCallback? onGenerateReview;
+
+  /// Toggles the stage-1 checkbox on the given line index.
+  final ValueChanged<int>? onToggleOutlineItem;
+
+  /// Opens settings so the user can enable / configure the AI provider.
   final VoidCallback? onOpenSettings;
 
   const WeeklyViewPanel({
@@ -38,7 +44,9 @@ class WeeklyViewPanel extends StatelessWidget {
     required this.reviewController,
     this.onNoteTap,
     this.claudeEnabled = false,
-    this.onGenerate,
+    this.onGenerateOutline,
+    this.onGenerateReview,
+    this.onToggleOutlineItem,
     this.onOpenSettings,
   });
 
@@ -75,14 +83,16 @@ class WeeklyViewPanel extends StatelessWidget {
         vertical: AppDimensions.spacingLg,
       ),
       children: [
-        _ReviewSummarySection(
+        _TwoStageReviewSection(
           enabled: claudeEnabled,
           controller: reviewController,
           entryOf: () => reviewController.weekly(weekStart),
           title: 'Weekly Summary',
-          emptyHint: 'Generate를 눌러 이번 주 노트를 지침대로 요약하세요.',
-          generatingLabel: 'Claude Code가 이번 주를 정리하는 중...',
-          onGenerate: onGenerate,
+          outlineGeneratingLabel: '이번 주 핵심을 정리하는 중...',
+          reviewGeneratingLabel: '선택한 항목으로 주간 리뷰를 작성하는 중...',
+          onGenerateOutline: onGenerateOutline,
+          onGenerateReview: onGenerateReview,
+          onToggleItem: onToggleOutlineItem,
           onOpenSettings: onOpenSettings,
         ),
         const SizedBox(height: AppDimensions.spacingXl),
@@ -171,25 +181,28 @@ class WeeklyViewPanel extends StatelessWidget {
       ),
     );
   }
-
 }
 
-/// Claude Code weekly summary card shown at the top of the weekly view.
+/// Two-stage AI review card shown at the top of the weekly / monthly view.
 ///
-/// Generation is requested only on an explicit user action (the Generate
-/// button, "explicit consent before AI summary" rule) and runs in the
-/// background via [ReviewController], so it survives this panel being closed or
-/// another note being opened. The card reflects the controller's state for
-/// [weekStart]; the result is persisted separately from the original notes.
-class _ReviewSummarySection extends StatefulWidget {
-  const _ReviewSummarySection({
+/// Stage 1 ("핵심 정리") runs the fixed system instruction to gather the
+/// period's key items into an interactive checkbox list. Stage 2 ("최종 리뷰")
+/// runs the user's instruction over the checked items to produce the final
+/// write-up. Both stages run in the background via [ReviewController] (so they
+/// survive the panel closing) and can be regenerated independently. Generation
+/// is requested only on an explicit user action (the "explicit consent before
+/// AI summary" rule); results are persisted separately from the original notes.
+class _TwoStageReviewSection extends StatefulWidget {
+  const _TwoStageReviewSection({
     required this.enabled,
     required this.controller,
     required this.entryOf,
     required this.title,
-    required this.emptyHint,
-    required this.generatingLabel,
-    required this.onGenerate,
+    required this.outlineGeneratingLabel,
+    required this.reviewGeneratingLabel,
+    required this.onGenerateOutline,
+    required this.onGenerateReview,
+    required this.onToggleItem,
     required this.onOpenSettings,
   });
 
@@ -200,16 +213,18 @@ class _ReviewSummarySection extends StatefulWidget {
   /// monthly(month)) — kept as a callback so this widget is period-agnostic.
   final ReviewEntry Function() entryOf;
   final String title;
-  final String emptyHint;
-  final String generatingLabel;
-  final VoidCallback? onGenerate;
+  final String outlineGeneratingLabel;
+  final String reviewGeneratingLabel;
+  final VoidCallback? onGenerateOutline;
+  final VoidCallback? onGenerateReview;
+  final ValueChanged<int>? onToggleItem;
   final VoidCallback? onOpenSettings;
 
   @override
-  State<_ReviewSummarySection> createState() => _ReviewSummarySectionState();
+  State<_TwoStageReviewSection> createState() => _TwoStageReviewSectionState();
 }
 
-class _ReviewSummarySectionState extends State<_ReviewSummarySection> {
+class _TwoStageReviewSectionState extends State<_TwoStageReviewSection> {
   late final TapGestureRecognizer _settingsTapRecognizer;
 
   @override
@@ -227,10 +242,9 @@ class _ReviewSummarySectionState extends State<_ReviewSummarySection> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final canGenerate = widget.enabled && widget.onGenerate != null;
 
-    // Subscribe to the controller so the card updates as the background
-    // generation progresses — even if it started before this panel was built.
+    // Subscribe to the controller so the card updates as background generation
+    // progresses — even if it started before this panel was built.
     return AnimatedBuilder(
       animation: widget.controller,
       builder: (context, _) {
@@ -257,17 +271,17 @@ class _ReviewSummarySectionState extends State<_ReviewSummarySection> {
                           color: c.textPrimary,
                         ),
                   ),
-                  const Spacer(),
-                  if (canGenerate)
-                    _GenerateButton(
-                      loading: entry.phase == ReviewPhase.generating,
-                      hasResult: entry.phase == ReviewPhase.done,
-                      onTap: widget.onGenerate!,
-                    ),
                 ],
               ),
-              const SizedBox(height: AppDimensions.spacingMd),
-              _buildContent(c, entry),
+              if (!widget.enabled) ...[
+                const SizedBox(height: AppDimensions.spacingMd),
+                _buildDisabledHint(c),
+              ] else ...[
+                const SizedBox(height: AppDimensions.spacingLg),
+                _buildStage1(c, entry.outline),
+                _buildConnector(c),
+                _buildStage2(c, entry),
+              ],
             ],
           ),
         );
@@ -275,122 +289,385 @@ class _ReviewSummarySectionState extends State<_ReviewSummarySection> {
     );
   }
 
-  Widget _buildContent(AppColorsExtension c, ReviewEntry entry) {
-    if (!widget.enabled) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline_rounded, size: 14, color: c.textMuted),
-          const SizedBox(width: AppDimensions.spacingSm),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
-                children: [
-                  const TextSpan(
-                    text: '설정 > Weekly에서 주간 요약을 켜고 provider(Anthropic API 키 또는 Claude Code CLI)를 '
-                        '설정하면 이번 주 노트를 요약할 수 있습니다. ',
+  Widget _buildDisabledHint(AppColorsExtension c) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.info_outline_rounded, size: 14, color: c.textMuted),
+        const SizedBox(width: AppDimensions.spacingSm),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              style: AppTextStyles.caption
+                  .copyWith(color: c.textSecondary, height: 1.5),
+              children: [
+                const TextSpan(
+                  text: '설정 > Weekly에서 요약을 켜고 provider(Anthropic API 키 또는 '
+                      'Claude Code CLI)를 설정하면 2단계 리뷰를 사용할 수 있습니다. ',
+                ),
+                if (widget.onOpenSettings != null)
+                  TextSpan(
+                    text: '설정 열기',
+                    style: AppTextStyles.captionBold.copyWith(color: c.accent),
+                    recognizer: _settingsTapRecognizer
+                      ..onTap = widget.onOpenSettings,
                   ),
-                  if (widget.onOpenSettings != null)
-                    TextSpan(
-                      text: '설정 열기',
-                      style: AppTextStyles.captionBold.copyWith(color: c.accent),
-                      recognizer: _settingsTapRecognizer
-                        ..onTap = widget.onOpenSettings,
-                    ),
-                ],
-              ),
+              ],
             ),
           ),
-        ],
-      );
-    }
-
-    if (entry.phase == ReviewPhase.generating) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
-          ),
-          const SizedBox(width: AppDimensions.spacingMd),
-          Text(
-            widget.generatingLabel,
-            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
-          ),
-        ],
-      );
-    }
-
-    if (entry.phase == ReviewPhase.error) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(AppDimensions.spacingMd),
-        decoration: BoxDecoration(
-          color: c.error.withValues(alpha: 0.06),
-          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-          border: Border.all(color: c.error.withValues(alpha: 0.3)),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.error_outline_rounded, size: 16, color: c.error),
-            const SizedBox(width: AppDimensions.spacingSm),
-            Expanded(
-              child: Text(
-                entry.error ?? '오류가 발생했습니다.',
-                style:
-                    AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+      ],
+    );
+  }
 
-    if (entry.phase == ReviewPhase.done && entry.content != null) {
-      return Column(
+  /// Thin vertical line tying stage 1 → stage 2, aligned under the step badge.
+  Widget _buildConnector(AppColorsExtension c) {
+    return Padding(
+      padding: EdgeInsets.only(left: AppDimensions.spacingMd + 10),
+      child: Container(
+        width: 2,
+        height: AppDimensions.spacingMd,
+        color: c.borderSubtle,
+      ),
+    );
+  }
+
+  Widget _buildStage1(AppColorsExtension c, StageState outline) {
+    final action = widget.onGenerateOutline == null
+        ? null
+        : _GenerateButton(
+            loading: outline.phase == ReviewPhase.generating,
+            hasResult: outline.phase == ReviewPhase.done,
+            onTap: widget.onGenerateOutline!,
+          );
+    return _StageCard(
+      step: 1,
+      title: '핵심 정리',
+      accent: c.accent,
+      action: action,
+      child: _buildStage1Body(c, outline),
+    );
+  }
+
+  Widget _buildStage1Body(AppColorsExtension c, StageState outline) {
+    switch (outline.phase) {
+      case ReviewPhase.generating:
+        return _GeneratingRow(label: widget.outlineGeneratingLabel);
+      case ReviewPhase.error:
+        return _ErrorBox(message: outline.error);
+      case ReviewPhase.done:
+        final content = outline.content;
+        if (content != null && content.trim().isNotEmpty) {
+          return _OutlineChecklist(
+            outline: content,
+            onToggle: widget.onToggleItem,
+          );
+        }
+        return _hint(c, '핵심 항목이 없습니다. 다시 생성해 보세요.');
+      case ReviewPhase.idle:
+        return _hint(c, 'Generate를 눌러 이번 기간의 핵심을 체크리스트로 정리하세요.');
+    }
+  }
+
+  Widget _buildStage2(AppColorsExtension c, ReviewEntry entry) {
+    final outline = entry.outline;
+    final review = entry.review;
+    final outlineReady = outline.phase == ReviewPhase.done &&
+        outline.content != null &&
+        hasCheckedItems(outline.content!);
+    final action = (widget.onGenerateReview == null || !outlineReady)
+        ? null
+        : _GenerateButton(
+            loading: review.phase == ReviewPhase.generating,
+            hasResult: review.phase == ReviewPhase.done,
+            onTap: widget.onGenerateReview!,
+          );
+    return _StageCard(
+      step: 2,
+      title: '최종 리뷰',
+      accent: c.accent,
+      action: action,
+      child: _buildStage2Body(c, review, outlineReady),
+    );
+  }
+
+  Widget _buildStage2Body(
+      AppColorsExtension c, StageState review, bool outlineReady) {
+    if (review.phase == ReviewPhase.generating) {
+      return _GeneratingRow(label: widget.reviewGeneratingLabel);
+    }
+    if (review.phase == ReviewPhase.error) {
+      return _ErrorBox(message: review.error);
+    }
+    if (review.phase == ReviewPhase.done && review.content != null) {
+      return _ReviewMarkdown(content: review.content!);
+    }
+    // idle
+    if (!outlineReady) {
+      return _hint(c, '먼저 1단계에서 항목을 선택하면 최종 리뷰를 만들 수 있습니다.');
+    }
+    return _hint(c, '선택한 항목으로 지침에 따라 최종 리뷰를 생성하세요.');
+  }
+
+  Widget _hint(AppColorsExtension c, String text) => Text(
+        text,
+        style:
+            AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
+      );
+}
+
+/// A single numbered stage box (step badge + title + action button + body).
+class _StageCard extends StatelessWidget {
+  const _StageCard({
+    required this.step,
+    required this.title,
+    required this.accent,
+    required this.child,
+    this.action,
+  });
+
+  final int step;
+  final String title;
+  final Color accent;
+  final Widget child;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+        border: Border.all(color: c.border),
+      ),
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MarkdownBody(
-            data: entry.content!,
-            selectable: true,
-            styleSheet: MarkdownStyleSheet(
-              p: AppTextStyles.mdBody(1.0).copyWith(color: c.textPrimary),
-              listBullet:
-                  AppTextStyles.mdBody(1.0).copyWith(color: c.textSecondary),
-              h1: AppTextStyles.mdH3(1.0).copyWith(color: c.textPrimary),
-              h2: AppTextStyles.mdH4(1.0).copyWith(color: c.textPrimary),
-              h3: AppTextStyles.mdH5(1.0).copyWith(color: c.textPrimary),
-            ),
+          Row(
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                child: Text(
+                  '$step',
+                  style: AppTextStyles.microMedium
+                      .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: AppDimensions.spacingSm),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: c.textPrimary,
+                    ),
+              ),
+              const Spacer(),
+              ?action,
+            ],
           ),
-          const SizedBox(height: AppDimensions.spacingSm),
-          Text(
-            'Claude Code가 생성 · 원본 노트와 별도로 저장됩니다',
-            style: AppTextStyles.micro.copyWith(color: c.textMuted),
-          ),
+          const SizedBox(height: AppDimensions.spacingMd),
+          child,
         ],
-      );
-    }
-
-    return Text(
-      widget.emptyHint,
-      style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.5),
+      ),
     );
   }
 }
 
-/// Displays a month's notes (grouped by date) with an optional monthly AI
-/// summary at the top. Mirrors [WeeklyViewPanel] but for a calendar month, and
-/// shares the journal + summary widgets.
+/// Interactive checkbox list rendered from a stage-1 outline. Tapping a row
+/// toggles that item via [onToggle] (by its source line index).
+class _OutlineChecklist extends StatelessWidget {
+  const _OutlineChecklist({required this.outline, required this.onToggle});
+
+  final String outline;
+  final ValueChanged<int>? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final items = parseOutlineItems(outline);
+    if (items.isEmpty) {
+      // No checkbox lines — fall back to showing the raw markdown.
+      return _ReviewMarkdown(content: outline);
+    }
+    final checkedCount = items.where((it) => it.checked).length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in items)
+          _ChecklistRow(item: item, onToggle: onToggle),
+        const SizedBox(height: AppDimensions.spacingSm),
+        Text(
+          '$checkedCount / ${items.length} 선택됨 · 체크한 항목으로 2단계를 생성합니다',
+          style: AppTextStyles.micro.copyWith(color: c.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+class _ChecklistRow extends StatelessWidget {
+  const _ChecklistRow({required this.item, required this.onToggle});
+
+  final OutlineItem item;
+  final ValueChanged<int>? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onToggle == null ? null : () => onToggle!(item.lineIndex),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Compact custom checkbox (Notion-style; avoids Material Checkbox's
+            // fixed 48px slop in a dense list).
+            Container(
+              margin: const EdgeInsets.only(top: 1),
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: item.checked ? c.accent : Colors.transparent,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(
+                  color: item.checked ? c.accent : c.borderSubtle,
+                  width: 1.5,
+                ),
+              ),
+              child: item.checked
+                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  : null,
+            ),
+            const SizedBox(width: AppDimensions.spacingSm),
+            Expanded(
+              child: Text(
+                item.label,
+                style: AppTextStyles.caption.copyWith(
+                  color: item.checked ? c.textPrimary : c.textSecondary,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GeneratingRow extends StatelessWidget {
+  const _GeneratingRow({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Row(
+      children: [
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+        ),
+        const SizedBox(width: AppDimensions.spacingMd),
+        Expanded(
+          child: Text(
+            label,
+            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorBox extends StatelessWidget {
+  const _ErrorBox({required this.message});
+
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppDimensions.spacingMd),
+      decoration: BoxDecoration(
+        color: c.error.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+        border: Border.all(color: c.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline_rounded, size: 16, color: c.error),
+          const SizedBox(width: AppDimensions.spacingSm),
+          Expanded(
+            child: Text(
+              message ?? '오류가 발생했습니다.',
+              style: AppTextStyles.caption.copyWith(color: c.error, height: 1.5),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewMarkdown extends StatelessWidget {
+  const _ReviewMarkdown({required this.content});
+
+  final String content;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MarkdownBody(
+          data: content,
+          selectable: true,
+          styleSheet: MarkdownStyleSheet(
+            p: AppTextStyles.mdBody(1.0).copyWith(color: c.textPrimary),
+            listBullet:
+                AppTextStyles.mdBody(1.0).copyWith(color: c.textSecondary),
+            h1: AppTextStyles.mdH3(1.0).copyWith(color: c.textPrimary),
+            h2: AppTextStyles.mdH4(1.0).copyWith(color: c.textPrimary),
+            h3: AppTextStyles.mdH5(1.0).copyWith(color: c.textPrimary),
+          ),
+        ),
+        const SizedBox(height: AppDimensions.spacingSm),
+        Text(
+          '원본 노트와 별도로 저장됩니다',
+          style: AppTextStyles.micro.copyWith(color: c.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+/// Displays a month's notes (grouped by date) with an optional two-stage AI
+/// review at the top. Mirrors [WeeklyViewPanel] but for a calendar month, and
+/// shares the journal + review widgets.
 class MonthlyViewPanel extends StatelessWidget {
   final DateTime month; // any day within the month
   final List<Note> monthNotes;
   final ValueChanged<Note>? onNoteTap;
   final bool claudeEnabled;
   final ReviewController reviewController;
-  final VoidCallback? onGenerate;
+  final VoidCallback? onGenerateOutline;
+  final VoidCallback? onGenerateReview;
+  final ValueChanged<int>? onToggleOutlineItem;
   final VoidCallback? onOpenSettings;
 
   const MonthlyViewPanel({
@@ -400,7 +677,9 @@ class MonthlyViewPanel extends StatelessWidget {
     required this.reviewController,
     this.onNoteTap,
     this.claudeEnabled = false,
-    this.onGenerate,
+    this.onGenerateOutline,
+    this.onGenerateReview,
+    this.onToggleOutlineItem,
     this.onOpenSettings,
   });
 
@@ -431,14 +710,16 @@ class MonthlyViewPanel extends StatelessWidget {
         vertical: AppDimensions.spacingLg,
       ),
       children: [
-        _ReviewSummarySection(
+        _TwoStageReviewSection(
           enabled: claudeEnabled,
           controller: reviewController,
           entryOf: () => reviewController.monthly(month),
           title: 'Monthly Summary',
-          emptyHint: 'Generate를 눌러 이번 달을 주별로 분석해 종합하세요.',
-          generatingLabel: 'Claude Code가 이번 달을 정리하는 중...',
-          onGenerate: onGenerate,
+          outlineGeneratingLabel: '이번 달 핵심을 주별로 정리하는 중...',
+          reviewGeneratingLabel: '선택한 항목으로 월간 리뷰를 작성하는 중...',
+          onGenerateOutline: onGenerateOutline,
+          onGenerateReview: onGenerateReview,
+          onToggleItem: onToggleOutlineItem,
           onOpenSettings: onOpenSettings,
         ),
         const SizedBox(height: AppDimensions.spacingXl),
@@ -539,7 +820,7 @@ class _GenerateButton extends StatelessWidget {
       onPressed: loading ? null : onTap,
       icon: Icon(
         hasResult ? Icons.refresh_rounded : Icons.auto_awesome_rounded,
-        size: 16,
+        size: 14,
       ),
       label: Text(loading
           ? 'Generating...'
@@ -549,9 +830,9 @@ class _GenerateButton extends StatelessWidget {
       style: FilledButton.styleFrom(
         backgroundColor: c.accent,
         foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         textStyle: AppTextStyles.captionSemibold,
-        minimumSize: const Size(0, 36),
+        minimumSize: const Size(0, 32),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     );

@@ -109,4 +109,41 @@ void main() {
           isNull);
     });
   });
+
+  group('outline (stage 1)', () {
+    const weeklyOutline = 'notes/2026-06/1주차/weekly-outline.md';
+    const monthlyOutline = 'notes/2026-06/monthly-outline.md';
+
+    test('saveWeeklyOutline / loadWeeklyOutline round-trip', () async {
+      final remote = _MemStorage();
+      final local = _MemStorage();
+      final svc = ReviewService(storage: remote, localStorage: local);
+
+      await svc.saveWeeklyOutline(monday, '- [ ] item');
+      expect(remote.files[weeklyOutline], '- [ ] item');
+      expect(local.files[weeklyOutline], '- [ ] item');
+      expect(await svc.loadWeeklyOutline(monday), '- [ ] item');
+    });
+
+    test('saveMonthlyOutline / loadMonthlyOutline round-trip', () async {
+      final month = DateTime(2026, 6, 15);
+      final remote = _MemStorage();
+      final svc = ReviewService(storage: remote);
+
+      await svc.saveMonthlyOutline(month, '- [x] m');
+      expect(remote.files[monthlyOutline], '- [x] m');
+      expect(await svc.loadMonthlyOutline(month), '- [x] m');
+    });
+
+    test('outline and review are stored at distinct paths', () async {
+      final remote = _MemStorage();
+      final svc = ReviewService(storage: remote);
+
+      await svc.saveWeeklyOutline(monday, 'OUTLINE');
+      await svc.saveWeekly(monday, 'REVIEW');
+
+      expect(remote.files[weeklyOutline], 'OUTLINE');
+      expect(remote.files['notes/2026-06/1주차/weekly-review.md'], 'REVIEW');
+    });
+  });
 }

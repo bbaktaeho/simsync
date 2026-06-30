@@ -13,6 +13,7 @@ import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
+import '../services/review_outline.dart';
 import '../services/review_paths.dart';
 import '../services/review_service.dart';
 import '../storage/github/github_sync_engine.dart';
@@ -740,12 +741,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
   }
 
-  /// Loads any saved weekly review for [weekStart] into the controller so the
-  /// panel shows it. Skips if a generation for that week is already running.
+  /// Loads any saved outline + review for [weekStart] into the controller so the
+  /// panel shows both stages. Skips a stage whose generation is already running.
   Future<void> _loadWeeklyReview(DateTime weekStart) async {
-    final content = await _reviewService.loadWeekly(weekStart);
+    final outline = await _reviewService.loadWeeklyOutline(weekStart);
+    final review = await _reviewService.loadWeekly(weekStart);
     if (!mounted) return;
-    _reviewController.setLoadedWeekly(weekStart, content);
+    _reviewController.setLoadedWeeklyOutline(weekStart, outline);
+    _reviewController.setLoadedWeeklyReview(weekStart, review);
   }
 
   /// Formats [notes] as the markdown context fed to the summary model.
@@ -765,41 +768,81 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return buffer.toString().trim();
   }
 
-  /// The current week's notes as context.
-  String _buildWeekNotesContext() => _buildNotesContext(_weekNotes);
-
-  /// Runs the weekly summary for the given [settings] and pre-built [context].
-  /// Independent of widget state so it is safe to keep running in the background
-  /// after the weekly panel is closed.
-  Future<String> _runWeeklySummary(AppSettings settings, String context) async {
+  /// Runs one AI pass with [instruction] (system prompt) over [context] using
+  /// [model], via the configured provider. Stage 1 (outline) passes a fast model
+  /// (Haiku); stage 2 (review) passes the user's model (Sonnet by default). For
+  /// the API a low reasoning effort is requested when the model supports it
+  /// (Haiku does not). Independent of widget state — safe to keep running in the
+  /// background after the panel is closed.
+  Future<String> _runSummary(
+      AppSettings settings, String instruction, String context,
+      {required String model}) {
     if (settings.weeklyProvider == AppSettings.providerCli) {
       return _claudeService.summarizeWeek(
-        instruction: settings.weeklyInstruction,
+        instruction: instruction,
         notesContext: context,
         cliPath: settings.claudeCliPath,
+        model: _cliModelAlias(model),
       );
     }
     return _anthropicService.summarizeWeek(
       apiKey: settings.anthropicApiKey,
-      instruction: settings.weeklyInstruction,
+      instruction: instruction,
       notesContext: context,
-      model: settings.anthropicModel,
+      model: model,
+      effort: model.contains('haiku') ? null : 'low',
     );
   }
 
-  /// Starts a background weekly-review generation for the current week and
-  /// persists it. Invoked from the weekly panel's Generate button (explicit
-  /// consent). Runs via [ReviewController] so it survives the panel closing or
-  /// another note being opened; the context is snapshotted now.
-  void _onGenerateWeekly() {
+  /// Maps an Anthropic API model id to a Claude Code CLI `--model` alias (the
+  /// CLI takes short aliases reliably; full ids vary by release).
+  String _cliModelAlias(String apiModel) {
+    if (apiModel.contains('haiku')) return 'haiku';
+    if (apiModel.contains('sonnet')) return 'sonnet';
+    if (apiModel.contains('opus')) return 'opus';
+    return apiModel;
+  }
+
+  /// Stage 1 (outline): distils the current week's notes into a checkbox list of
+  /// key items via the fixed system instruction. Explicit-consent, background.
+  void _onGenerateWeeklyOutline() {
     final weekStart = _weekStart;
     final settings = widget.settingsController.value;
-    final context = _buildWeekNotesContext();
-    unawaited(_reviewController.generateWeekly(
+    final context = _buildNotesContext(_weekNotes);
+    unawaited(_reviewController.generateWeeklyOutline(
       weekStart,
-      generate: () => _runWeeklySummary(settings, context),
+      generate: () => _runSummary(
+          settings, AppSettings.weeklyOutlineSystemInstruction, context,
+          model: AppSettings.outlineModel),
+      persist: (content) => _reviewService.saveWeeklyOutline(weekStart, content),
+    ));
+  }
+
+  /// Stage 2 (review): runs the user instruction over the checked outline items.
+  /// No-op until stage 1 has produced at least one checked item.
+  void _onGenerateWeeklyReview() {
+    final weekStart = _weekStart;
+    final settings = widget.settingsController.value;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final checked = checkedItemsText(outline);
+    if (checked.trim().isEmpty) return;
+    unawaited(_reviewController.generateWeeklyReview(
+      weekStart,
+      generate: () => _runSummary(settings, settings.weeklyInstruction, checked,
+          model: settings.anthropicModel),
       persist: (content) => _reviewService.saveWeekly(weekStart, content),
     ));
+  }
+
+  /// Toggles a stage-1 checkbox (by source line index) and persists the outline.
+  void _onToggleWeeklyOutlineItem(int lineIndex) {
+    final weekStart = _weekStart;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setWeeklyOutlineContent(weekStart, updated);
+    unawaited(_reviewService.saveWeeklyOutline(weekStart, updated));
   }
 
   void _toggleMonthlyView() {
@@ -813,58 +856,86 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (_monthlyViewActive) unawaited(_loadMonthlyReview(_monthStart));
   }
 
-  /// Loads any saved monthly review for [month] into the controller so the
-  /// panel shows it. Skips if a generation for that month is already running.
+  /// Loads any saved outline + review for [month] into the controller so the
+  /// panel shows both stages. Skips a stage whose generation is already running.
   Future<void> _loadMonthlyReview(DateTime month) async {
-    final content = await _reviewService.loadMonthly(month);
+    final outline = await _reviewService.loadMonthlyOutline(month);
+    final review = await _reviewService.loadMonthly(month);
     if (!mounted) return;
-    _reviewController.setLoadedMonthly(month, content);
+    _reviewController.setLoadedMonthlyOutline(month, outline);
+    _reviewController.setLoadedMonthlyReview(month, review);
   }
 
-  /// Combines per-week reviews into a monthly review via the configured provider
-  /// using [AppSettings.monthlyInstruction]. Independent of widget state, so it
-  /// is safe to keep running in the background after the panel is closed.
-  Future<String> _runMonthlySynthesis(
-      AppSettings settings, List<String> weeklyReviews) {
+  /// Stage 1 (monthly outline): for each week of the month, in parallel, reuse a
+  /// saved weekly review or build that week's outline from its notes; combine
+  /// the per-week results and distil them into a monthly checkbox outline via
+  /// the monthly system instruction. Independent of widget state.
+  Future<String> _runMonthlyOutline(
+      AppSettings settings, DateTime month) async {
+    final weekStarts = weekStartsForMonth(month.year, month.month);
+    final perWeek = await Future.wait(weekStarts.map((w) async {
+      final existing = await _reviewService.loadWeekly(w);
+      if (existing != null && existing.trim().isNotEmpty) return existing;
+      final notes = _weekNotesFor(w);
+      if (notes.isEmpty) return '';
+      try {
+        return await _runSummary(settings,
+            AppSettings.weeklyOutlineSystemInstruction, _buildNotesContext(notes),
+            model: AppSettings.outlineModel);
+      } catch (_) {
+        return '';
+      }
+    }));
+    final parts = perWeek.where((r) => r.trim().isNotEmpty).toList();
+    if (parts.isEmpty) {
+      throw Exception('이번 달에 요약할 노트가 없습니다.');
+    }
     final buffer = StringBuffer();
-    for (var i = 0; i < weeklyReviews.length; i++) {
+    for (var i = 0; i < parts.length; i++) {
       buffer.writeln('## ${i + 1}주차');
-      buffer.writeln(weeklyReviews[i].trim());
+      buffer.writeln(parts[i].trim());
       buffer.writeln();
     }
-    final context = buffer.toString().trim();
-    if (settings.weeklyProvider == AppSettings.providerCli) {
-      return _claudeService.summarizeWeek(
-        instruction: settings.monthlyInstruction,
-        notesContext: context,
-        cliPath: settings.claudeCliPath,
-      );
-    }
-    return _anthropicService.summarizeWeek(
-      apiKey: settings.anthropicApiKey,
-      instruction: settings.monthlyInstruction,
-      notesContext: context,
-      model: settings.anthropicModel,
-    );
+    return _runSummary(settings, AppSettings.monthlyOutlineSystemInstruction,
+        buffer.toString().trim(), model: AppSettings.outlineModel);
   }
 
-  /// Starts a background monthly-review generation: for each week of the month
-  /// (in parallel) reuse a saved weekly review or summarize that week, then
-  /// synthesize the per-week reviews and persist. Runs via [ReviewController]
-  /// so it survives the panel closing or another note being opened.
-  void _onGenerateMonthly() {
+  /// Stage 1 (outline) for the current month — background, explicit consent.
+  void _onGenerateMonthlyOutline() {
     final month = _monthStart;
     final settings = widget.settingsController.value;
-    final weekStarts = weekStartsForMonth(month.year, month.month);
-    unawaited(_reviewController.generateMonthly(
+    unawaited(_reviewController.generateMonthlyOutline(
       month,
-      weekStarts: weekStarts,
-      loadWeekly: (w) => _reviewService.loadWeekly(w),
-      generateWeekly: (w) =>
-          _runWeeklySummary(settings, _buildNotesContext(_weekNotesFor(w))),
-      synthesize: (reviews) => _runMonthlySynthesis(settings, reviews),
+      generate: () => _runMonthlyOutline(settings, month),
+      persist: (content) => _reviewService.saveMonthlyOutline(month, content),
+    ));
+  }
+
+  /// Stage 2 (review): runs the user instruction over the checked monthly
+  /// outline items. No-op until stage 1 has at least one checked item.
+  void _onGenerateMonthlyReview() {
+    final month = _monthStart;
+    final settings = widget.settingsController.value;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final checked = checkedItemsText(outline);
+    if (checked.trim().isEmpty) return;
+    unawaited(_reviewController.generateMonthlyReview(
+      month,
+      generate: () => _runSummary(settings, settings.monthlyInstruction, checked,
+          model: settings.anthropicModel),
       persist: (content) => _reviewService.saveMonthly(month, content),
     ));
+  }
+
+  /// Toggles a stage-1 monthly checkbox and persists the outline.
+  void _onToggleMonthlyOutlineItem(int lineIndex) {
+    final month = _monthStart;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setMonthlyOutlineContent(month, updated);
+    unawaited(_reviewService.saveMonthlyOutline(month, updated));
   }
 
   void _onMemoTabChanged(bool active) {
@@ -1202,7 +1273,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
         reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
         claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
-        onGenerate: _onGenerateWeekly,
+        onGenerateOutline: _onGenerateWeeklyOutline,
+        onGenerateReview: _onGenerateWeeklyReview,
+        onToggleOutlineItem: _onToggleWeeklyOutlineItem,
         onOpenSettings: () => unawaited(_openSettings()),
       );
     }
@@ -1214,7 +1287,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
         reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
         claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
-        onGenerate: _onGenerateMonthly,
+        onGenerateOutline: _onGenerateMonthlyOutline,
+        onGenerateReview: _onGenerateMonthlyReview,
+        onToggleOutlineItem: _onToggleMonthlyOutlineItem,
         onOpenSettings: () => unawaited(_openSettings()),
       );
     }
