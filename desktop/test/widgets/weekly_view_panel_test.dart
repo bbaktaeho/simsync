@@ -15,6 +15,7 @@ Future<void> _pump(
   VoidCallback? onGenerateOutline,
   VoidCallback? onGenerateReview,
   ValueChanged<int>? onToggleOutlineItem,
+  ValueChanged<bool>? onToggleAllOutlineItems,
   bool settle = true,
 }) async {
   await tester.pumpWidget(
@@ -32,6 +33,7 @@ Future<void> _pump(
             onGenerateOutline: onGenerateOutline,
             onGenerateReview: onGenerateReview,
             onToggleOutlineItem: onToggleOutlineItem,
+            onToggleAllOutlineItems: onToggleAllOutlineItems,
           ),
         ),
       ),
@@ -115,6 +117,58 @@ void main() {
     await tester.pump();
 
     expect(toggled, 1);
+  });
+
+  testWidgets('"전체 선택" requests checking all when some are unchecked',
+      (tester) async {
+    bool? requested;
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째\n- [ ] 둘째');
+
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onToggleAllOutlineItems: (v) => requested = v);
+
+    expect(find.text('전체 선택'), findsOneWidget);
+    await tester.tap(find.text('전체 선택'));
+    await tester.pump();
+
+    expect(requested, isTrue);
+  });
+
+  testWidgets('the control reads "전체 해제" and clears when all are checked',
+      (tester) async {
+    bool? requested;
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째\n- [x] 둘째');
+
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {},
+        onToggleAllOutlineItems: (v) => requested = v);
+
+    expect(find.text('전체 해제'), findsOneWidget);
+    await tester.tap(find.text('전체 해제'));
+    await tester.pump();
+
+    expect(requested, isFalse);
+  });
+
+  testWidgets('the select-all control is hidden when no handler is wired',
+      (tester) async {
+    final controller = ReviewController()
+      ..setLoadedWeeklyOutline(_weekStart, '- [ ] 첫째');
+
+    await _pump(tester,
+        claudeEnabled: true,
+        controller: controller,
+        onGenerateOutline: () {});
+
+    expect(find.text('전체 선택'), findsNothing);
+    expect(find.text('전체 해제'), findsNothing);
   });
 
   testWidgets('stage-2 Generate appears once an item is checked',

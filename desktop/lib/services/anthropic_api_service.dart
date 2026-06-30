@@ -5,9 +5,13 @@ import 'package:http/http.dart' as http;
 
 /// Raised when the Anthropic API call fails. [message] is safe to show the user.
 class AnthropicApiException implements Exception {
-  AnthropicApiException(this.message);
+  AnthropicApiException(this.message, {this.modelUnavailable = false});
 
   final String message;
+
+  /// True when the failure was caused by an unknown / unsupported model id, so
+  /// the caller can retry with a fallback model.
+  final bool modelUnavailable;
 
   @override
   String toString() => message;
@@ -51,12 +55,17 @@ class AnthropicApiService {
   /// Generates the weekly summary. The instruction becomes the system prompt and
   /// the week's notes become the user message. Throws [AnthropicApiException]
   /// with a user-facing message on any failure.
+  ///
+  /// [onModelFallback] is invoked (with the requested then the actually-used
+  /// model id) only when the configured model was unavailable and the request
+  /// succeeded on the default model instead — so the caller can tell the user.
   Future<String> summarizeWeek({
     required String apiKey,
     required String instruction,
     required String notesContext,
     String? model,
     String? effort,
+    void Function(String requested, String used)? onModelFallback,
   }) async {
     final key = apiKey.trim();
     if (key.isEmpty) {
@@ -77,14 +86,53 @@ class AnthropicApiService {
       context = context.substring(0, maxContextChars);
     }
 
+    final primaryModel = _resolveModel(model);
+    try {
+      return await _generate(
+        apiKey: key,
+        model: primaryModel,
+        effort: effort,
+        system: trimmedInstruction,
+        context: context,
+      );
+    } on AnthropicApiException catch (e) {
+      // A stale or misspelled model id shouldn't permanently break the review:
+      // fall back once to the default model. The configured model is honored
+      // whenever it is valid — we only swap it out when the server says it does
+      // not exist, so we are not locked to a single fixed model.
+      if (e.modelUnavailable && primaryModel != defaultModel) {
+        final result = await _generate(
+          apiKey: key,
+          model: defaultModel,
+          effort: effort,
+          system: trimmedInstruction,
+          context: context,
+        );
+        onModelFallback?.call(primaryModel, defaultModel);
+        return result;
+      }
+      rethrow;
+    }
+  }
+
+  /// Sends one Messages API request for [model] and returns the text reply.
+  /// Throws [AnthropicApiException] on any failure (with [modelUnavailable] set
+  /// when the model id is rejected, so [summarizeWeek] can retry).
+  Future<String> _generate({
+    required String apiKey,
+    required String model,
+    required String? effort,
+    required String system,
+    required String context,
+  }) async {
     final body = jsonEncode({
-      'model': _resolveModel(model),
+      'model': model,
       'max_tokens': maxOutputTokens,
       // Lower reasoning effort = faster/cheaper; summarization needs no deep
       // thinking. Sent only when provided — some models (e.g. Haiku) reject it.
       if (effort != null && effort.isNotEmpty)
         'output_config': {'effort': effort},
-      'system': trimmedInstruction,
+      'system': system,
       'messages': [
         {'role': 'user', 'content': context},
       ],
@@ -93,7 +141,8 @@ class AnthropicApiService {
     final http.Response response;
     try {
       response = await _client
-          .post(Uri.parse(messagesEndpoint), headers: _headers(key), body: body)
+          .post(Uri.parse(messagesEndpoint),
+              headers: _headers(apiKey), body: body)
           .timeout(summaryTimeout);
     } on TimeoutException {
       throw AnthropicApiException(
@@ -104,7 +153,10 @@ class AnthropicApiService {
     }
 
     if (response.statusCode != 200) {
-      throw AnthropicApiException(_friendlyError(response));
+      throw AnthropicApiException(
+        _friendlyError(response),
+        modelUnavailable: _isModelError(response),
+      );
     }
 
     final Map<String, dynamic> json;
@@ -134,6 +186,28 @@ class AnthropicApiService {
       throw AnthropicApiException('Anthropic API가 빈 응답을 반환했습니다.');
     }
     return text;
+  }
+
+  /// Whether [response] is an error caused by an unknown / unsupported model id.
+  /// Anthropic returns 404 `not_found_error` for an unknown model (and some
+  /// invalid-model requests come back as 400); both mention "model".
+  bool _isModelError(http.Response response) {
+    if (response.statusCode != 404 && response.statusCode != 400) return false;
+    try {
+      final json = jsonDecode(response.body);
+      if (json is Map && json['error'] is Map) {
+        final error = json['error'] as Map;
+        if (error['type'] == 'not_found_error') return true;
+        final message = error['message'];
+        if (message is String && message.toLowerCase().contains('model')) {
+          return true;
+        }
+      }
+    } catch (_) {
+      // Fall through to the status-code heuristic below.
+    }
+    // A 404 from the Messages endpoint is, in practice, an unknown model.
+    return response.statusCode == 404;
   }
 
   /// Validates the API key with a free `GET /v1/models` call (no token cost).

@@ -53,9 +53,28 @@ String toggleOutlineItem(String outline, int lineIndex) {
   return lines.join('\n');
 }
 
+/// Returns [outline] with every checkbox line set to [checked]. Non-checkbox
+/// lines are left untouched. Used by the "select all / clear all" affordance.
+String setAllOutlineItems(String outline, bool checked) {
+  final lines = outline.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final m = _checkboxRe.firstMatch(lines[i]);
+    if (m == null) continue;
+    lines[i] = '${m.group(1)}[${checked ? 'x' : ' '}] ${m.group(3)}';
+  }
+  return lines.join('\n');
+}
+
 /// Whether [outline] has at least one checked item.
 bool hasCheckedItems(String outline) =>
     parseOutlineItems(outline).any((it) => it.checked);
+
+/// Whether every checkbox item in [outline] is checked. False when there are no
+/// items (so the "select all" control still shows something to do).
+bool allItemsChecked(String outline) {
+  final items = parseOutlineItems(outline);
+  return items.isNotEmpty && items.every((it) => it.checked);
+}
 
 /// The checked items rendered as a plain bullet list — the context fed to stage
 /// 2. Empty string when nothing is checked.
