@@ -113,9 +113,11 @@ class MenuBarManager with TrayListener, WindowListener {
 
   @override
   void onWindowClose() {
-    // preventClose is on, so the window is still alive: hide it back to the
-    // menu bar instead of quitting.
+    // preventClose is on, so the window is still alive: reconcile the Flutter
+    // surface back to the app (so the next show isn't a frameless main window)
+    // and hide it to the menu bar instead of quitting.
     _panelVisible = false;
+    onShowApp();
     unawaited(windowManager.hide());
   }
 
@@ -137,11 +139,13 @@ class MenuBarManager with TrayListener, WindowListener {
       return;
     }
     onShowPanel();
+    // Set intent up-front so a throw mid-transition can't desync the toggle
+    // (leaving _panelVisible false while the window is actually shown).
+    _panelVisible = true;
     await _applyPanelWindow();
     await _positionPanel();
     await windowManager.show();
     await windowManager.focus();
-    _panelVisible = true;
   }
 
   Future<void> hidePanel() async {

@@ -142,7 +142,11 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
       itemCount: notes.length,
       itemBuilder: (context, i) {
         final note = notes[i];
-        return _NoteRow(note: note, onTap: () => _c.openNote(note));
+        return _NoteRow(
+          key: ValueKey(note.id),
+          note: note,
+          onTap: () => _c.openNote(note),
+        );
       },
     );
   }
@@ -347,7 +351,7 @@ class _AddButton extends StatelessWidget {
 }
 
 class _NoteRow extends StatefulWidget {
-  const _NoteRow({required this.note, required this.onTap});
+  const _NoteRow({super.key, required this.note, required this.onTap});
 
   final Note note;
   final VoidCallback onTap;

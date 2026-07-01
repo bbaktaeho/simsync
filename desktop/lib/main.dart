@@ -180,7 +180,7 @@ class _AppShellState extends State<_AppShell> {
       defaultLocalNotePath: _defaultLocalNotePath(),
     );
     _menuBarController = MenuBarController(
-      storage: () => _bundle!.storage,
+      storage: () => _bundle?.storage,
       localStorage: () => _bundle?.localStorage,
       syncEnabled: () => _settingsController.value.syncEnabled,
       onChanged: () => _refreshSignal.value++,
@@ -234,7 +234,14 @@ class _AppShellState extends State<_AppShell> {
     _activeRepo = null;
     await widget.authService.logout();
     if (!mounted) return;
-    setState(() => _status = _AuthStatus.unauthenticated);
+    final wasPanel = _panelMode;
+    setState(() {
+      _status = _AuthStatus.unauthenticated;
+      _panelMode = false;
+    });
+    // If the popover was the visible surface at logout, restore the normal app
+    // window so the login screen isn't shown in the frameless panel shape.
+    if (wasPanel) unawaited(_menuBar.showApp());
   }
 
   Future<void> _restoreSession() async {

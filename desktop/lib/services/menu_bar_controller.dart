@@ -15,7 +15,7 @@ import '../storage/note_storage.dart';
 /// self-contained read/write surface.
 class MenuBarController extends ChangeNotifier {
   MenuBarController({
-    required NoteStorage Function() storage,
+    required NoteStorage? Function() storage,
     required NoteStorage? Function() localStorage,
     required bool Function() syncEnabled,
     required VoidCallback onChanged,
@@ -24,7 +24,9 @@ class MenuBarController extends ChangeNotifier {
         _syncEnabled = syncEnabled,
         _onChanged = onChanged;
 
-  final NoteStorage Function() _storage;
+  /// Nullable: returns null when there is no authenticated storage bundle, so
+  /// callers must guard (e.g. after logout the popover cannot read/write).
+  final NoteStorage? Function() _storage;
   final NoteStorage? Function() _localStorage;
   final bool Function() _syncEnabled;
 
@@ -100,17 +102,36 @@ class MenuBarController extends ChangeNotifier {
   /// surfaced so it reflects edits made elsewhere.
   Future<void> load() async {
     if (_loading) return;
+    final storage = _storage();
+    if (storage == null) return; // no authenticated bundle (e.g. logged out)
     _loading = true;
     try {
       final local = _localStorage();
       final futures = <Future<List<Note>>>[
-        _storage().listAllNotes(),
+        storage.listAllNotes(),
         if (local != null) local.listAllNotes(),
       ];
       final results = await Future.wait(futures);
-      final notes = <Note>[for (final list in results) ...list]
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      final notes = <Note>[for (final list in results) ...list];
+
+      // Preserve unsaved edits: keep any in-memory dirty note over its stored
+      // copy, and re-add dirty notes storage doesn't have yet. Mirrors
+      // DocumentScreen._loadNotes so reopening the popover after a blur never
+      // discards an in-flight edit whose debounced save hasn't fired.
+      final dirtyById = <String, Note>{
+        for (final n in _notes)
+          if (n.isDirty) n.id: n,
+      };
+      if (dirtyById.isNotEmpty) {
+        for (var i = 0; i < notes.length; i++) {
+          final dirty = dirtyById.remove(notes[i].id);
+          if (dirty != null) notes[i] = dirty;
+        }
+        notes.addAll(dirtyById.values);
+      }
+      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       _notes = notes;
+
       // Keep the editor bound to the freshest copy of the note it is showing.
       final editing = _editingNote;
       if (editing != null) {
@@ -162,7 +183,7 @@ class MenuBarController extends ChangeNotifier {
     notifyListeners();
   }
 
-  NoteStorage _storageFor(Note note) {
+  NoteStorage? _storageFor(Note note) {
     final local = _localStorage();
     if (note.storageType == StorageType.local && local != null) return local;
     return _storage();
@@ -172,6 +193,8 @@ class MenuBarController extends ChangeNotifier {
   /// selected date, persists it, and opens it in the editor overlay. Requires
   /// sync to be enabled — otherwise shows a transient notice.
   Future<void> createNote({required bool memo}) async {
+    final storage = _storage();
+    if (storage == null) return;
     if (!_syncEnabled()) {
       _showNotice('동기화가 꺼져 있어 추가할 수 없습니다');
       return;
@@ -190,7 +213,7 @@ class MenuBarController extends ChangeNotifier {
       isMemo: memo,
     );
     try {
-      await _storage().saveNote(note);
+      await storage.saveNote(note);
     } catch (e) {
       _showNotice('추가 실패: $e');
       return;
@@ -204,6 +227,9 @@ class MenuBarController extends ChangeNotifier {
 
   /// Applies an in-place edit from the editor and debounces the persistence.
   void updateNote(Note updated) {
+    // Mark dirty so a reload racing the debounce (reopen after blur) preserves
+    // the edit instead of overwriting it with the stored copy.
+    updated.isDirty = true;
     final idx = _notes.indexWhere((n) => n.id == updated.id);
     if (idx != -1) _notes[idx] = updated;
     if (_editingNote?.id == updated.id) _editingNote = updated;
@@ -216,8 +242,10 @@ class MenuBarController extends ChangeNotifier {
   Future<void> _persist(String id) async {
     final note = _noteById(id);
     if (note == null) return;
+    final storage = _storageFor(note);
+    if (storage == null) return;
     try {
-      await _storageFor(note).saveNote(note);
+      await storage.saveNote(note);
       note.isDirty = false;
       _onChanged();
     } catch (_) {

@@ -214,6 +214,29 @@ void main() {
     expect(changes, greaterThanOrEqualTo(1));
   });
 
+  test('load preserves an unsaved in-flight edit (no clobber on reopen)',
+      () async {
+    final s = _MemStorage([
+      _note(id: 'a', date: DateTime(2026, 7, 1), content: 'orig'),
+    ]);
+    final c = _controller(s);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+
+    // Edit but do NOT wait for the 1s debounce to persist.
+    final note = c.notesForSelectedDate.first;
+    c.updateNote(note.copyWith(
+      content: 'edited',
+      updatedAt: DateTime(2026, 7, 1, 12),
+    ));
+
+    // Simulate reopening the popover (a reload) before the save fires.
+    await c.load();
+
+    expect(c.notesForSelectedDate.first.content, 'edited');
+    c.dispose(); // cancel the still-pending debounce timer
+  });
+
   test('closeEditor clears the editing note', () async {
     final s = _MemStorage();
     final c = _controller(s);
