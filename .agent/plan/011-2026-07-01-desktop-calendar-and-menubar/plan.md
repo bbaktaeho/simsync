@@ -3,7 +3,7 @@ title: 데스크탑 캘린더 이웃-달 표시 + macOS 메뉴바 앱
 description: 캘린더에 이전/다음 달 날짜 표시, macOS 상단 메뉴바 트레이 + popover(캘린더/노트리스트/에디터 오버레이)
 type: plan
 created: 2026-07-01
-status: draft
+status: active
 related:
   - desktop/lib/widgets/calendar_section.dart
   - desktop/lib/screens/document_screen.dart
@@ -33,6 +33,7 @@ related:
     - 노트/메모 추가 또는 리스트 클릭 시 **에디터를 오버레이로** 띄워 수정
 - 디자인 시스템(DESIGN.md, Notion 계열) 준수, UX 중시.
 - `tray_manager`, `window_manager` 패키지 추가 승인됨.
+- 다크모드(System/Light/Dark) 지원 — 메뉴바 popover 포함(추가 요청).
 - 완료 후 PR 1개.
 
 ## Assumptions (명시)
@@ -110,8 +111,15 @@ main.dart
    - `MenuBarController` + `MenuBarPanel`.
    - 캘린더(점) → 날짜 리스트 + 메모탭 → 우클릭 추가 → 에디터 오버레이 편집/저장.
    - 컨트롤러 로직 단위 테스트.
+4. **Phase 4 — 다크모드 (추가 요청)**
+   - `AppColorsExtension.dark` + `buildDarkTheme()`(brightness 파라미터화).
+   - `AppSettings.themeMode`(System/Light/Dark) 로컬 저장, 루트 `ValueNotifier<ThemeMode>`로
+     MaterialApp 배선, 설정 화면에 Appearance 선택.
+   - popover는 `context.colors`라 자동 적용. 테마 빌드/저장 테스트.
 
 각 Phase 후 workflow.md 4–13단계 검토(목적 적합성/버그·보안/사이드이펙트/재사용/품질/사용자 흐름)를 최소 3회 반복.
+검토 기록: Round 1 자체(에디터 헤더 중복·무한 스피너 수정), Round 2 독립 서브에이전트
+(미저장 편집 보호·로그아웃 크래시·창 상태 정합성 수정), Round 3 홀리스틱(다크모드 대비·설정 즉시반영 확인).
 
 ## Testing & Verification
 
