@@ -189,10 +189,12 @@ class _AppShellState extends State<_AppShell> {
     _settingsController = AppSettingsController(
       defaultLocalNotePath: defaultLocalNotePath(),
     );
-    _settingsController.addListener(_syncThemeMode);
     _menuBar = MenuBarManager(
       onOpenSettings: () => _openSettingsSignal.value++,
+      onToggleTheme: _toggleTheme,
+      isDark: _effectiveDark,
     );
+    _settingsController.addListener(_syncThemeMode);
     unawaited(_menuBar.setUp());
     _initialize();
   }
@@ -220,6 +222,29 @@ class _AppShellState extends State<_AppShell> {
   void _syncThemeMode() {
     widget.themeModeNotifier.value =
         flutterThemeMode(_settingsController.value.themeMode);
+    // Keep the tray "다크 모드" checkbox in sync when the theme changes.
+    unawaited(_menuBar.refreshMenu());
+  }
+
+  /// Whether the app currently renders dark (accounting for System mode).
+  bool _effectiveDark() {
+    switch (_settingsController.value.themeMode) {
+      case AppThemeMode.dark:
+        return true;
+      case AppThemeMode.light:
+        return false;
+      case AppThemeMode.system:
+        return WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+            Brightness.dark;
+    }
+  }
+
+  /// Flips between light and dark based on what's currently rendered. Used by the
+  /// tray checkbox and the title-bar toggle button.
+  void _toggleTheme() {
+    unawaited(_settingsController.setThemeMode(
+      _effectiveDark() ? AppThemeMode.light : AppThemeMode.dark,
+    ));
   }
 
   Future<void> _handleLogin() async {

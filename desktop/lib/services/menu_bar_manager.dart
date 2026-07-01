@@ -17,10 +17,20 @@ import 'package:window_manager/window_manager.dart';
 ///
 /// macOS-only: on every other platform / under `flutter test` this is a no-op.
 class MenuBarManager with TrayListener, WindowListener {
-  MenuBarManager({required this.onOpenSettings});
+  MenuBarManager({
+    required this.onOpenSettings,
+    required this.onToggleTheme,
+    required this.isDark,
+  });
 
   /// Opens the in-app settings dialog in the main window (after it is surfaced).
   final VoidCallback onOpenSettings;
+
+  /// Toggles the app theme between light and dark (from the tray checkbox).
+  final VoidCallback onToggleTheme;
+
+  /// Whether the app is currently in dark mode — drives the tray checkbox state.
+  final bool Function() isDark;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
   static const Size popoverSize = Size(400, 500);
@@ -71,9 +81,23 @@ class MenuBarManager with TrayListener, WindowListener {
               unawaited(_showMainWindow().then((_) => onOpenSettings())),
         ),
         MenuItem.separator(),
+        MenuItem.checkbox(
+          key: 'dark_mode',
+          label: '다크 모드',
+          checked: isDark(),
+          onClick: (_) => onToggleTheme(),
+        ),
+        MenuItem.separator(),
         MenuItem(key: 'quit', label: '앱 종료', onClick: (_) => unawaited(_quit())),
       ],
     );
+  }
+
+  /// Rebuilds the tray context menu so the "다크 모드" checkbox reflects the
+  /// current theme (e.g. after it was toggled from the app's title bar button).
+  Future<void> refreshMenu() async {
+    if (!isSupported) return;
+    await trayManager.setContextMenu(_buildMenu());
   }
 
   // ── Tray events ──

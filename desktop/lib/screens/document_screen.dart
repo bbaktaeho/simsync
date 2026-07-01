@@ -1454,6 +1454,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
           ),
           const Spacer(),
+          _ThemeToggleButton(settings: widget.settingsController),
+          const SizedBox(width: AppDimensions.spacingXs),
           IconButton(
             icon: Icon(
               Icons.settings_outlined,
@@ -1650,6 +1652,46 @@ class _ReviewViewButtonState extends State<_ReviewViewButton> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Title-bar button that flips the app between light and dark. Reads the current
+/// brightness (so it's correct in System mode too) and cross-fades + rotates the
+/// sun/moon icon on toggle.
+class _ThemeToggleButton extends StatelessWidget {
+  const _ThemeToggleButton({required this.settings});
+
+  final AppSettingsController settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return IconButton(
+      onPressed: () => unawaited(
+        settings.setThemeMode(
+          isDark ? AppThemeMode.light : AppThemeMode.dark,
+        ),
+      ),
+      tooltip: isDark ? '라이트 모드로' : '다크 모드로',
+      splashRadius: 16,
+      icon: AnimatedSwitcher(
+        duration: AppDimensions.animFast,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: RotationTransition(
+            turns: Tween<double>(begin: 0.7, end: 1.0).animate(anim),
+            child: child,
+          ),
+        ),
+        child: Icon(
+          isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+          key: ValueKey<bool>(isDark),
+          size: 18,
+          color: c.textSecondary,
         ),
       ),
     );
