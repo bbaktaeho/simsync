@@ -17,6 +17,7 @@ import 'settings/app_settings_controller.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
+import 'services/menu_bar_controller.dart';
 import 'services/menu_bar_manager.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
@@ -165,6 +166,9 @@ class _AppShellState extends State<_AppShell> {
   /// True while the compact menu bar popover is the visible surface.
   bool _panelMode = false;
 
+  /// Owns the menu bar popover's state + note data, reusing the app's storage.
+  late final MenuBarController _menuBarController;
+
   /// Bumped when the tray "설정" item is chosen, so DocumentScreen opens the
   /// settings dialog once it is the visible surface.
   final ValueNotifier<int> _openSettingsSignal = ValueNotifier<int>(0);
@@ -175,9 +179,16 @@ class _AppShellState extends State<_AppShell> {
     _settingsController = AppSettingsController(
       defaultLocalNotePath: _defaultLocalNotePath(),
     );
+    _menuBarController = MenuBarController(
+      storage: () => _bundle!.storage,
+      localStorage: () => _bundle?.localStorage,
+      syncEnabled: () => _settingsController.value.syncEnabled,
+      onChanged: () => _refreshSignal.value++,
+    );
     _menuBar = MenuBarManager(
       onShowPanel: () {
         if (mounted) setState(() => _panelMode = true);
+        unawaited(_menuBarController.load());
       },
       onShowApp: () {
         if (mounted) setState(() => _panelMode = false);
@@ -197,6 +208,7 @@ class _AppShellState extends State<_AppShell> {
     _settingsController.dispose();
     _refreshSignal.dispose();
     unawaited(_menuBar.dispose());
+    _menuBarController.dispose();
     _openSettingsSignal.dispose();
     super.dispose();
   }
@@ -459,7 +471,15 @@ class _AppShellState extends State<_AppShell> {
             onCreateRepo: _handleCreateRepo,
             onConnectRepo: _handleConnectRepo,
           ),
-          const MenuBarPanel(),
+          // Built only while the popover is showing: DocumentScreen stays as
+          // child 0 (state preserved), and an idle panel never spins a
+          // progress indicator in the background.
+          _panelMode
+              ? MenuBarPanel(
+                  controller: _menuBarController,
+                  settings: _settingsController,
+                )
+              : const SizedBox.shrink(),
         ],
       );
     }

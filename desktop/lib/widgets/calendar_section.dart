@@ -15,6 +15,11 @@ class CalendarSection extends StatelessWidget {
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
 
+  /// Optional right-click (secondary tap) handler on a day cell, with the tap's
+  /// global position. Used by the menu bar popover to offer "add note / memo";
+  /// null in the main sidebar, where it stays a no-op.
+  final void Function(DateTime date, Offset globalPosition)? onDateSecondaryTap;
+
   const CalendarSection({
     super.key,
     required this.displayedMonth,
@@ -25,6 +30,7 @@ class CalendarSection extends StatelessWidget {
     required this.onDateSelected,
     required this.onPreviousMonth,
     required this.onNextMonth,
+    this.onDateSecondaryTap,
   });
 
   @override
@@ -182,6 +188,9 @@ class CalendarSection extends StatelessWidget {
             isSelected: isSelected,
             hasNotes: hasNotes,
             onTap: () => onDateSelected(date),
+            onSecondaryTap: onDateSecondaryTap == null
+                ? null
+                : (pos) => onDateSecondaryTap!(date, pos),
           ),
         ));
       }
@@ -203,6 +212,7 @@ class _CalendarCell extends StatelessWidget {
   final bool isSelected;
   final bool hasNotes;
   final VoidCallback onTap;
+  final void Function(Offset globalPosition)? onSecondaryTap;
 
   const _CalendarCell({
     required this.day,
@@ -211,6 +221,7 @@ class _CalendarCell extends StatelessWidget {
     required this.isSelected,
     required this.hasNotes,
     required this.onTap,
+    this.onSecondaryTap,
   });
 
   @override
@@ -234,6 +245,9 @@ class _CalendarCell extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onSecondaryTapDown: onSecondaryTap == null
+          ? null
+          : (details) => onSecondaryTap!(details.globalPosition),
       child: Container(
         height: AppDimensions.calendarCellSize,
         decoration: BoxDecoration(

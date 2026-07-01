@@ -40,7 +40,9 @@ class MenuBarManager with TrayListener, WindowListener {
   final bool Function() canShowPanel;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
-  static const Size panelSize = Size(360, 540);
+  // Wide enough that the reused EditorPanel toolbar fits without overflow when
+  // the editor overlay is open; tall enough for the calendar + a note list.
+  static const Size panelSize = Size(460, 580);
   static const Size _appSize = Size(1120, 760);
   // The macOS menu bar is always at the very top, so a fixed top inset places
   // the popover just beneath it — reliable regardless of the icon-bounds y
