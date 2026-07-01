@@ -34,7 +34,21 @@ class MenuBarPanel extends StatefulWidget {
 class _MenuBarPanelState extends State<MenuBarPanel> {
   bool _calendarExpanded = true;
 
+  // Side length of a calendar day cell; the draggable divider between the
+  // calendar and the note list adjusts it (smaller cells => more room for the
+  // list). Capped so 7 cells always fit the popover width.
+  static const double _minCell = 30;
+  static const double _maxCell = 44;
+  double _cellSize = _maxCell;
+
   MenuBarController get _c => widget.controller;
+
+  void _onDividerDrag(double dy) {
+    setState(() {
+      // Dragging down grows the calendar (bigger cells), up shrinks it.
+      _cellSize = (_cellSize + dy / 6).clamp(_minCell, _maxCell);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -80,7 +94,6 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
   }
 
   Widget _buildListView(BuildContext context) {
-    final c = context.colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -95,9 +108,12 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
           onPreviousMonth: _c.previousMonth,
           onNextMonth: _c.nextMonth,
           onDateSecondaryTap: _showAddMenu,
-          squareCells: true,
+          squareCellSize: _cellSize,
         ),
-        Divider(height: 1, color: c.border),
+        _ResizableDivider(
+          key: const ValueKey('calendar-list-divider'),
+          onDragDelta: _onDividerDrag,
+        ),
         _buildTabs(context),
         Expanded(child: _buildNoteList(context)),
       ],
@@ -472,6 +488,50 @@ class _NoticeBanner extends StatelessWidget {
         message,
         style: AppTextStyles.microMedium.copyWith(color: c.surface),
         textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+/// The line between the calendar and the note list — draggable vertically to
+/// resize the calendar (bigger/smaller cells) and give the list more or less
+/// room. Highlights on hover / while dragging.
+class _ResizableDivider extends StatefulWidget {
+  const _ResizableDivider({super.key, required this.onDragDelta});
+
+  final ValueChanged<double> onDragDelta;
+
+  @override
+  State<_ResizableDivider> createState() => _ResizableDividerState();
+}
+
+class _ResizableDividerState extends State<_ResizableDivider> {
+  bool _hovered = false;
+  bool _dragging = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final active = _hovered || _dragging;
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onVerticalDragStart: (_) => setState(() => _dragging = true),
+        onVerticalDragUpdate: (d) => widget.onDragDelta(d.delta.dy),
+        onVerticalDragEnd: (_) => setState(() => _dragging = false),
+        child: SizedBox(
+          height: 7,
+          child: Center(
+            child: AnimatedContainer(
+              duration: AppDimensions.animFast,
+              height: active ? 2 : 1,
+              color: active ? c.accent.withValues(alpha: 0.6) : c.border,
+            ),
+          ),
+        ),
       ),
     );
   }

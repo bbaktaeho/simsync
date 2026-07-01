@@ -20,10 +20,11 @@ class CalendarSection extends StatelessWidget {
   /// null in the main sidebar, where it stays a no-op.
   final void Function(DateTime date, Offset globalPosition)? onDateSecondaryTap;
 
-  /// When true, each day cell is a square (width == height) instead of the fixed
-  /// short height. Used by the compact menu bar popover so dates aren't wide
-  /// rectangles; the sidebar keeps its default (false).
-  final bool squareCells;
+  /// When non-null, each day cell is a square of this side length (and the grid
+  /// is centered at a fixed width). Used by the compact menu bar popover so
+  /// dates aren't wide rectangles and the calendar can be resized; null in the
+  /// main sidebar, which keeps the fixed short-height cells.
+  final double? squareCellSize;
 
   const CalendarSection({
     super.key,
@@ -36,11 +37,8 @@ class CalendarSection extends StatelessWidget {
     required this.onPreviousMonth,
     required this.onNextMonth,
     this.onDateSecondaryTap,
-    this.squareCells = false,
+    this.squareCellSize,
   });
-
-  /// Side length of a day cell in [squareCells] mode.
-  static const double _squareCellSize = 44;
 
   @override
   Widget build(BuildContext context) {
@@ -147,9 +145,9 @@ class CalendarSection extends StatelessWidget {
       // Square mode: constrain the whole grid to a fixed width (7 square cells)
       // and center it, so both the weekday header and the day cells stay aligned
       // and the dates render as compact squares rather than wide rectangles.
-      child: squareCells
+      child: squareCellSize != null
           ? Center(
-              child: SizedBox(width: 7 * _squareCellSize, child: grid),
+              child: SizedBox(width: 7 * squareCellSize!, child: grid),
             )
           : grid,
     );
@@ -212,7 +210,7 @@ class CalendarSection extends StatelessWidget {
         cells.add(Expanded(
           // Square (popover) => height tracks the cell width; otherwise the
           // fixed short height used in the sidebar.
-          child: squareCells
+          child: squareCellSize != null
               ? AspectRatio(aspectRatio: 1, child: cell)
               : SizedBox(height: AppDimensions.calendarCellSize, child: cell),
         ));

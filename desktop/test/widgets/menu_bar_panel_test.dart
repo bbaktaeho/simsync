@@ -60,6 +60,10 @@ Note _note({
 Future<MenuBarController> _pumpPanel(
   WidgetTester tester, {
   required List<Note> notes,
+  // Defaults to the popover's browse size; the editor-overlay test widens it to
+  // the edit size (the real popover window resizes itself for editing).
+  double width = 332,
+  double height = 500,
 }) async {
   final storage = _MemStorage(notes);
   final controller = MenuBarController(
@@ -80,10 +84,8 @@ Future<MenuBarController> _pumpPanel(
       theme: buildLightTheme(),
       home: Scaffold(
         body: SizedBox(
-          // Matches MenuBarManager.popoverSize so overflow is validated at the
-          // real popover size (with square calendar cells).
-          width: 400,
-          height: 500,
+          width: width,
+          height: height,
           child: MenuBarPanel(controller: controller, settings: settings),
         ),
       ),
@@ -112,9 +114,13 @@ void main() {
   testWidgets('tapping a note opens the editor overlay; back closes it', (
     tester,
   ) async {
-    await _pumpPanel(tester, notes: [
-      _note(id: 'a', date: DateTime(2026, 7, 1), title: 'Hello'),
-    ]);
+    // The real popover widens to the edit size when the editor opens.
+    await _pumpPanel(
+      tester,
+      notes: [_note(id: 'a', date: DateTime(2026, 7, 1), title: 'Hello')],
+      width: 420,
+      height: 520,
+    );
 
     expect(find.byType(EditorPanel), findsNothing);
 
@@ -157,5 +163,24 @@ void main() {
     // Right-clicking a date does not add a memo, so that hint must not appear.
     expect(find.textContaining('우클릭'), findsNothing);
     expect(find.text('+ 로 메모 추가'), findsOneWidget);
+  });
+
+  testWidgets('dragging the calendar/list divider resizes the calendar', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, notes: []);
+
+    final calendar = find.byType(CalendarSection);
+    final before = tester.getSize(calendar).height;
+
+    // Drag the divider up → smaller cells → shorter calendar (more room for the
+    // list).
+    await tester.drag(
+      find.byKey(const ValueKey('calendar-list-divider')),
+      const Offset(0, -60),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getSize(calendar).height, lessThan(before));
   });
 }

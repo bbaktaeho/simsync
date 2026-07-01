@@ -19,13 +19,17 @@ import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'widgets/menu_bar_panel.dart';
 
-const Size _popoverSize = Size(400, 500);
+// Compact size for browsing (snug around the square calendar). The window
+// widens for the editor overlay, whose reused toolbar needs ~386px, then
+// shrinks back when the editor closes.
+const Size _browseSize = Size(332, 500);
+const Size _editSize = Size(420, 520);
 
 /// Entry point for the macOS menu bar popover, which runs in its own
 /// desktop_multi_window engine (separate from the main app window). It shapes a
-/// frameless, always-on-top, hide-on-blur panel; boots its own storage from the
-/// persisted session/repo; and renders [MenuBarPanel]. Because it's a separate
-/// window, opening it never touches the main app window.
+/// frameless, hide-on-blur panel; boots its own storage from the persisted
+/// session/repo; and renders [MenuBarPanel]. Because it's a separate window,
+/// opening it never touches the main app window.
 ///
 /// [args] is `["multi_window", windowId, "popover:dx:dy"]`.
 Future<void> runPopoverWindow(List<String> args) async {
@@ -34,7 +38,7 @@ Future<void> runPopoverWindow(List<String> args) async {
 
   await windowManager.waitUntilReadyToShow(
     const WindowOptions(
-      size: _popoverSize,
+      size: _browseSize,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
       alwaysOnTop: true,
@@ -42,8 +46,8 @@ Future<void> runPopoverWindow(List<String> args) async {
     ),
     () async {
       await windowManager.setPosition(position);
-      // Appear on every Space AND over other apps' full-screen windows
-      // (.canJoinAllSpaces + .fullScreenAuxiliary), not just the desktop Space.
+      // Appear on every Space AND over other apps' full-screen windows, not
+      // just the desktop Space (the native side also sets this at creation).
       await windowManager.setVisibleOnAllWorkspaces(
         true,
         visibleOnFullScreen: true,
@@ -74,7 +78,12 @@ Future<void> runPopoverWindow(List<String> args) async {
     }
   }
 
-  runApp(_PopoverApp(windowId: windowId, settings: settings, bundle: bundle));
+  runApp(_PopoverApp(
+    windowId: windowId,
+    position: position,
+    settings: settings,
+    bundle: bundle,
+  ));
 }
 
 Offset _parsePosition(String config) {
@@ -91,11 +100,13 @@ Offset _parsePosition(String config) {
 class _PopoverApp extends StatefulWidget {
   const _PopoverApp({
     required this.windowId,
+    required this.position,
     required this.settings,
     this.bundle,
   });
 
   final String windowId;
+  final Offset position;
   final AppSettingsController settings;
   final StorageBundle? bundle;
 
@@ -105,10 +116,13 @@ class _PopoverApp extends StatefulWidget {
 
 class _PopoverAppState extends State<_PopoverApp> with WindowListener {
   MenuBarController? _controller;
+  late Offset _anchor; // browse-size top-left, under the tray icon
+  bool _editorOpen = false;
 
   @override
   void initState() {
     super.initState();
+    _anchor = widget.position;
     windowManager.addListener(this);
 
     final bundle = widget.bundle;
@@ -119,6 +133,8 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
         syncEnabled: () => widget.settings.value.syncEnabled,
         onChanged: () {},
       );
+      // Resize the window between browse/edit as the editor overlay opens/closes.
+      _controller!.addListener(_onControllerChanged);
       unawaited(_controller!.load());
     }
 
@@ -127,19 +143,40 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
         .setWindowMethodHandler(_handleWindowMethod);
   }
 
+  void _onControllerChanged() {
+    final open = _controller?.editingNote != null;
+    if (open != _editorOpen) {
+      _editorOpen = open;
+      unawaited(_applyEditorSize(open));
+    }
+  }
+
+  /// Widen the window for the editor overlay, shrink back for browsing. The
+  /// right edge stays anchored so growing wider never pushes off-screen.
+  Future<void> _applyEditorSize(bool editing) async {
+    final size = editing ? _editSize : _browseSize;
+    final rightEdge = _anchor.dx + _browseSize.width;
+    final x = editing ? rightEdge - _editSize.width : _anchor.dx;
+    await windowManager.setPosition(Offset(x, _anchor.dy));
+    await windowManager.setSize(size);
+  }
+
   Future<dynamic> _handleWindowMethod(MethodCall call) async {
     if (call.method == 'show') {
       final a = call.arguments as Map?;
       final dx = (a?['dx'] as num?)?.toDouble();
       final dy = (a?['dy'] as num?)?.toDouble();
-      if (dx != null && dy != null) {
-        await windowManager.setPosition(Offset(dx, dy));
-      }
+      if (dx != null && dy != null) _anchor = Offset(dx, dy);
+
+      // Reopen browsing today's calendar (close any leftover editor overlay).
+      _controller?.closeEditor();
+      _controller?.resetToToday();
+      _editorOpen = false;
+
+      await windowManager.setSize(_browseSize);
+      await windowManager.setPosition(_anchor);
       await windowManager.show();
       await windowManager.focus();
-      // Re-anchor to today, then refresh notes + settings (theme) each time the
-      // popover is surfaced.
-      _controller?.resetToToday();
       unawaited(_controller?.load());
       unawaited(widget.settings.load());
     }
@@ -155,6 +192,7 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
   @override
   void dispose() {
     windowManager.removeListener(this);
+    _controller?.removeListener(_onControllerChanged);
     _controller?.dispose();
     widget.settings.dispose();
     super.dispose();

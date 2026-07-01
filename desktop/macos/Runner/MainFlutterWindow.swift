@@ -17,6 +17,13 @@ class MainFlutterWindow: NSWindow {
     // window_manager / path_provider / etc. work inside the popover window.
     FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
       RegisterGeneratedPlugins(registry: controller)
+      // Let the popover appear over other apps' full-screen Spaces (not only the
+      // desktop). Set at creation so it's on all Spaces before it's first shown.
+      if let window = controller.view.window {
+        window.collectionBehavior.insert(.canJoinAllSpaces)
+        window.collectionBehavior.insert(.fullScreenAuxiliary)
+        window.collectionBehavior.insert(.stationary)
+      }
     }
 
     super.awakeFromNib()
