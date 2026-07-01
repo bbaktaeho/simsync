@@ -62,21 +62,11 @@ typedef StorageFactory =
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set up native window management for the desktop shell (needed for the macOS
-  // menu bar panel to reshape the window). Harmless on the other desktop OSes.
+  // Initialize native window management (needed for the macOS menu bar panel to
+  // reshape the window). The window is created at its final size natively in
+  // MainFlutterWindow.swift, so we deliberately do NOT resize it here — a Dart
+  // resize on launch caused a visible first-run resize flash.
   await windowManager.ensureInitialized();
-  const windowOptions = WindowOptions(
-    size: Size(1120, 760),
-    center: true,
-    title: 'SimSync',
-    titleBarStyle: TitleBarStyle.normal,
-  );
-  unawaited(
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-    }),
-  );
 
   runApp(SimSyncApp(authService: createDefaultAuthService()));
 }

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, exit;
 
 import 'package:flutter/material.dart';
 import 'package:tray_manager/tray_manager.dart';
@@ -40,9 +40,9 @@ class MenuBarManager with TrayListener, WindowListener {
   final bool Function() canShowPanel;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
-  // Wide enough that the reused EditorPanel toolbar fits without overflow when
-  // the editor overlay is open; tall enough for the calendar + a note list.
-  static const Size panelSize = Size(460, 580);
+  // Compact popover. Width stays >= ~386 so the reused EditorPanel toolbar fits
+  // without overflow when the editor overlay is open.
+  static const Size panelSize = Size(420, 520);
   static const Size _appSize = Size(1120, 760);
   // The macOS menu bar is always at the very top, so a fixed top inset places
   // the popover just beneath it — reliable regardless of the icon-bounds y
@@ -211,7 +211,10 @@ class MenuBarManager with TrayListener, WindowListener {
   }
 
   Future<void> _quit() async {
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    // Menu bar resident: the app no longer auto-terminates when its window
+    // closes (AppDelegate returns false), so "앱 종료" ends the process
+    // explicitly. Remove the tray icon first so it doesn't linger.
+    await trayManager.destroy();
+    exit(0);
   }
 }
