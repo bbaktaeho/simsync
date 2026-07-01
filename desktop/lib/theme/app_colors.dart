@@ -102,7 +102,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     accentSubtle: Color(0xFF16304C), // deep blue-tinted fill (selected/badge bg)
     textPrimary: Color(0xFFECEAE6), // warm near-white
     textSecondary: Color(0xFFA8A39C), // warm gray
-    textMuted: Color(0xFF6E6A63), // dim warm gray
+    textMuted: Color(0xFF8A857D), // dim warm gray — raised for dark contrast (~4.4:1 on surface)
     textOnAccent: Color(0xFFFFFFFF), // text on blue
     error: Color(0xFFE8703A), // orange, brightened for dark
     success: Color(0xFF3FBF57), // green, brightened

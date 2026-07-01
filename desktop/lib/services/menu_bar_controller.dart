@@ -103,7 +103,13 @@ class MenuBarController extends ChangeNotifier {
   Future<void> load() async {
     if (_loading) return;
     final storage = _storage();
-    if (storage == null) return; // no authenticated bundle (e.g. logged out)
+    if (storage == null) {
+      // No authenticated bundle (e.g. logged out): show an empty panel instead
+      // of a perpetual spinner.
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
     _loading = true;
     try {
       final local = _localStorage();

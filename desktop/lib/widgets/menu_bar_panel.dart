@@ -172,7 +172,9 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
             ),
             const SizedBox(height: AppDimensions.spacingXs),
             Text(
-              '날짜를 우클릭하거나 + 로 추가',
+              // Memos are date-independent, so the right-click-a-date hint only
+              // applies to daily notes.
+              isMemo ? '+ 로 메모 추가' : '날짜를 우클릭하거나 + 로 추가',
               style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
               textAlign: TextAlign.center,
             ),
@@ -249,9 +251,7 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
   }
 
   Future<void> _showAddMenu(DateTime date, Offset globalPosition) async {
-    _c.selectDate(date);
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final memo = await showMenu<bool>(
       context: context,
       position: RelativeRect.fromRect(
@@ -263,7 +263,11 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
         PopupMenuItem<bool>(value: true, child: Text('메모 추가')),
       ],
     );
-    if (memo != null) await _c.createNote(memo: memo);
+    if (memo == null) return;
+    // A note is date-scoped to the right-clicked day; a memo is date-independent,
+    // so only re-select the date for the note branch (avoids tab/selection churn).
+    if (!memo) _c.selectDate(date);
+    await _c.createNote(memo: memo);
   }
 }
 
@@ -323,7 +327,9 @@ class _TabChip extends StatelessWidget {
         child: Text(
           label,
           style: AppTextStyles.microSemibold.copyWith(
-            color: active ? c.accent : c.textSecondary,
+            // badgeText is the token designed for text on accentSubtle — higher
+            // contrast than accent, in both light and dark.
+            color: active ? c.badgeText : c.textSecondary,
           ),
         ),
       ),

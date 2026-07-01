@@ -205,7 +205,12 @@ class _AppShellState extends State<_AppShell> {
       storage: () => _bundle?.storage,
       localStorage: () => _bundle?.localStorage,
       syncEnabled: () => _settingsController.value.syncEnabled,
-      onChanged: () => _refreshSignal.value++,
+      // Guard against a save that resumes after this shell is torn down (the
+      // refresh notifier is disposed before the controller) — would otherwise
+      // bump a disposed ValueNotifier.
+      onChanged: () {
+        if (mounted) _refreshSignal.value++;
+      },
     );
     _menuBar = MenuBarManager(
       onShowPanel: () {

@@ -1059,23 +1059,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _applySearchQuery(_searchQuery, resetPage: false);
   }
 
+  bool _settingsOpen = false;
+
   Future<void> _openSettings() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return SettingsScreen(
-          settingsController: widget.settingsController,
-          activeRepo: widget.activeRepo,
-          loadCachedRepos: widget.loadCachedRepos,
-          onLocalNotePathChanged: widget.onLocalNotePathChanged,
-          onSyncEnabledChanged: widget.onSyncEnabledChanged,
-          onRepoSelected: widget.onRepoSelected,
-          onCreateRepo: widget.onCreateRepo,
-          onConnectRepo: widget.onConnectRepo,
-          onSyncIntervalChanged: _applySyncInterval,
-        );
-      },
-    );
+    // Guard re-entrancy: the tray "설정" signal can fire while the dialog is
+    // already open, which would otherwise stack a second dialog.
+    if (_settingsOpen) return;
+    _settingsOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return SettingsScreen(
+            settingsController: widget.settingsController,
+            activeRepo: widget.activeRepo,
+            loadCachedRepos: widget.loadCachedRepos,
+            onLocalNotePathChanged: widget.onLocalNotePathChanged,
+            onSyncEnabledChanged: widget.onSyncEnabledChanged,
+            onRepoSelected: widget.onRepoSelected,
+            onCreateRepo: widget.onCreateRepo,
+            onConnectRepo: widget.onConnectRepo,
+            onSyncIntervalChanged: _applySyncInterval,
+          );
+        },
+      );
+    } finally {
+      _settingsOpen = false;
+    }
   }
 
   Future<void> _increaseContentScale() async {

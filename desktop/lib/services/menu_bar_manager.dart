@@ -142,10 +142,17 @@ class MenuBarManager with TrayListener, WindowListener {
     // Set intent up-front so a throw mid-transition can't desync the toggle
     // (leaving _panelVisible false while the window is actually shown).
     _panelVisible = true;
-    await _applyPanelWindow();
-    await _positionPanel();
-    await windowManager.show();
-    await windowManager.focus();
+    try {
+      await _applyPanelWindow();
+      await _positionPanel();
+      await windowManager.show();
+      await windowManager.focus();
+    } catch (_) {
+      // A native call failed mid-transition: reconcile back to the app surface
+      // so the toggle state and the visible window stay consistent.
+      _panelVisible = false;
+      onShowApp();
+    }
   }
 
   Future<void> hidePanel() async {

@@ -143,4 +143,17 @@ void main() {
     expect(find.text('MyMemo'), findsWidgets);
     expect(find.text('DayNote'), findsNothing);
   });
+
+  testWidgets('empty memo tab hint omits the right-click-a-date instruction', (
+    tester,
+  ) async {
+    await _pumpPanel(tester, notes: []);
+    await tester.tap(find.text('Memo'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('메모가 없습니다'), findsOneWidget);
+    // Right-clicking a date does not add a memo, so that hint must not appear.
+    expect(find.textContaining('우클릭'), findsNothing);
+    expect(find.text('+ 로 메모 추가'), findsOneWidget);
+  });
 }
