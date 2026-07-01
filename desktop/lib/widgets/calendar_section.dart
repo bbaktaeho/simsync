@@ -20,6 +20,11 @@ class CalendarSection extends StatelessWidget {
   /// null in the main sidebar, where it stays a no-op.
   final void Function(DateTime date, Offset globalPosition)? onDateSecondaryTap;
 
+  /// When true, each day cell is a square (width == height) instead of the fixed
+  /// short height. Used by the compact menu bar popover so dates aren't wide
+  /// rectangles; the sidebar keeps its default (false).
+  final bool squareCells;
+
   const CalendarSection({
     super.key,
     required this.displayedMonth,
@@ -31,7 +36,11 @@ class CalendarSection extends StatelessWidget {
     required this.onPreviousMonth,
     required this.onNextMonth,
     this.onDateSecondaryTap,
+    this.squareCells = false,
   });
+
+  /// Side length of a day cell in [squareCells] mode.
+  static const double _squareCellSize = 44;
 
   @override
   Widget build(BuildContext context) {
@@ -124,16 +133,25 @@ class CalendarSection extends StatelessWidget {
     final today = DateTime.now();
     final todayNormalized = DateTime(today.year, today.month, today.day);
 
+    final grid = Column(
+      children: [
+        _buildWeekdayHeader(context),
+        const SizedBox(height: AppDimensions.spacingXs),
+        ..._buildWeeks(context, year, month, leadingDays, weekCount, todayNormalized),
+        const SizedBox(height: AppDimensions.spacingSm),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd),
-      child: Column(
-        children: [
-          _buildWeekdayHeader(context),
-          const SizedBox(height: AppDimensions.spacingXs),
-          ..._buildWeeks(context, year, month, leadingDays, weekCount, todayNormalized),
-          const SizedBox(height: AppDimensions.spacingSm),
-        ],
-      ),
+      // Square mode: constrain the whole grid to a fixed width (7 square cells)
+      // and center it, so both the weekday header and the day cells stay aligned
+      // and the dates render as compact squares rather than wide rectangles.
+      child: squareCells
+          ? Center(
+              child: SizedBox(width: 7 * _squareCellSize, child: grid),
+            )
+          : grid,
     );
   }
 
@@ -180,18 +198,23 @@ class CalendarSection extends StatelessWidget {
             date.day == selectedDate!.day;
         final hasNotes = datesWithNotes.contains(date);
 
+        final cell = _CalendarCell(
+          day: date.day,
+          isCurrentMonth: isCurrentMonth,
+          isToday: isToday,
+          isSelected: isSelected,
+          hasNotes: hasNotes,
+          onTap: () => onDateSelected(date),
+          onSecondaryTap: onDateSecondaryTap == null
+              ? null
+              : (pos) => onDateSecondaryTap!(date, pos),
+        );
         cells.add(Expanded(
-          child: _CalendarCell(
-            day: date.day,
-            isCurrentMonth: isCurrentMonth,
-            isToday: isToday,
-            isSelected: isSelected,
-            hasNotes: hasNotes,
-            onTap: () => onDateSelected(date),
-            onSecondaryTap: onDateSecondaryTap == null
-                ? null
-                : (pos) => onDateSecondaryTap!(date, pos),
-          ),
+          // Square (popover) => height tracks the cell width; otherwise the
+          // fixed short height used in the sidebar.
+          child: squareCells
+              ? AspectRatio(aspectRatio: 1, child: cell)
+              : SizedBox(height: AppDimensions.calendarCellSize, child: cell),
         ));
       }
       weeks.add(
@@ -249,7 +272,8 @@ class _CalendarCell extends StatelessWidget {
           ? null
           : (details) => onSecondaryTap!(details.globalPosition),
       child: Container(
-        height: AppDimensions.calendarCellSize,
+        // Height comes from the wrapper (fixed in the sidebar, square in the
+        // popover), so the cell fills whatever box it's given.
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),

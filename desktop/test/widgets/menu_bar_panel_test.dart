@@ -80,10 +80,10 @@ Future<MenuBarController> _pumpPanel(
       theme: buildLightTheme(),
       home: Scaffold(
         body: SizedBox(
-          // Matches MenuBarManager.panelSize so overflow is validated at the
-          // real popover size.
-          width: 420,
-          height: 520,
+          // Matches MenuBarManager.popoverSize so overflow is validated at the
+          // real popover size (with square calendar cells).
+          width: 400,
+          height: 500,
           child: MenuBarPanel(controller: controller, settings: settings),
         ),
       ),

@@ -95,6 +95,7 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
           onPreviousMonth: _c.previousMonth,
           onNextMonth: _c.nextMonth,
           onDateSecondaryTap: _showAddMenu,
+          squareCells: true,
         ),
         Divider(height: 1, color: c.border),
         _buildTabs(context),
@@ -154,31 +155,43 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
   Widget _buildEmpty(BuildContext context) {
     final c = context.colors;
     final isMemo = _c.memoTabActive;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isMemo ? Icons.sticky_note_2_outlined : Icons.event_note_outlined,
-              size: 28,
-              color: c.textMuted,
+    // Center when there's room; scroll when the list area is short (e.g. a
+    // 6-week month leaves little space) so the empty state never overflows.
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppDimensions.spacingLg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isMemo
+                        ? Icons.sticky_note_2_outlined
+                        : Icons.event_note_outlined,
+                    size: 28,
+                    color: c.textMuted,
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  Text(
+                    isMemo ? '메모가 없습니다' : '이 날짜에 노트가 없습니다',
+                    style:
+                        AppTextStyles.microMedium.copyWith(color: c.textSecondary),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingXs),
+                  Text(
+                    // Memos are date-independent, so the right-click-a-date hint
+                    // only applies to daily notes.
+                    isMemo ? '+ 로 메모 추가' : '날짜를 우클릭하거나 + 로 추가',
+                    style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: AppDimensions.spacingSm),
-            Text(
-              isMemo ? '메모가 없습니다' : '이 날짜에 노트가 없습니다',
-              style: AppTextStyles.microMedium.copyWith(color: c.textSecondary),
-            ),
-            const SizedBox(height: AppDimensions.spacingXs),
-            Text(
-              // Memos are date-independent, so the right-click-a-date hint only
-              // applies to daily notes.
-              isMemo ? '+ 로 메모 추가' : '날짜를 우클릭하거나 + 로 추가',
-              style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
-              textAlign: TextAlign.center,
-            ),
-          ],
+          ),
         ),
       ),
     );

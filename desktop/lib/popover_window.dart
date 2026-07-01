@@ -19,7 +19,7 @@ import 'theme/app_colors.dart';
 import 'theme/app_theme.dart';
 import 'widgets/menu_bar_panel.dart';
 
-const Size _popoverSize = Size(420, 520);
+const Size _popoverSize = Size(400, 500);
 
 /// Entry point for the macOS menu bar popover, which runs in its own
 /// desktop_multi_window engine (separate from the main app window). It shapes a

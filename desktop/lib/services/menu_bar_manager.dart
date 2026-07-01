@@ -23,7 +23,7 @@ class MenuBarManager with TrayListener, WindowListener {
   final VoidCallback onOpenSettings;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
-  static const Size popoverSize = Size(420, 520);
+  static const Size popoverSize = Size(400, 500);
   // The macOS menu bar is at the very top, so a fixed top inset places the
   // popover just beneath it.
   static const double _menuBarInset = 26;
