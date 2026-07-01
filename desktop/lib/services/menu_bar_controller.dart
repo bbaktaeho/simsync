@@ -159,6 +159,16 @@ class MenuBarController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Re-anchors the calendar to *today* (today's month + today selected). Called
+  /// when the popover is (re)opened so it always lands on today — and recomputes
+  /// "today" in case the app has been running past midnight.
+  void resetToToday() {
+    _selectedDate = _today();
+    _displayedMonth = _todayMonth();
+    _memoTabActive = false;
+    notifyListeners();
+  }
+
   void previousMonth() {
     _displayedMonth = DateTime(_displayedMonth.year, _displayedMonth.month - 1);
     notifyListeners();

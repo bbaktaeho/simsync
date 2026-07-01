@@ -14,10 +14,10 @@ import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
 import 'settings/app_settings.dart';
 import 'settings/app_settings_controller.dart';
+import 'popover_window.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
-import 'services/menu_bar_controller.dart';
 import 'services/menu_bar_manager.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
@@ -28,7 +28,6 @@ import 'storage/github/repo_cache.dart';
 import 'storage/local/local_note_storage.dart';
 import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
-import 'widgets/menu_bar_panel.dart';
 
 /// Resolved storage layer after authentication.
 class StorageBundle {
@@ -59,14 +58,20 @@ typedef StorageFactory =
       Future<void> Function()? onRemoteChanged,
     });
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize native window management (needed for the macOS menu bar panel to
-  // reshape the window). The window is created at its final size natively in
-  // MainFlutterWindow.swift, so we deliberately do NOT resize it here — a Dart
-  // resize on launch caused a visible first-run resize flash.
+  // Initialize native window management (per-engine: controls this window). The
+  // main window is created at its final size natively in MainFlutterWindow.swift,
+  // so we don't resize it here — a Dart resize caused a first-run resize flash.
   await windowManager.ensureInitialized();
+
+  // desktop_multi_window launches sub-windows with args
+  // ["multi_window", windowId, <configArgs>]. The menu bar calendar popover runs
+  // as its own window so opening it never touches the main app window.
+  if (args.isNotEmpty && args.first == 'multi_window') {
+    await runPopoverWindow(args);
+    return;
+  }
 
   runApp(SimSyncApp(authService: createDefaultAuthService()));
 }
@@ -121,7 +126,7 @@ class SimSyncAppState extends State<SimSyncApp> {
         themeMode: mode,
         home: _AppShell(
           authService: widget.authService,
-          storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+          storageFactory: widget.storageFactory ?? defaultStorageFactory,
           repoCache: widget.repoCache ?? RepoCache(),
           sessionCheckInterval: widget.sessionCheckInterval,
           themeModeNotifier: _themeMode,
@@ -170,49 +175,23 @@ class _AppShellState extends State<_AppShell> {
   /// DocumentScreen listens to this to reload notes.
   final ValueNotifier<int> _refreshSignal = ValueNotifier<int>(0);
 
-  /// Drives the macOS menu bar tray icon + popover panel and reshapes the app
-  /// window between its app and panel forms. No-op off macOS.
+  /// Adds the macOS menu bar tray icon and opens the separate popover window on
+  /// a left click. No-op off macOS.
   late final MenuBarManager _menuBar;
 
-  /// True while the compact menu bar popover is the visible surface.
-  bool _panelMode = false;
-
-  /// Owns the menu bar popover's state + note data, reusing the app's storage.
-  late final MenuBarController _menuBarController;
-
   /// Bumped when the tray "설정" item is chosen, so DocumentScreen opens the
-  /// settings dialog once it is the visible surface.
+  /// settings dialog.
   final ValueNotifier<int> _openSettingsSignal = ValueNotifier<int>(0);
 
   @override
   void initState() {
     super.initState();
     _settingsController = AppSettingsController(
-      defaultLocalNotePath: _defaultLocalNotePath(),
+      defaultLocalNotePath: defaultLocalNotePath(),
     );
     _settingsController.addListener(_syncThemeMode);
-    _menuBarController = MenuBarController(
-      storage: () => _bundle?.storage,
-      localStorage: () => _bundle?.localStorage,
-      syncEnabled: () => _settingsController.value.syncEnabled,
-      // Guard against a save that resumes after this shell is torn down (the
-      // refresh notifier is disposed before the controller) — would otherwise
-      // bump a disposed ValueNotifier.
-      onChanged: () {
-        if (mounted) _refreshSignal.value++;
-      },
-    );
     _menuBar = MenuBarManager(
-      onShowPanel: () {
-        if (mounted) setState(() => _panelMode = true);
-        unawaited(_menuBarController.load());
-      },
-      onShowApp: () {
-        if (mounted) setState(() => _panelMode = false);
-      },
       onOpenSettings: () => _openSettingsSignal.value++,
-      canShowPanel: () =>
-          _status == _AuthStatus.authenticated && _bundle != null,
     );
     unawaited(_menuBar.setUp());
     _initialize();
@@ -226,7 +205,6 @@ class _AppShellState extends State<_AppShell> {
     _settingsController.dispose();
     _refreshSignal.dispose();
     unawaited(_menuBar.dispose());
-    _menuBarController.dispose();
     _openSettingsSignal.dispose();
     super.dispose();
   }
@@ -241,7 +219,7 @@ class _AppShellState extends State<_AppShell> {
   /// so light/dark/system applies across the whole app and the menu bar popover.
   void _syncThemeMode() {
     widget.themeModeNotifier.value =
-        _flutterThemeMode(_settingsController.value.themeMode);
+        flutterThemeMode(_settingsController.value.themeMode);
   }
 
   Future<void> _handleLogin() async {
@@ -260,14 +238,7 @@ class _AppShellState extends State<_AppShell> {
     _activeRepo = null;
     await widget.authService.logout();
     if (!mounted) return;
-    final wasPanel = _panelMode;
-    setState(() {
-      _status = _AuthStatus.unauthenticated;
-      _panelMode = false;
-    });
-    // If the popover was the visible surface at logout, restore the normal app
-    // window so the login screen isn't shown in the frameless panel shape.
-    if (wasPanel) unawaited(_menuBar.showApp());
+    setState(() => _status = _AuthStatus.unauthenticated);
   }
 
   Future<void> _restoreSession() async {
@@ -480,40 +451,23 @@ class _AppShellState extends State<_AppShell> {
     }
 
     if (_status == _AuthStatus.authenticated) {
-      // Keep both surfaces alive so toggling the menu bar popover never loses
-      // the document screen's state; only the active one paints.
-      return IndexedStack(
-        sizing: StackFit.expand,
-        index: _panelMode ? 1 : 0,
-        children: [
-          DocumentScreen(
-            onLogout: _handleLogout,
-            storage: _bundle!.storage,
-            localStorage: _bundle!.localStorage,
-            noteService: _bundle!.noteService,
-            refreshSignal: _refreshSignal,
-            openSettingsSignal: _openSettingsSignal,
-            avatarUrl: _session?.user.avatarUrl,
-            activeRepo: _activeRepo,
-            settingsController: _settingsController,
-            syncEngine: _bundle!.syncEngine,
-            loadCachedRepos: _loadCachedRepos,
-            onLocalNotePathChanged: _handleLocalNotePathChanged,
-            onSyncEnabledChanged: _handleSyncEnabledChanged,
-            onRepoSelected: _handleRepoSelected,
-            onCreateRepo: _handleCreateRepo,
-            onConnectRepo: _handleConnectRepo,
-          ),
-          // Built only while the popover is showing: DocumentScreen stays as
-          // child 0 (state preserved), and an idle panel never spins a
-          // progress indicator in the background.
-          _panelMode
-              ? MenuBarPanel(
-                  controller: _menuBarController,
-                  settings: _settingsController,
-                )
-              : const SizedBox.shrink(),
-        ],
+      return DocumentScreen(
+        onLogout: _handleLogout,
+        storage: _bundle!.storage,
+        localStorage: _bundle!.localStorage,
+        noteService: _bundle!.noteService,
+        refreshSignal: _refreshSignal,
+        openSettingsSignal: _openSettingsSignal,
+        avatarUrl: _session?.user.avatarUrl,
+        activeRepo: _activeRepo,
+        settingsController: _settingsController,
+        syncEngine: _bundle!.syncEngine,
+        loadCachedRepos: _loadCachedRepos,
+        onLocalNotePathChanged: _handleLocalNotePathChanged,
+        onSyncEnabledChanged: _handleSyncEnabledChanged,
+        onRepoSelected: _handleRepoSelected,
+        onCreateRepo: _handleCreateRepo,
+        onConnectRepo: _handleConnectRepo,
       );
     }
     return LoginScreen(onGitHubLogin: _handleLogin);
@@ -521,7 +475,7 @@ class _AppShellState extends State<_AppShell> {
 }
 
 /// Default storage factory: creates GitHub storage from provided repo info.
-Future<StorageBundle> _defaultStorageFactory(
+Future<StorageBundle> defaultStorageFactory(
   String accessToken, {
   required String owner,
   required String repo,
@@ -539,7 +493,7 @@ Future<StorageBundle> _defaultStorageFactory(
   final prefs = await SharedPreferences.getInstance();
   final localPath =
       prefs.getString(AppSettingsController.localNotePathKey) ??
-      _defaultLocalNotePath();
+      defaultLocalNotePath();
   final syncIntervalSeconds =
       prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
 
@@ -590,13 +544,13 @@ Future<StorageBundle> _defaultStorageFactory(
   );
 }
 
-String _defaultLocalNotePath() {
+String defaultLocalNotePath() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
   return '$home/Documents/SimSync';
 }
 
-ThemeMode _flutterThemeMode(AppThemeMode mode) {
+ThemeMode flutterThemeMode(AppThemeMode mode) {
   switch (mode) {
     case AppThemeMode.light:
       return ThemeMode.light;

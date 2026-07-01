@@ -142,6 +142,18 @@ void main() {
     expect(c.displayedMonth, DateTime(2026, 8));
   });
 
+  test('resetToToday re-anchors to today', () async {
+    final c = _controller(_MemStorage());
+    c.selectDate(DateTime(2020, 1, 15));
+
+    c.resetToToday();
+
+    final now = DateTime.now();
+    expect(c.selectedDate, DateTime(now.year, now.month, now.day));
+    expect(c.displayedMonth, DateTime(now.year, now.month));
+    expect(c.memoTabActive, isFalse);
+  });
+
   test('previousMonth / nextMonth move the displayed month', () async {
     final c = _controller(_MemStorage());
     c.selectDate(DateTime(2026, 7, 10));
