@@ -499,6 +499,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
+      // Keep the visible grid on the selected date's month so tapping an
+      // adjacent-month day (now rendered in the grid) navigates to it.
+      _displayedMonth = DateTime(date.year, date.month);
       if (_memoTabActive) {
         _memoTabActive = false;
         _currentPage = 0;
