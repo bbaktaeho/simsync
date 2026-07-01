@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'auth/auth_models.dart';
 import 'auth/auth_service.dart';
@@ -16,6 +17,7 @@ import 'settings/app_settings_controller.dart';
 import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
+import 'services/menu_bar_manager.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_cache.dart';
@@ -25,6 +27,7 @@ import 'storage/github/repo_cache.dart';
 import 'storage/local/local_note_storage.dart';
 import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
+import 'widgets/menu_bar_panel.dart';
 
 /// Resolved storage layer after authentication.
 class StorageBundle {
@@ -55,7 +58,25 @@ typedef StorageFactory =
       Future<void> Function()? onRemoteChanged,
     });
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Set up native window management for the desktop shell (needed for the macOS
+  // menu bar panel to reshape the window). Harmless on the other desktop OSes.
+  await windowManager.ensureInitialized();
+  const windowOptions = WindowOptions(
+    size: Size(1120, 760),
+    center: true,
+    title: 'SimSync',
+    titleBarStyle: TitleBarStyle.normal,
+  );
+  unawaited(
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    }),
+  );
+
   runApp(SimSyncApp(authService: createDefaultAuthService()));
 }
 
@@ -137,12 +158,35 @@ class _AppShellState extends State<_AppShell> {
   /// DocumentScreen listens to this to reload notes.
   final ValueNotifier<int> _refreshSignal = ValueNotifier<int>(0);
 
+  /// Drives the macOS menu bar tray icon + popover panel and reshapes the app
+  /// window between its app and panel forms. No-op off macOS.
+  late final MenuBarManager _menuBar;
+
+  /// True while the compact menu bar popover is the visible surface.
+  bool _panelMode = false;
+
+  /// Bumped when the tray "설정" item is chosen, so DocumentScreen opens the
+  /// settings dialog once it is the visible surface.
+  final ValueNotifier<int> _openSettingsSignal = ValueNotifier<int>(0);
+
   @override
   void initState() {
     super.initState();
     _settingsController = AppSettingsController(
       defaultLocalNotePath: _defaultLocalNotePath(),
     );
+    _menuBar = MenuBarManager(
+      onShowPanel: () {
+        if (mounted) setState(() => _panelMode = true);
+      },
+      onShowApp: () {
+        if (mounted) setState(() => _panelMode = false);
+      },
+      onOpenSettings: () => _openSettingsSignal.value++,
+      canShowPanel: () =>
+          _status == _AuthStatus.authenticated && _bundle != null,
+    );
+    unawaited(_menuBar.setUp());
     _initialize();
   }
 
@@ -152,6 +196,8 @@ class _AppShellState extends State<_AppShell> {
     _bundle?.syncEngine?.dispose();
     _settingsController.dispose();
     _refreshSignal.dispose();
+    unawaited(_menuBar.dispose());
+    _openSettingsSignal.dispose();
     super.dispose();
   }
 
@@ -389,22 +435,32 @@ class _AppShellState extends State<_AppShell> {
     }
 
     if (_status == _AuthStatus.authenticated) {
-      return DocumentScreen(
-        onLogout: _handleLogout,
-        storage: _bundle!.storage,
-        localStorage: _bundle!.localStorage,
-        noteService: _bundle!.noteService,
-        refreshSignal: _refreshSignal,
-        avatarUrl: _session?.user.avatarUrl,
-        activeRepo: _activeRepo,
-        settingsController: _settingsController,
-        syncEngine: _bundle!.syncEngine,
-        loadCachedRepos: _loadCachedRepos,
-        onLocalNotePathChanged: _handleLocalNotePathChanged,
-        onSyncEnabledChanged: _handleSyncEnabledChanged,
-        onRepoSelected: _handleRepoSelected,
-        onCreateRepo: _handleCreateRepo,
-        onConnectRepo: _handleConnectRepo,
+      // Keep both surfaces alive so toggling the menu bar popover never loses
+      // the document screen's state; only the active one paints.
+      return IndexedStack(
+        sizing: StackFit.expand,
+        index: _panelMode ? 1 : 0,
+        children: [
+          DocumentScreen(
+            onLogout: _handleLogout,
+            storage: _bundle!.storage,
+            localStorage: _bundle!.localStorage,
+            noteService: _bundle!.noteService,
+            refreshSignal: _refreshSignal,
+            openSettingsSignal: _openSettingsSignal,
+            avatarUrl: _session?.user.avatarUrl,
+            activeRepo: _activeRepo,
+            settingsController: _settingsController,
+            syncEngine: _bundle!.syncEngine,
+            loadCachedRepos: _loadCachedRepos,
+            onLocalNotePathChanged: _handleLocalNotePathChanged,
+            onSyncEnabledChanged: _handleSyncEnabledChanged,
+            onRepoSelected: _handleRepoSelected,
+            onCreateRepo: _handleCreateRepo,
+            onConnectRepo: _handleConnectRepo,
+          ),
+          const MenuBarPanel(),
+        ],
       );
     }
     return LoginScreen(onGitHubLogin: _handleLogin);

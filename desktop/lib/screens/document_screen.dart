@@ -52,6 +52,10 @@ class DocumentScreen extends StatefulWidget {
   /// Each value change triggers a full reload of notes from storage.
   final ValueNotifier<int>? refreshSignal;
 
+  /// Optional notifier that, when bumped, opens the settings dialog. Used by the
+  /// macOS menu bar tray "설정" item.
+  final ValueNotifier<int>? openSettingsSignal;
+
   const DocumentScreen({
     super.key,
     required this.onLogout,
@@ -60,6 +64,7 @@ class DocumentScreen extends StatefulWidget {
     this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
+    this.openSettingsSignal,
     required this.settingsController,
     this.activeRepo,
     this.syncEngine,
@@ -144,6 +149,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     widget.settingsController.addListener(_handleSettingsChanged);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
@@ -154,6 +160,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (oldWidget.refreshSignal != widget.refreshSignal) {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+    if (oldWidget.openSettingsSignal != widget.openSettingsSignal) {
+      oldWidget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
+      widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     }
     if (oldWidget.settingsController != widget.settingsController) {
       oldWidget.settingsController.removeListener(_handleSettingsChanged);
@@ -185,10 +195,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _reviewController.dispose();
     super.dispose();
+  }
+
+  void _onOpenSettingsSignal() {
+    if (mounted) unawaited(_openSettings());
   }
 
   void _onRefreshSignal() async {
