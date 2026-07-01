@@ -42,7 +42,12 @@ Future<void> runPopoverWindow(List<String> args) async {
     ),
     () async {
       await windowManager.setPosition(position);
-      await windowManager.setVisibleOnAllWorkspaces(true);
+      // Appear on every Space AND over other apps' full-screen windows
+      // (.canJoinAllSpaces + .fullScreenAuxiliary), not just the desktop Space.
+      await windowManager.setVisibleOnAllWorkspaces(
+        true,
+        visibleOnFullScreen: true,
+      );
       await windowManager.setHasShadow(true);
       await windowManager.show();
       await windowManager.focus();

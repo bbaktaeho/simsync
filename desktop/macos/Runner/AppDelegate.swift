@@ -12,4 +12,14 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
+
+  // The main window hides to the menu bar instead of closing. When the app is
+  // reopened (Dock click, or relaunching while already running), macOS calls
+  // this — re-show the main window so it isn't stuck hidden.
+  override func applicationShouldHandleReopen(
+    _ sender: NSApplication, hasVisibleWindows flag: Bool
+  ) -> Bool {
+    mainFlutterWindow?.makeKeyAndOrderFront(nil)
+    return true
+  }
 }
