@@ -21,6 +21,7 @@ class AppSettingsController extends ChangeNotifier {
   static const String weeklyProviderKey = 'weekly_provider';
   static const String anthropicApiKeyKey = 'anthropic_api_key';
   static const String anthropicModelKey = 'anthropic_model';
+  static const String themeModeKey = 'theme_mode';
   static const String _shortcutPrefix = 'shortcut_';
 
   AppSettingsController({required String defaultLocalNotePath})
@@ -71,9 +72,31 @@ class AppSettingsController extends ChangeNotifier {
       anthropicApiKey: prefs.getString(anthropicApiKeyKey) ?? '',
       anthropicModel: prefs.getString(anthropicModelKey) ??
           AppSettings.defaultAnthropicModel,
+      themeMode: _parseThemeMode(prefs.getString(themeModeKey)),
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
+  }
+
+  static AppThemeMode _parseThemeMode(String? name) {
+    switch (name) {
+      case 'light':
+        return AppThemeMode.light;
+      case 'dark':
+        return AppThemeMode.dark;
+      default:
+        return AppThemeMode.system;
+    }
+  }
+
+  /// Persists the theme preference (device-local) and notifies listeners so the
+  /// app (light/dark/system) — including the menu bar popover — updates live.
+  Future<void> setThemeMode(AppThemeMode mode) async {
+    if (_value.themeMode == mode) return;
+    _value = _value.copyWith(themeMode: mode);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(themeModeKey, mode.name);
   }
 
   /// The portable settings as pretty JSON — what the JSON editor shows and what

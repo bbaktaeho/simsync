@@ -108,17 +108,34 @@ class SimSyncApp extends StatefulWidget {
 }
 
 class SimSyncAppState extends State<SimSyncApp> {
+  /// Drives `MaterialApp.themeMode`. Kept above the MaterialApp so the whole app
+  /// — including the macOS menu bar popover — re-themes when the setting
+  /// changes. Synced from the settings controller by [_AppShell].
+  final ValueNotifier<ThemeMode> _themeMode = ValueNotifier(ThemeMode.system);
+
+  @override
+  void dispose() {
+    _themeMode.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SimSync',
-      debugShowCheckedModeBanner: false,
-      theme: buildLightTheme(),
-      home: _AppShell(
-        authService: widget.authService,
-        storageFactory: widget.storageFactory ?? _defaultStorageFactory,
-        repoCache: widget.repoCache ?? RepoCache(),
-        sessionCheckInterval: widget.sessionCheckInterval,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: _themeMode,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'SimSync',
+        debugShowCheckedModeBanner: false,
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: mode,
+        home: _AppShell(
+          authService: widget.authService,
+          storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+          repoCache: widget.repoCache ?? RepoCache(),
+          sessionCheckInterval: widget.sessionCheckInterval,
+          themeModeNotifier: _themeMode,
+        ),
       ),
     );
   }
@@ -131,12 +148,16 @@ class _AppShell extends StatefulWidget {
     required this.storageFactory,
     required this.repoCache,
     required this.sessionCheckInterval,
+    required this.themeModeNotifier,
   });
 
   final AuthService authService;
   final StorageFactory storageFactory;
   final RepoCache repoCache;
   final Duration sessionCheckInterval;
+
+  /// Root-level notifier the shell keeps in sync with the theme setting.
+  final ValueNotifier<ThemeMode> themeModeNotifier;
 
   @override
   State<_AppShell> createState() => _AppShellState();
@@ -179,6 +200,7 @@ class _AppShellState extends State<_AppShell> {
     _settingsController = AppSettingsController(
       defaultLocalNotePath: _defaultLocalNotePath(),
     );
+    _settingsController.addListener(_syncThemeMode);
     _menuBarController = MenuBarController(
       storage: () => _bundle?.storage,
       localStorage: () => _bundle?.localStorage,
@@ -205,6 +227,7 @@ class _AppShellState extends State<_AppShell> {
   void dispose() {
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
+    _settingsController.removeListener(_syncThemeMode);
     _settingsController.dispose();
     _refreshSignal.dispose();
     unawaited(_menuBar.dispose());
@@ -215,7 +238,15 @@ class _AppShellState extends State<_AppShell> {
 
   Future<void> _initialize() async {
     await _settingsController.load();
+    _syncThemeMode();
     await _restoreSession();
+  }
+
+  /// Pushes the persisted theme preference up to the MaterialApp-level notifier
+  /// so light/dark/system applies across the whole app and the menu bar popover.
+  void _syncThemeMode() {
+    widget.themeModeNotifier.value =
+        _flutterThemeMode(_settingsController.value.themeMode);
   }
 
   Future<void> _handleLogin() async {
@@ -568,6 +599,17 @@ String _defaultLocalNotePath() {
   final home =
       Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
   return '$home/Documents/SimSync';
+}
+
+ThemeMode _flutterThemeMode(AppThemeMode mode) {
+  switch (mode) {
+    case AppThemeMode.light:
+      return ThemeMode.light;
+    case AppThemeMode.dark:
+      return ThemeMode.dark;
+    case AppThemeMode.system:
+      return ThemeMode.system;
+  }
 }
 
 AuthService createDefaultAuthService() {

@@ -86,6 +86,37 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     shadowTint: Color(0x0A000000), // rgba(0,0,0,0.04) — base shadow tint
   );
 
+  /// Notion-inspired dark palette — warm dark surfaces (not pure black),
+  /// near-white warm text, blue accent lightened for contrast on dark. Keeps
+  /// the same warm-neutral philosophy as [light]; borders are light-on-dark
+  /// whispers.
+  static const dark = AppColorsExtension(
+    scaffold: Color(0xFF1B1A18), // warm near-black page bg
+    surface: Color(0xFF242220), // warm dark card surface
+    surfaceLight: Color(0xFF2E2C28), // elevated / alt surface
+    surfaceHover: Color(0x14FFFFFF), // rgba(255,255,255,0.08) — hover fill
+    border: Color(0x24FFFFFF), // rgba(255,255,255,0.14) — whisper border
+    borderSubtle: Color(0x14FFFFFF), // rgba(255,255,255,0.08) — fainter divider
+    accent: Color(0xFF3B8EEF), // Notion Blue lightened for dark contrast
+    accentMuted: Color(0xFF2E6FC7), // pressed
+    accentSubtle: Color(0xFF16304C), // deep blue-tinted fill (selected/badge bg)
+    textPrimary: Color(0xFFECEAE6), // warm near-white
+    textSecondary: Color(0xFFA8A39C), // warm gray
+    textMuted: Color(0xFF6E6A63), // dim warm gray
+    textOnAccent: Color(0xFFFFFFFF), // text on blue
+    error: Color(0xFFE8703A), // orange, brightened for dark
+    success: Color(0xFF3FBF57), // green, brightened
+    calendarToday: Color(0xFF3B8EEF),
+    calendarDot: Color(0xFF3B8EEF),
+    calendarSelected: Color(0xFF16304C),
+    localAccent: Color(0xFFE8703A),
+    focus: Color(0xFF62AEF0),
+    badgeText: Color(0xFF7FC0FF),
+    linkLight: Color(0xFF7FC0FF),
+    highlight: Color(0xFF5A4A12), // dark amber search highlight
+    shadowTint: Color(0x33000000), // deeper shadow on dark
+  );
+
   @override
   AppColorsExtension copyWith({Color? accent, Color? localAccent}) {
     return AppColorsExtension(
