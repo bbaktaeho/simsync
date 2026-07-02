@@ -129,7 +129,7 @@ class _AppShell extends StatefulWidget {
   State<_AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<_AppShell> {
+class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
   _AuthStatus _status = _AuthStatus.restoring;
   late AppSettingsController _settingsController;
 
@@ -140,6 +140,7 @@ class _AppShellState extends State<_AppShell> {
   // Storage layer (resolved after auth succeeds).
   StorageBundle? _bundle;
   Timer? _sessionCheckTimer;
+  bool _sessionMonitorActive = false;
   bool _isValidatingSession = false;
 
   /// Notifier incremented when the sync engine detects remote changes.
@@ -155,6 +156,7 @@ class _AppShellState extends State<_AppShell> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _appLinks = AppLinks();
     _initDeepLinkListener();
     _initialize();
@@ -162,12 +164,39 @@ class _AppShellState extends State<_AppShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _deepLinkSub?.cancel();
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
     _settingsController.dispose();
     _refreshSignal.dispose();
     super.dispose();
+  }
+
+  /// Pauses GitHub polling and the session check while the app is in the
+  /// background — Android keeps Dart timers firing otherwise, burning battery
+  /// on pointless API calls — and resumes them on foreground. Resuming goes
+  /// through [_applySyncPreference] so the user's sync-enabled setting is
+  /// respected, and `start()` runs an immediate `syncNow()` so remote changes
+  /// made while backgrounded are picked up right away.
+  ///
+  /// `inactive` is deliberately ignored: it fires on transient interruptions
+  /// (notification shade, permission dialogs) where stopping would just add
+  /// restart churn.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _applySyncPreference(_bundle);
+        _startSessionMonitor();
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        _bundle?.syncEngine?.stop();
+        _stopSessionMonitor();
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
+    }
   }
 
   void _initDeepLinkListener() {
@@ -299,10 +328,14 @@ class _AppShellState extends State<_AppShell> {
   void _startSessionMonitor() {
     _stopSessionMonitor();
     if (_session == null) return;
+    _sessionMonitorActive = true;
     _scheduleNextSessionCheck();
   }
 
   void _stopSessionMonitor() {
+    // The flag (not just the timer) stops the chain: a cycle whose validation
+    // is in flight when stop is called would otherwise reschedule itself.
+    _sessionMonitorActive = false;
     _sessionCheckTimer?.cancel();
     _sessionCheckTimer = null;
   }
@@ -316,7 +349,8 @@ class _AppShellState extends State<_AppShell> {
 
   Future<void> _runSessionCheckCycle() async {
     await _checkSessionValidity();
-    if (!mounted ||
+    if (!_sessionMonitorActive ||
+        !mounted ||
         _session == null ||
         _status == _AuthStatus.unauthenticated) {
       return;
