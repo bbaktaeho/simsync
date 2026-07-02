@@ -1,3 +1,7 @@
+/// User's theme preference. [system] follows the macOS appearance; [light] and
+/// [dark] force that mode. Stored locally (device-specific), not synced.
+enum AppThemeMode { system, light, dark }
+
 class AppSettings {
   static const double minContentScale = 0.8;
   static const double maxContentScale = 2.0;
@@ -100,6 +104,9 @@ class AppSettings {
   /// Anthropic model id for the API provider.
   final String anthropicModel;
 
+  /// Theme preference (device-local, not synced). Defaults to following the OS.
+  final AppThemeMode themeMode;
+
   const AppSettings({
     required this.localNotePath,
     required this.contentScale,
@@ -113,6 +120,7 @@ class AppSettings {
     this.weeklyProvider = providerApi,
     this.anthropicApiKey = '',
     this.anthropicModel = defaultAnthropicModel,
+    this.themeMode = AppThemeMode.system,
   });
 
   AppSettings copyWith({
@@ -128,6 +136,7 @@ class AppSettings {
     String? weeklyProvider,
     String? anthropicApiKey,
     String? anthropicModel,
+    AppThemeMode? themeMode,
   }) {
     return AppSettings(
       localNotePath: localNotePath ?? this.localNotePath,
@@ -142,6 +151,7 @@ class AppSettings {
       weeklyProvider: weeklyProvider ?? this.weeklyProvider,
       anthropicApiKey: anthropicApiKey ?? this.anthropicApiKey,
       anthropicModel: anthropicModel ?? this.anthropicModel,
+      themeMode: themeMode ?? this.themeMode,
     );
   }
 
@@ -191,7 +201,8 @@ class AppSettings {
         other.claudeCliPath == claudeCliPath &&
         other.weeklyProvider == weeklyProvider &&
         other.anthropicApiKey == anthropicApiKey &&
-        other.anthropicModel == anthropicModel;
+        other.anthropicModel == anthropicModel &&
+        other.themeMode == themeMode;
   }
 
   @override
@@ -208,5 +219,6 @@ class AppSettings {
     weeklyProvider,
     anthropicApiKey,
     anthropicModel,
+    themeMode,
   );
 }

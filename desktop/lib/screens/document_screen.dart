@@ -11,6 +11,7 @@ import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
+import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
 import '../services/review_outline.dart';
@@ -52,6 +53,10 @@ class DocumentScreen extends StatefulWidget {
   /// Each value change triggers a full reload of notes from storage.
   final ValueNotifier<int>? refreshSignal;
 
+  /// Optional notifier that, when bumped, opens the settings dialog. Used by the
+  /// macOS menu bar tray "설정" item.
+  final ValueNotifier<int>? openSettingsSignal;
+
   const DocumentScreen({
     super.key,
     required this.onLogout,
@@ -60,6 +65,7 @@ class DocumentScreen extends StatefulWidget {
     this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
+    this.openSettingsSignal,
     required this.settingsController,
     this.activeRepo,
     this.syncEngine,
@@ -144,6 +150,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     widget.settingsController.addListener(_handleSettingsChanged);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
@@ -154,6 +161,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (oldWidget.refreshSignal != widget.refreshSignal) {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+    if (oldWidget.openSettingsSignal != widget.openSettingsSignal) {
+      oldWidget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
+      widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     }
     if (oldWidget.settingsController != widget.settingsController) {
       oldWidget.settingsController.removeListener(_handleSettingsChanged);
@@ -185,10 +196,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
     _reviewController.dispose();
     super.dispose();
+  }
+
+  void _onOpenSettingsSignal() {
+    if (mounted) unawaited(_openSettings());
   }
 
   void _onRefreshSignal() async {
@@ -232,25 +248,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final previousSelectedId = _selectedNote?.id;
 
     // Merge remote notes with local dirty notes to prevent overwriting
-    // unsaved edits during sync.
-    final dirtyById = <String, Note>{};
-    for (final local in _allNotes) {
-      if (local.isDirty) {
-        dirtyById[local.id] = local;
-      }
-    }
-    if (dirtyById.isNotEmpty) {
-      // For each remote note, keep local version if it has unsaved edits.
-      for (var i = 0; i < notes.length; i++) {
-        final dirty = dirtyById.remove(notes[i].id);
-        if (dirty != null) {
-          notes[i] = dirty;
-        }
-      }
-      // Keep dirty notes that don't exist on remote yet (newly created).
-      notes.addAll(dirtyById.values);
-      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    }
+    // unsaved edits during sync (rule shared with the menu bar popover).
+    mergeDirtyNotes(loaded: notes, current: _allNotes);
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     setState(() {
       _allNotes = notes;
@@ -499,6 +499,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
+      // Keep the visible grid on the selected date's month so tapping an
+      // adjacent-month day (now rendered in the grid) navigates to it.
+      _displayedMonth = DateTime(date.year, date.month);
       if (_memoTabActive) {
         _memoTabActive = false;
         _currentPage = 0;
@@ -1041,23 +1044,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _applySearchQuery(_searchQuery, resetPage: false);
   }
 
+  bool _settingsOpen = false;
+
   Future<void> _openSettings() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return SettingsScreen(
-          settingsController: widget.settingsController,
-          activeRepo: widget.activeRepo,
-          loadCachedRepos: widget.loadCachedRepos,
-          onLocalNotePathChanged: widget.onLocalNotePathChanged,
-          onSyncEnabledChanged: widget.onSyncEnabledChanged,
-          onRepoSelected: widget.onRepoSelected,
-          onCreateRepo: widget.onCreateRepo,
-          onConnectRepo: widget.onConnectRepo,
-          onSyncIntervalChanged: _applySyncInterval,
-        );
-      },
-    );
+    // Guard re-entrancy: the tray "설정" signal can fire while the dialog is
+    // already open, which would otherwise stack a second dialog.
+    if (_settingsOpen) return;
+    _settingsOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return SettingsScreen(
+            settingsController: widget.settingsController,
+            activeRepo: widget.activeRepo,
+            loadCachedRepos: widget.loadCachedRepos,
+            onLocalNotePathChanged: widget.onLocalNotePathChanged,
+            onSyncEnabledChanged: widget.onSyncEnabledChanged,
+            onRepoSelected: widget.onRepoSelected,
+            onCreateRepo: widget.onCreateRepo,
+            onConnectRepo: widget.onConnectRepo,
+            onSyncIntervalChanged: _applySyncInterval,
+          );
+        },
+      );
+    } finally {
+      _settingsOpen = false;
+    }
   }
 
   Future<void> _increaseContentScale() async {
@@ -1426,6 +1439,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
           ),
           const Spacer(),
+          _ThemeToggleButton(settings: widget.settingsController),
+          const SizedBox(width: AppDimensions.spacingXs),
           IconButton(
             icon: Icon(
               Icons.settings_outlined,
@@ -1622,6 +1637,46 @@ class _ReviewViewButtonState extends State<_ReviewViewButton> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Title-bar button that flips the app between light and dark. Reads the current
+/// brightness (so it's correct in System mode too) and cross-fades + rotates the
+/// sun/moon icon on toggle.
+class _ThemeToggleButton extends StatelessWidget {
+  const _ThemeToggleButton({required this.settings});
+
+  final AppSettingsController settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return IconButton(
+      onPressed: () => unawaited(
+        settings.setThemeMode(
+          isDark ? AppThemeMode.light : AppThemeMode.dark,
+        ),
+      ),
+      tooltip: isDark ? '라이트 모드로' : '다크 모드로',
+      splashRadius: 16,
+      icon: AnimatedSwitcher(
+        duration: AppDimensions.animFast,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: RotationTransition(
+            turns: Tween<double>(begin: 0.7, end: 1.0).animate(anim),
+            child: child,
+          ),
+        ),
+        child: Icon(
+          isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+          key: ValueKey<bool>(isDark),
+          size: 18,
+          color: c.textSecondary,
         ),
       ),
     );

@@ -901,6 +901,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
+            title: 'Appearance',
+            description:
+                '라이트/다크 또는 시스템 설정을 따릅니다. 메뉴바 팝오버에도 함께 적용됩니다.',
+            child: Wrap(
+              spacing: AppDimensions.spacingSm,
+              children: [
+                _providerChip(
+                  c,
+                  label: 'System',
+                  selected: settings.themeMode == AppThemeMode.system,
+                  onSelected: () => widget.settingsController
+                      .setThemeMode(AppThemeMode.system),
+                ),
+                _providerChip(
+                  c,
+                  label: 'Light',
+                  selected: settings.themeMode == AppThemeMode.light,
+                  onSelected: () =>
+                      widget.settingsController.setThemeMode(AppThemeMode.light),
+                ),
+                _providerChip(
+                  c,
+                  label: 'Dark',
+                  selected: settings.themeMode == AppThemeMode.dark,
+                  onSelected: () =>
+                      widget.settingsController.setThemeMode(AppThemeMode.dark),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
             title: 'Content zoom',
             description:
                 'Applies only to the markdown editor and preview surfaces.',

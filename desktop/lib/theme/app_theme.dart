@@ -4,10 +4,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 import 'app_dimensions.dart';
 
-ThemeData buildLightTheme() => _buildTheme(AppColorsExtension.light);
+ThemeData buildLightTheme() =>
+    _buildTheme(AppColorsExtension.light, Brightness.light);
 
-ThemeData _buildTheme(AppColorsExtension c) {
-  final base = ThemeData.light();
+ThemeData buildDarkTheme() =>
+    _buildTheme(AppColorsExtension.dark, Brightness.dark);
+
+ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
+  final base =
+      brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
   final baseTextTheme = GoogleFonts.interTextTheme(base.textTheme);
 
   // TextTheme mapped from DESIGN.md §3 (16-role hierarchy → 15 Flutter slots).
@@ -76,11 +81,11 @@ ThemeData _buildTheme(AppColorsExtension c) {
   );
 
   return ThemeData(
-    brightness: Brightness.light,
+    brightness: brightness,
     scaffoldBackgroundColor: c.scaffold,
     extensions: [c],
     colorScheme: ColorScheme(
-      brightness: Brightness.light,
+      brightness: brightness,
       primary: c.accent,
       onPrimary: c.textOnAccent,
       surface: c.surface,

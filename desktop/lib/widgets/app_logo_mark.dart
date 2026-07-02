@@ -64,12 +64,28 @@ void paintSyncForeground(Canvas canvas, double s) {
   );
 }
 
+/// Paints only the sync mark in solid black on a transparent background,
+/// filling most of an [s]×[s] box. Used for the macOS menu bar *template*
+/// icon — macOS recolors template images to match the menu bar (light/dark),
+/// so the source must be flat black with alpha.
+void paintMenuBarMark(Canvas canvas, double s) {
+  _drawSyncMark(
+    canvas,
+    Offset(s / 2, s / 2),
+    s * 0.30,
+    s * 0.10,
+    withShadow: false,
+    color: const Color(0xFF000000),
+  );
+}
+
 void _drawSyncMark(
   Canvas canvas,
   Offset center,
   double r,
   double w, {
   required bool withShadow,
+  Color color = Colors.white,
 }) {
   void arrow(double startDeg, Paint stroke, Paint fill, Offset shift) {
     final origin = center + shift;
@@ -109,14 +125,14 @@ void _drawSyncMark(
     arrow(20, shadowStroke, shadowFill, shift);
   }
 
-  final whiteStroke = Paint()
-    ..color = Colors.white
+  final markStroke = Paint()
+    ..color = color
     ..style = PaintingStyle.stroke
     ..strokeWidth = w
     ..strokeCap = StrokeCap.round;
-  final whiteFill = Paint()..color = Colors.white;
-  arrow(200, whiteStroke, whiteFill, Offset.zero);
-  arrow(20, whiteStroke, whiteFill, Offset.zero);
+  final markFill = Paint()..color = color;
+  arrow(200, markStroke, markFill, Offset.zero);
+  arrow(20, markStroke, markFill, Offset.zero);
 }
 
 /// The SimSync mark as an in-app widget (the rounded app-icon form).

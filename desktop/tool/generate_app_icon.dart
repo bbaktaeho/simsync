@@ -35,6 +35,13 @@ void main() {
           (c, s) => paintSyncIcon(c, s));
     }
 
+    // macOS menu bar — flat black *template* mark on transparent (the system
+    // recolors it for light/dark). One 44px asset; tray_manager scales it down
+    // to the menu bar height (iconSize).
+    Directory('assets/tray').createSync(recursive: true);
+    await _render('assets/tray/menu_bar_icon.png', 44,
+        (c, s) => paintMenuBarMark(c, s));
+
     // iOS — full-bleed (iOS applies its own corner mask).
     const iosDir = '../mobile/ios/Runner/Assets.xcassets/AppIcon.appiconset';
     const ios = <String, int>{
@@ -87,6 +94,7 @@ void main() {
     }
 
     expect(File('$macDir/app_icon_1024.png').existsSync(), isTrue);
+    expect(File('assets/tray/menu_bar_icon.png').existsSync(), isTrue);
     expect(File('$iosDir/Icon-App-1024x1024@1x.png').existsSync(), isTrue);
     expect(
         File('$andRes/mipmap-xxxhdpi/ic_launcher_foreground.png').existsSync(),
