@@ -25,41 +25,36 @@ import 'widgets/menu_bar_panel.dart';
 const Size _browseSize = Size(332, 500);
 const Size _editSize = Size(420, 520);
 
+// Native bridge (see MainFlutterWindow.swift). The popover is a non-activating
+// panel, so it's shown via `orderFront` (which doesn't activate the app and so
+// floats over other apps' full-screen Spaces) and dismissed by a native
+// outside-click monitor that notifies Dart via `dismissed`.
+const MethodChannel _popoverChannel = MethodChannel('simsync/popover');
+
 /// Entry point for the macOS menu bar popover, which runs in its own
-/// desktop_multi_window engine (separate from the main app window). It shapes a
-/// frameless, hide-on-blur panel; boots its own storage from the persisted
-/// session/repo; and renders [MenuBarPanel]. Because it's a separate window,
-/// opening it never touches the main app window.
+/// desktop_multi_window engine (separate from the main app window). It boots its
+/// own storage from the persisted session/repo and renders [MenuBarPanel].
+/// Because it's a separate, non-activating panel window, opening it never
+/// touches the main app window and it can appear over full-screen apps.
 ///
 /// [args] is `["multi_window", windowId, "popover:dx:dy"]`.
 Future<void> runPopoverWindow(List<String> args) async {
   final windowId = args.length > 1 ? args[1] : '';
   final position = _parsePosition(args.length > 2 ? args[2] : '');
 
+  // Shape the frameless window. NOTE: no `alwaysOnTop`/`skipTaskbar` here — the
+  // native side owns the window level + collection behavior, and skipTaskbar
+  // would flip the whole app to `.accessory` (which disables the MAIN window's
+  // native full-screen). Showing is done natively (orderFront), not here.
   await windowManager.waitUntilReadyToShow(
-    // NOTE: deliberately no `skipTaskbar` — window_manager implements it as
-    // NSApp.setActivationPolicy(.accessory), which is process-wide (shared
-    // across engines) and makes the MAIN window unable to enter native
-    // full-screen. Keeping the app `.regular` preserves the main window's
-    // full-screen; the popover floats via alwaysOnTop + the native
-    // collectionBehavior set in MainFlutterWindow.swift.
     const WindowOptions(
       size: _browseSize,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
-      alwaysOnTop: true,
     ),
     () async {
       await windowManager.setPosition(position);
-      // Appear on every Space AND over other apps' full-screen windows, not
-      // just the desktop Space (the native side also sets this at creation).
-      await windowManager.setVisibleOnAllWorkspaces(
-        true,
-        visibleOnFullScreen: true,
-      );
       await windowManager.setHasShadow(true);
-      await windowManager.show();
-      await windowManager.focus();
     },
   );
 
@@ -119,7 +114,7 @@ class _PopoverApp extends StatefulWidget {
   State<_PopoverApp> createState() => _PopoverAppState();
 }
 
-class _PopoverAppState extends State<_PopoverApp> with WindowListener {
+class _PopoverAppState extends State<_PopoverApp> {
   MenuBarController? _controller;
   late Offset _anchor; // browse-size top-left, under the tray icon
   bool _editorOpen = false;
@@ -128,7 +123,7 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
   void initState() {
     super.initState();
     _anchor = widget.position;
-    windowManager.addListener(this);
+    _popoverChannel.setMethodCallHandler(_handleNativeCall);
 
     final bundle = widget.bundle;
     if (bundle != null) {
@@ -146,6 +141,48 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
     // The main window's tray click asks us to reposition + re-show.
     WindowController.fromWindowId(widget.windowId)
         .setWindowMethodHandler(_handleWindowMethod);
+
+    // Show only after the first frame is painted, so the panel never flashes
+    // empty before Flutter draws it.
+    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_show(_anchor)));
+  }
+
+  /// Position at the browse size and float the non-activating panel in front
+  /// (native), so it appears over the current Space — full-screen included.
+  Future<void> _show(Offset anchor) async {
+    _anchor = anchor;
+    await windowManager.setSize(_browseSize);
+    await windowManager.setPosition(_anchor);
+    await _popoverChannel.invokeMethod('orderFront');
+  }
+
+  Future<dynamic> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'dismissed') {
+      // The native outside-click monitor hid us. Flush + close any open editor
+      // so the next open starts clean on today's calendar.
+      _controller?.closeEditor();
+      _editorOpen = false;
+    }
+    return null;
+  }
+
+  Future<dynamic> _handleWindowMethod(MethodCall call) async {
+    if (call.method == 'show') {
+      final a = call.arguments as Map?;
+      final dx = (a?['dx'] as num?)?.toDouble();
+      final dy = (a?['dy'] as num?)?.toDouble();
+      final anchor = (dx != null && dy != null) ? Offset(dx, dy) : _anchor;
+
+      // Reopen browsing today's calendar (close any leftover editor overlay).
+      _controller?.closeEditor();
+      _controller?.resetToToday();
+      _editorOpen = false;
+
+      await _show(anchor);
+      unawaited(_controller?.load());
+      unawaited(widget.settings.load());
+    }
+    return null;
   }
 
   void _onControllerChanged() {
@@ -166,37 +203,8 @@ class _PopoverAppState extends State<_PopoverApp> with WindowListener {
     await windowManager.setSize(size);
   }
 
-  Future<dynamic> _handleWindowMethod(MethodCall call) async {
-    if (call.method == 'show') {
-      final a = call.arguments as Map?;
-      final dx = (a?['dx'] as num?)?.toDouble();
-      final dy = (a?['dy'] as num?)?.toDouble();
-      if (dx != null && dy != null) _anchor = Offset(dx, dy);
-
-      // Reopen browsing today's calendar (close any leftover editor overlay).
-      _controller?.closeEditor();
-      _controller?.resetToToday();
-      _editorOpen = false;
-
-      await windowManager.setSize(_browseSize);
-      await windowManager.setPosition(_anchor);
-      await windowManager.show();
-      await windowManager.focus();
-      unawaited(_controller?.load());
-      unawaited(widget.settings.load());
-    }
-    return null;
-  }
-
-  @override
-  void onWindowBlur() {
-    // Dismiss the popover the moment focus leaves it.
-    unawaited(windowManager.hide());
-  }
-
   @override
   void dispose() {
-    windowManager.removeListener(this);
     _controller?.removeListener(_onControllerChanged);
     _controller?.dispose();
     widget.settings.dispose();
