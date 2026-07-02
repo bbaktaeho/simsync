@@ -1,17 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'app_bootstrap.dart';
 import 'auth/auth_models.dart';
 import 'auth/auth_service.dart';
-import 'auth/github_oauth_provider.dart';
-import 'auth/session_policy.dart';
-import 'auth/session_store.dart';
 import 'settings/app_settings.dart';
 import 'settings/app_settings_controller.dart';
 import 'popover_window.dart';
@@ -19,44 +13,15 @@ import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
 import 'services/menu_bar_manager.dart';
-import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
-import 'storage/github/github_note_cache.dart';
 import 'storage/github/github_note_storage.dart';
-import 'storage/github/github_sync_engine.dart';
 import 'storage/github/repo_cache.dart';
-import 'storage/local/local_note_storage.dart';
-import 'storage/note_storage.dart';
 import 'theme/app_theme.dart';
 
-/// Resolved storage layer after authentication.
-class StorageBundle {
-  final NoteStorage storage; // GitHub (remote)
-  final NoteStorage? localStorage; // Local file system
-  final NoteService noteService;
-  final GitHubSyncEngine? syncEngine;
-
-  const StorageBundle({
-    required this.storage,
-    required this.noteService,
-    this.localStorage,
-    this.syncEngine,
-  });
-}
-
-/// Signature for a function that creates a [StorageBundle] from a token and
-/// repo info.
-///
-/// The optional [onRemoteChanged] callback is invoked by the sync engine
-/// when a new remote commit is detected, allowing the caller to refresh the UI.
-typedef StorageFactory =
-    Future<StorageBundle> Function(
-      String accessToken, {
-      required String owner,
-      required String repo,
-      required String branch,
-      Future<void> Function()? onRemoteChanged,
-    });
+// Bootstrap types/helpers (StorageBundle, defaultStorageFactory, ...) moved to
+// app_bootstrap.dart so the popover engine can boot without importing the app
+// widget tree; re-exported here so existing imports keep working.
+export 'app_bootstrap.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -193,8 +158,15 @@ class _AppShellState extends State<_AppShell> {
       onOpenSettings: () => _openSettingsSignal.value++,
       onToggleTheme: _toggleTheme,
       isDark: _effectiveDark,
-      // Popover edits ping back over the multi-window channel; reload notes.
-      onNotesChanged: () => _refreshSignal.value++,
+      // Popover edits ping back over the multi-window channel. The popover
+      // already committed through its own storage instance, so drop this
+      // engine's cached tree first — otherwise the reload serves the stale
+      // snapshot and the edit stays invisible until the next sync poll.
+      onNotesChanged: () {
+        final storage = _bundle?.storage;
+        if (storage is GitHubNoteStorage) storage.invalidateTreeCache();
+        _refreshSignal.value++;
+      },
     );
     _settingsController.addListener(_syncThemeMode);
     unawaited(_menuBar.setUp());
@@ -219,12 +191,20 @@ class _AppShellState extends State<_AppShell> {
     await _restoreSession();
   }
 
+  /// Last dark/light state pushed to the tray menu, so the native menu is only
+  /// rebuilt when the checkbox would actually change (this listener fires for
+  /// EVERY settings notification, e.g. each content-scale step).
+  bool? _trayMenuDark;
+
   /// Pushes the persisted theme preference up to the MaterialApp-level notifier
   /// so light/dark/system applies across the whole app and the menu bar popover.
   void _syncThemeMode() {
     widget.themeModeNotifier.value =
         flutterThemeMode(_settingsController.value.themeMode);
     // Keep the tray "다크 모드" checkbox in sync when the theme changes.
+    final dark = _effectiveDark();
+    if (dark == _trayMenuDark) return;
+    _trayMenuDark = dark;
     unawaited(_menuBar.refreshMenu());
   }
 
@@ -455,6 +435,10 @@ class _AppShellState extends State<_AppShell> {
 
   Future<void> _onRemoteChanged() async {
     _refreshSignal.value++;
+    // Forward the remote change to an open popover: it deliberately runs no
+    // poll loop of its own (this engine already polls), so this push is how it
+    // refreshes live while visible.
+    unawaited(_menuBar.notifyPopoverRemoteChanged());
   }
 
   @override
@@ -499,107 +483,6 @@ class _AppShellState extends State<_AppShell> {
     }
     return LoginScreen(onGitHubLogin: _handleLogin);
   }
-}
-
-/// Default storage factory: creates GitHub storage from provided repo info.
-Future<StorageBundle> defaultStorageFactory(
-  String accessToken, {
-  required String owner,
-  required String repo,
-  required String branch,
-  Future<void> Function()? onRemoteChanged,
-}) async {
-  final localService = NoteService();
-  final apiClient = GitHubApiClient(
-    token: accessToken,
-    owner: owner,
-    repo: repo,
-  );
-
-  // Load local note path from SharedPreferences.
-  final prefs = await SharedPreferences.getInstance();
-  final localPath =
-      prefs.getString(AppSettingsController.localNotePathKey) ??
-      defaultLocalNotePath();
-  final syncIntervalSeconds =
-      prefs.getInt(AppSettingsController.syncIntervalSecondsKey) ?? 5;
-
-  // Persistent storage cache: per-repo file under app support dir. Loading it
-  // hydrates _shaCache / _noteCache from disk, so when the recorded commit SHA
-  // still matches HEAD the next listAllNotes call needs zero GitHub round-trips.
-  final supportDir = await getApplicationSupportDirectory();
-  final cacheFile = File(
-    '${supportDir.path}/simsync_cache/${owner}__${repo}__$branch.json',
-  );
-  final cache = GitHubNoteCache(path: cacheFile.path);
-  final githubStorage = GitHubNoteStorage(
-    apiClient,
-    branch: branch,
-    cache: cache,
-  );
-  await githubStorage.loadCache();
-
-  late final GitHubSyncEngine syncEngine;
-  syncEngine = GitHubSyncEngine(
-    token: accessToken,
-    owner: owner,
-    repo: repo,
-    branch: branch,
-    interval: Duration(
-      seconds: syncIntervalSeconds.clamp(
-        AppSettings.minSyncIntervalSeconds,
-        AppSettings.maxSyncIntervalSeconds,
-      ),
-    ),
-    initialCommitSha: githubStorage.lastCommitSha,
-    onRemoteChanged: () async {
-      // A new commit on the tracked branch: persist the new SHA, drop the tree
-      // snapshot so the next listing refetches it, and notify the app.
-      githubStorage.setLastCommitSha(syncEngine.lastCommitSha);
-      githubStorage.invalidateTreeCache();
-      if (onRemoteChanged != null) {
-        await onRemoteChanged();
-      }
-    },
-  );
-
-  return StorageBundle(
-    storage: githubStorage,
-    localStorage: LocalNoteStorage(basePath: localPath),
-    noteService: localService,
-    syncEngine: syncEngine,
-  );
-}
-
-String defaultLocalNotePath() {
-  final home =
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-  return '$home/Documents/SimSync';
-}
-
-ThemeMode flutterThemeMode(AppThemeMode mode) {
-  switch (mode) {
-    case AppThemeMode.light:
-      return ThemeMode.light;
-    case AppThemeMode.dark:
-      return ThemeMode.dark;
-    case AppThemeMode.system:
-      return ThemeMode.system;
-  }
-}
-
-AuthService createDefaultAuthService() {
-  const config = GitHubOAuthConfig(
-    clientId: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_ID'),
-    clientSecret: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_SECRET'),
-  );
-
-  return DefaultAuthService(
-    provider: GitHubOAuthProvider(config: config, httpClient: http.Client()),
-    store: FileSessionStore(directoryProvider: getApplicationSupportDirectory),
-    policy: const SessionPolicy(maxAge: Duration(hours: 24)),
-    nowProvider: DateTime.now,
-  );
 }
 
 enum _AuthStatus { restoring, unauthenticated, repoSelection, authenticated }

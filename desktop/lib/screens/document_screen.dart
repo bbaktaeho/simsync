@@ -11,6 +11,7 @@ import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
+import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
 import '../services/review_outline.dart';
@@ -247,25 +248,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final previousSelectedId = _selectedNote?.id;
 
     // Merge remote notes with local dirty notes to prevent overwriting
-    // unsaved edits during sync.
-    final dirtyById = <String, Note>{};
-    for (final local in _allNotes) {
-      if (local.isDirty) {
-        dirtyById[local.id] = local;
-      }
-    }
-    if (dirtyById.isNotEmpty) {
-      // For each remote note, keep local version if it has unsaved edits.
-      for (var i = 0; i < notes.length; i++) {
-        final dirty = dirtyById.remove(notes[i].id);
-        if (dirty != null) {
-          notes[i] = dirty;
-        }
-      }
-      // Keep dirty notes that don't exist on remote yet (newly created).
-      notes.addAll(dirtyById.values);
-      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    }
+    // unsaved edits during sync (rule shared with the menu bar popover).
+    mergeDirtyNotes(loaded: notes, current: _allNotes);
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     setState(() {
       _allNotes = notes;

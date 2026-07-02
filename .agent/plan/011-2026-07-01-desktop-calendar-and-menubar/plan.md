@@ -146,13 +146,19 @@ main.dart
 
 1. **popover 동기화 미동작**: popover 엔진이 자체 `StorageBundle`을 쓰면서 `GitHubSyncEngine`을
    시작하지 않아 부팅 시점 캐시 스냅샷이 고정되던 문제. show 시 `SharedPreferences.reload()` +
-   설정 재로딩 + `syncNow`(즉시 폴) + 표시 중 폴링/dismiss 시 중지로 수정. popover 편집은
-   `notes_changed` 멀티윈도우 채널로 메인 창에 즉시 통지.
+   설정 재로딩 + 번들 재파생(로그인/레포/로컬 경로 드리프트 감지) + `syncNow` 1회로 수정.
+   표시 중 라이브 갱신은 메인 엔진 폴링이 `remote_changed`를 push하는 방식(popover 자체 폴링 없음 —
+   API 호출 이중화 방지). popover 편집은 `notes_changed` 멀티윈도우 채널로 메인 창에 즉시 통지
+   (수신 시 tree cache invalidate 후 리로드).
 2. **전체화면 위 미표시**: sub-window가 titled 일반 NSWindow라 `.nonactivatingPanel`이 무효였던 문제.
    창 생성 콜백에서 Flutter 콘텐츠를 자체 `NonActivatingPanel`(NSPanel)로 re-host — statusBar level,
    canJoinAllSpaces + fullScreenAuxiliary. 실기기에서 전체화면 앱 위 표시 확인.
 
+이후 PR 전체 diff 정밀 리뷰(8개 관점)에서 정합성 8건 + 최적화/구조 6건을 추가 수정했다.
 상세: [.agent/develop/daily/2026-07-02-menubar-sync-and-fullscreen-panel.md](../../develop/daily/2026-07-02-menubar-sync-and-fullscreen-panel.md)
 
 Out of Scope에 있던 "실시간 양방향 라이브 동기화"는 이번 수정으로 사실상 해소됨
-(popover 표시 중 폴링 + 편집 즉시 통지).
+(메인 폴링 → popover push + 편집 즉시 통지).
+
+미결: `desktop_multi_window` 의존성은 구현 중 대체 채택된 것으로 계획서에 사전 승인 기록이 없다 —
+소유자 승인 기록 필요.

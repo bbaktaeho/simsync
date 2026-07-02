@@ -39,10 +39,19 @@ class MenuBarManager with TrayListener, WindowListener {
   final VoidCallback onNotesChanged;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
-  // The popover's browse-size width (it widens itself for the editor overlay).
+
+  /// Single source of truth for the popover geometry — the popover window
+  /// sizes itself with these AND this manager anchors it to the tray icon, so
+  /// the two sides must never drift.
   static const Size popoverSize = Size(332, 500);
-  // The macOS menu bar is at the very top, so a fixed top inset places the
-  // popover just beneath it.
+
+  /// The popover widens to this while its editor overlay is open (the reused
+  /// editor toolbar needs ~386px), then shrinks back to [popoverSize].
+  static const Size popoverEditSize = Size(420, 520);
+
+  // Fallback top inset when the tray bounds are unavailable; normally the
+  // popover hangs from the tray icon's bottom edge (menu bar height varies:
+  // ~24pt on plain displays, ~32-38pt on notched/scaled ones).
   static const double _menuBarInset = 26;
 
   static final bool _underTest =
@@ -145,12 +154,16 @@ class MenuBarManager with TrayListener, WindowListener {
 
     final bounds = await trayManager.getBounds();
     double dx = 8;
+    double dy = _menuBarInset;
     if (bounds != null) {
-      // Right-align the popover to the icon so it stays on-screen.
+      // Right-align the popover to the icon so it stays on-screen, and hang it
+      // from the icon's bottom edge (= the actual menu bar height, which
+      // differs per display instead of being a fixed inset).
       dx = bounds.left + bounds.width - popoverSize.width;
       if (dx < 8) dx = 8;
+      if (bounds.bottom > 0) dy = bounds.bottom;
     }
-    final Offset position = Offset(dx, _menuBarInset);
+    final Offset position = Offset(dx, dy);
 
     if (_popover == null) {
       if (_creatingPopover) return;
@@ -169,20 +182,51 @@ class MenuBarManager with TrayListener, WindowListener {
       return;
     }
 
-    // Ask the existing popover window to reposition + show. If it's gone,
-    // recreate it.
+    // Ask the existing popover window to reposition + show.
     try {
       await _popover!.invokeMethod('show', {
         'dx': position.dx,
         'dy': position.dy,
       });
+    } on WindowChannelException {
+      // The window exists but hasn't registered its handler yet — it is still
+      // booting (storage/session restore takes a moment) and will show itself
+      // after its first frame. Recreating here would spawn a duplicate popover
+      // for every impatient extra click, so just drop this one.
+      return;
     } catch (_) {
+      // Anything else means the window is actually gone: recreate it.
       _popover = null;
       await _openPopover();
     }
   }
 
+  /// Pushes a remote-change notification to the popover (if it exists) so an
+  /// open popover refreshes live. The popover intentionally runs no poll loop
+  /// of its own — the main engine already polls this repo.
+  Future<void> notifyPopoverRemoteChanged() async {
+    final popover = _popover;
+    if (popover == null) return;
+    try {
+      await popover.invokeMethod('remote_changed');
+    } catch (_) {
+      // Popover still booting or gone; it reloads on its next show anyway.
+    }
+  }
+
   Future<void> _quit() async {
+    // Give the popover a chance to persist a still-debounced edit before the
+    // process dies (its save debounce is 1s; exit(0) would drop the edit).
+    final popover = _popover;
+    if (popover != null) {
+      try {
+        await popover
+            .invokeMethod('flush')
+            .timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // Booting/gone/timed out — quit anyway.
+      }
+    }
     // Menu bar resident: the app doesn't auto-terminate on window close, so
     // "앱 종료" ends the whole process explicitly.
     await trayManager.destroy();

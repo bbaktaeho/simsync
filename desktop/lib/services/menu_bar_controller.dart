@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/note.dart';
 import '../storage/note_storage.dart';
+import 'note_merge.dart';
 
 /// Owns the macOS menu bar popover's state and note data.
 ///
@@ -121,20 +122,10 @@ class MenuBarController extends ChangeNotifier {
       final notes = <Note>[for (final list in results) ...list];
 
       // Preserve unsaved edits: keep any in-memory dirty note over its stored
-      // copy, and re-add dirty notes storage doesn't have yet. Mirrors
-      // DocumentScreen._loadNotes so reopening the popover after a blur never
-      // discards an in-flight edit whose debounced save hasn't fired.
-      final dirtyById = <String, Note>{
-        for (final n in _notes)
-          if (n.isDirty) n.id: n,
-      };
-      if (dirtyById.isNotEmpty) {
-        for (var i = 0; i < notes.length; i++) {
-          final dirty = dirtyById.remove(notes[i].id);
-          if (dirty != null) notes[i] = dirty;
-        }
-        notes.addAll(dirtyById.values);
-      }
+      // copy, and re-add dirty notes storage doesn't have yet — so reopening
+      // the popover after a blur never discards an in-flight edit whose
+      // debounced save hasn't fired.
+      mergeDirtyNotes(loaded: notes, current: _notes);
       notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
       _notes = notes;
 
@@ -145,6 +136,11 @@ class MenuBarController extends ChangeNotifier {
       }
       _isLoading = false;
       notifyListeners();
+    } catch (_) {
+      // Offline / API failure: keep whatever list we have instead of an
+      // eternal spinner, and let the user retry by reopening.
+      _isLoading = false;
+      _showNotice('노트를 불러오지 못했습니다');
     } finally {
       _loading = false;
     }
@@ -243,6 +239,13 @@ class MenuBarController extends ChangeNotifier {
 
   /// Applies an in-place edit from the editor and debounces the persistence.
   void updateNote(Note updated) {
+    // Same rule as DocumentScreen._canMutateNote: with sync off, synced notes
+    // are read-only everywhere — a popover edit would otherwise still commit
+    // to GitHub. (The editor is also rendered read-only; this guards the API.)
+    if (updated.storageType != StorageType.local && !_syncEnabled()) {
+      _showNotice('동기화가 꺼져 있어 동기화 노트는 읽기 전용입니다');
+      return;
+    }
     // Mark dirty so a reload racing the debounce (reopen after blur) preserves
     // the edit instead of overwriting it with the stored copy.
     updated.isDirty = true;
@@ -270,10 +273,17 @@ class MenuBarController extends ChangeNotifier {
   }
 
   void _flushSave() {
+    unawaited(flushPendingSaves());
+  }
+
+  /// Cancels the save debounce and awaits the persistence of the note being
+  /// edited. Awaitable so the quit path can hold process exit until the last
+  /// edit is committed.
+  Future<void> flushPendingSaves() async {
     if (_saveDebounce?.isActive ?? false) {
       _saveDebounce!.cancel();
       final editing = _editingNote;
-      if (editing != null) unawaited(_persist(editing.id));
+      if (editing != null) await _persist(editing.id);
     }
   }
 

@@ -42,6 +42,9 @@ enum PopoverPanel {
   // Keep the per-window bridges alive for the process lifetime.
   private static var bridges: [PopoverBridge] = []
 
+  // NOTE: this runs for EVERY desktop_multi_window sub-window. The popover is
+  // the app's only sub-window today; if another kind is ever added, gate the
+  // adoption (e.g. by launch argument) so it doesn't also become a panel.
   static func adopt(_ controller: FlutterViewController) {
     guard let pluginWindow = controller.view.window else { return }
 
@@ -106,6 +109,7 @@ final class PopoverBridge {
   private let window: NSWindow
   private let channel: FlutterMethodChannel
   private var outsideClickMonitor: Any?
+  private var localClickMonitor: Any?
 
   init(window: NSWindow, channel: FlutterMethodChannel) {
     self.window = window
@@ -118,37 +122,49 @@ final class PopoverBridge {
       // Show above everything on the current Space without activating the app.
       window.orderFrontRegardless()
       window.makeKey()
-      installOutsideClickMonitor()
-      result(nil)
-    case "hide":
-      hide()
+      installOutsideClickMonitors()
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
   }
 
-  /// Dismiss on the first click landing in any OTHER app. Global monitors only
-  /// see events not delivered to us, so clicks inside the popover (selecting a
-  /// date, typing) never trigger it.
-  private func installOutsideClickMonitor() {
-    removeOutsideClickMonitor()
+  /// Dismiss on the first click landing outside the panel — in another app
+  /// (global monitor: only sees events NOT delivered to us) or in one of our
+  /// own windows, e.g. the main window (local monitor: sees our events before
+  /// dispatch; clicks inside the panel itself pass through untouched). A tray
+  /// click also dismisses here first; the tray handler then re-shows, which
+  /// keeps the icon's "open" gesture working.
+  private func installOutsideClickMonitors() {
+    removeOutsideClickMonitors()
     outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
       matching: [.leftMouseDown, .rightMouseDown]
     ) { [weak self] _ in
       self?.hide()
     }
+    localClickMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.leftMouseDown, .rightMouseDown]
+    ) { [weak self] event in
+      if let self, event.window !== self.window {
+        self.hide()
+      }
+      return event
+    }
   }
 
-  private func removeOutsideClickMonitor() {
+  private func removeOutsideClickMonitors() {
     if let monitor = outsideClickMonitor {
       NSEvent.removeMonitor(monitor)
       outsideClickMonitor = nil
     }
+    if let monitor = localClickMonitor {
+      NSEvent.removeMonitor(monitor)
+      localClickMonitor = nil
+    }
   }
 
   private func hide() {
-    removeOutsideClickMonitor()
+    removeOutsideClickMonitors()
     window.orderOut(nil)
     // Tell Dart so it can flush any in-flight editor edits and reset state.
     channel.invokeMethod("dismissed", arguments: nil)

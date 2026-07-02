@@ -237,6 +237,10 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
               child: EditorPanel(
                 note: note,
                 onNoteChanged: _c.updateNote,
+                // Same rule as the document screen: with sync off, synced
+                // notes are read-only (editing would still commit to GitHub).
+                isReadOnly: note.storageType != StorageType.local &&
+                    !widget.settings.value.syncEnabled,
                 contentScale: widget.settings.value.contentScale,
                 onIncreaseContentScale: widget.settings.increaseContentScale,
                 onDecreaseContentScale: widget.settings.decreaseContentScale,

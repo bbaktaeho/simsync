@@ -55,3 +55,33 @@ related:
 ## 주의
 
 - 로컬에 설치된 `/Applications/simsync.app`은 스테일 빌드일 수 있다. 테스트 전 삭제하거나 새 빌드로 교체할 것.
+
+## 리뷰 반영 (2026-07-03, PR 전체 diff 정밀 검토)
+
+8개 관점(라인 스캔/제거된 동작/크로스파일/재사용/단순화/효율/altitude/컨벤션) 병렬 리뷰 후 수정.
+
+### 정합성 수정
+
+- `notes_changed` 수신 시 메인 엔진 tree cache를 invalidate하지 않아 즉시 리로드가 스테일 데이터를 반환하던 버그 수정 (5개 관점이 동시 지적).
+- popover 번들이 부팅 시점 세션/레포 스냅샷에 고정되던 문제: show마다 세션/레포/로컬 경로를 재파생해 드리프트 시 번들 교체 (로그인 전 popover가 영구 "로그인하세요"에 갇히는 문제, 레포 전환 후 이전 레포에 커밋하는 문제 해소). 오프라인 시 기존 번들 유지.
+- popover 부팅 중 트레이 재클릭 시 `CHANNEL_UNREGISTERED` 예외를 창 소멸로 오판해 popover 창이 복제되던 버그: 부팅 중 클릭은 무시.
+- 두 엔진이 같은 캐시 파일의 동일한 `.tmp` 스테이징을 사용해 rename 경합 → 실패한 future에 체이닝돼 저장 체인이 영구 마비되던 버그: 인스턴스별 tmp 이름 + 실패 격리.
+- 동기화 OFF일 때 popover에서 동기화 노트가 편집·커밋되던 구멍: `_canMutateNote` 규칙 적용 (에디터 read-only + updateNote 가드).
+- `MenuBarController.load()` 실패 시 무한 스피너 + unhandled async error: catch 추가.
+- 트레이 "앱 종료"가 debounce 중인 popover 편집을 버리던 문제: 종료 전 popover에 flush 요청(3초 타임아웃).
+- 자기 앱 창(메인 창) 클릭 시 popover가 닫히지 않던 문제: 네이티브 local monitor 추가.
+
+### 최적화/구조
+
+- popover 폴링 제거: 메인 엔진 폴링이 `remote_changed`를 popover로 push (기존 설계는 표시 중 API 호출이 2배). popover는 show 시 1회 `syncNow`만 수행.
+- 기하 단일화: `MenuBarManager.popoverSize/popoverEditSize`가 유일한 소스, popover 위치 dy를 고정 26pt 대신 트레이 아이콘 bounds 하단에서 파생 (노치/스케일 디스플레이 대응).
+- `main.dart` ↔ `popover_window.dart` 순환 import 제거: 부트스트랩(`StorageBundle`, `defaultStorageFactory` 등)을 `app_bootstrap.dart`로 분리, main은 re-export로 하위 호환.
+- dirty-merge(Last-Write-Wins 보호)를 `services/note_merge.dart`로 공용화 — DocumentScreen과 popover가 같은 구현 사용.
+- popover 부트 병렬화(창 셰이핑/설정/세션 동시), 이중 초기 로드 제거, ThemeData 재생성 제거, 트레이 메뉴는 다크 상태가 실제로 바뀔 때만 재빌드.
+- 네이티브 dead code(`hide` 채널 케이스) 제거, `adopt()`의 단일 popover 가정 문서화.
+
+### 미반영 (소유자 판단 필요)
+
+- `desktop_multi_window` 의존성이 계획서 승인 기록 없이 추가됨 (승인 기록 필요).
+- MenuBarController가 DocumentScreen의 파생 리스트/노트 생성 규칙을 복제 — 전면 상태 추출은 계획서 D1에서 기각된 리팩토링이라 유지. 노트 팩토리/파생 리스트 공용화는 후속 과제.
+- 메인 창 에디터의 debounce 저장은 여전히 "앱 종료"와 경합 가능(2초 debounce, 실사용 위험 낮음).
