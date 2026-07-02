@@ -21,6 +21,7 @@ class MenuBarManager with TrayListener, WindowListener {
     required this.onOpenSettings,
     required this.onToggleTheme,
     required this.isDark,
+    required this.onNotesChanged,
   });
 
   /// Opens the in-app settings dialog in the main window (after it is surfaced).
@@ -31,6 +32,11 @@ class MenuBarManager with TrayListener, WindowListener {
 
   /// Whether the app is currently in dark mode — drives the tray checkbox state.
   final bool Function() isDark;
+
+  /// Fired when the popover window reports it persisted a note edit
+  /// (`notes_changed` over the multi-window channel), so the document screen
+  /// reloads immediately instead of waiting for the next sync poll.
+  final VoidCallback onNotesChanged;
 
   static const String _iconPath = 'assets/tray/menu_bar_icon.png';
   // The popover's browse-size width (it widens itself for the editor overlay).
@@ -59,6 +65,13 @@ class MenuBarManager with TrayListener, WindowListener {
     await trayManager.setIcon(_iconPath, isTemplate: true);
     await trayManager.setToolTip('SimSync');
     await trayManager.setContextMenu(_buildMenu());
+
+    // Receive the popover's note-change pings on this (main) window's channel.
+    final self = await WindowController.fromCurrentEngine();
+    await self.setWindowMethodHandler((call) async {
+      if (call.method == 'notes_changed') onNotesChanged();
+      return null;
+    });
   }
 
   Future<void> dispose() async {

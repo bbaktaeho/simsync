@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'main.dart'
@@ -42,16 +43,13 @@ Future<void> runPopoverWindow(List<String> args) async {
   final windowId = args.length > 1 ? args[1] : '';
   final position = _parsePosition(args.length > 2 ? args[2] : '');
 
-  // Shape the frameless window. NOTE: no `alwaysOnTop`/`skipTaskbar` here — the
-  // native side owns the window level + collection behavior, and skipTaskbar
-  // would flip the whole app to `.accessory` (which disables the MAIN window's
-  // native full-screen). Showing is done natively (orderFront), not here.
+  // Size + place the panel. NOTE: no `titleBarStyle`/`alwaysOnTop`/`skipTaskbar`
+  // here — the native side (MainFlutterWindow.swift) fully styles the panel and
+  // owns its level + collection behavior; skipTaskbar would flip the whole app
+  // to `.accessory` (which disables the MAIN window's native full-screen).
+  // Showing is done natively (orderFront), not here.
   await windowManager.waitUntilReadyToShow(
-    const WindowOptions(
-      size: _browseSize,
-      titleBarStyle: TitleBarStyle.hidden,
-      windowButtonVisibility: false,
-    ),
+    const WindowOptions(size: _browseSize),
     () async {
       await windowManager.setPosition(position);
       await windowManager.setHasShadow(true);
@@ -64,6 +62,7 @@ Future<void> runPopoverWindow(List<String> args) async {
 
   // Rebuild the same storage the main app uses from the persisted session/repo.
   StorageBundle? bundle;
+  final remoteChanged = _RemoteChangedHook();
   final session = await createDefaultAuthService().restoreSession();
   if (session != null) {
     final repos = await RepoCache().load();
@@ -74,6 +73,10 @@ Future<void> runPopoverWindow(List<String> args) async {
         owner: e.owner,
         repo: e.repo,
         branch: e.branch,
+        // The factory wires this to the bundle's sync engine: a new remote
+        // commit records the SHA + invalidates the storage's tree cache first,
+        // then this fires so the popover can re-list fresh data.
+        onRemoteChanged: () async => remoteChanged.handler?.call(),
       );
     }
   }
@@ -83,7 +86,15 @@ Future<void> runPopoverWindow(List<String> args) async {
     position: position,
     settings: settings,
     bundle: bundle,
+    remoteChanged: remoteChanged,
   ));
+}
+
+/// Late-bound callback: the storage bundle (and its sync engine) exists before
+/// `runApp`, so the engine's remote-change signal is routed through this hook
+/// and bound once the popover state is created.
+class _RemoteChangedHook {
+  VoidCallback? handler;
 }
 
 Offset _parsePosition(String config) {
@@ -102,12 +113,14 @@ class _PopoverApp extends StatefulWidget {
     required this.windowId,
     required this.position,
     required this.settings,
+    required this.remoteChanged,
     this.bundle,
   });
 
   final String windowId;
   final Offset position;
   final AppSettingsController settings;
+  final _RemoteChangedHook remoteChanged;
   final StorageBundle? bundle;
 
   @override
@@ -118,6 +131,7 @@ class _PopoverAppState extends State<_PopoverApp> {
   MenuBarController? _controller;
   late Offset _anchor; // browse-size top-left, under the tray icon
   bool _editorOpen = false;
+  WindowController? _mainWindow;
 
   @override
   void initState() {
@@ -131,11 +145,15 @@ class _PopoverAppState extends State<_PopoverApp> {
         storage: () => bundle.storage,
         localStorage: () => bundle.localStorage,
         syncEnabled: () => widget.settings.value.syncEnabled,
-        onChanged: () {},
+        // A popover edit was persisted: reload the document screen right away.
+        onChanged: () => unawaited(_notifyMainWindow()),
       );
       // Resize the window between browse/edit as the editor overlay opens/closes.
       _controller!.addListener(_onControllerChanged);
       unawaited(_controller!.load());
+      // A remote commit was detected (tree cache already invalidated): re-list
+      // so notes committed from the main window / other devices surface live.
+      widget.remoteChanged.handler = () => unawaited(_controller!.load());
     }
 
     // The main window's tray click asks us to reposition + re-show.
@@ -144,7 +162,10 @@ class _PopoverAppState extends State<_PopoverApp> {
 
     // Show only after the first frame is painted, so the panel never flashes
     // empty before Flutter draws it.
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_show(_anchor)));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_show(_anchor));
+      unawaited(_refreshExternalState());
+    });
   }
 
   /// Position at the browse size and float the non-activating panel in front
@@ -159,9 +180,11 @@ class _PopoverAppState extends State<_PopoverApp> {
   Future<dynamic> _handleNativeCall(MethodCall call) async {
     if (call.method == 'dismissed') {
       // The native outside-click monitor hid us. Flush + close any open editor
-      // so the next open starts clean on today's calendar.
+      // so the next open starts clean on today's calendar, and stop polling —
+      // the main window keeps its own sync engine running.
       _controller?.closeEditor();
       _editorOpen = false;
+      widget.bundle?.syncEngine?.stop();
     }
     return null;
   }
@@ -179,10 +202,52 @@ class _PopoverAppState extends State<_PopoverApp> {
       _editorOpen = false;
 
       await _show(anchor);
-      unawaited(_controller?.load());
-      unawaited(widget.settings.load());
+      unawaited(_refreshExternalState());
     }
     return null;
+  }
+
+  /// Pulls in state that may have changed outside this engine while the popover
+  /// was hidden, then revalidates the remote branch.
+  ///
+  /// Settings (theme / sync toggles changed in the main window) live in
+  /// SharedPreferences, whose values are cached per engine — reload from disk
+  /// first. Then restart the sync engine: `start()` runs an immediate poll, so
+  /// a commit made elsewhere invalidates the storage's tree cache and re-lists
+  /// via [_RemoteChangedHook]; polling continues while the popover is visible
+  /// and stops on dismiss.
+  Future<void> _refreshExternalState() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    await widget.settings.load();
+
+    final engine = widget.bundle?.syncEngine;
+    if (engine != null) {
+      engine.updateInterval(
+        Duration(seconds: widget.settings.value.syncIntervalSeconds),
+      );
+      if (widget.settings.value.syncEnabled) {
+        engine.start();
+      } else {
+        engine.stop();
+      }
+    }
+    await _controller?.load();
+  }
+
+  /// Pings the main window over the multi-window channel after the popover
+  /// persists a note, so the document screen reloads immediately instead of
+  /// waiting for its next sync poll. The main window is the engine attached
+  /// without launch arguments.
+  Future<void> _notifyMainWindow() async {
+    try {
+      _mainWindow ??= (await WindowController.getAll())
+          .firstWhere((w) => w.arguments.isEmpty);
+      await _mainWindow!.invokeMethod('notes_changed');
+    } catch (_) {
+      // Main window not reachable right now; retry on the next change.
+      _mainWindow = null;
+    }
   }
 
   void _onControllerChanged() {
@@ -205,6 +270,8 @@ class _PopoverAppState extends State<_PopoverApp> {
 
   @override
   void dispose() {
+    widget.remoteChanged.handler = null;
+    widget.bundle?.syncEngine?.dispose();
     _controller?.removeListener(_onControllerChanged);
     _controller?.dispose();
     widget.settings.dispose();

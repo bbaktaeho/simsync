@@ -13,48 +13,76 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
-    // The menu bar popover runs in a desktop_multi_window sub-window. Turn that
-    // sub-window into a non-activating floating panel so it can appear over
-    // other apps' full-screen Spaces (like a native menu bar popover) WITHOUT
-    // activating our app — activating would switch away from the full-screen
-    // Space, which is exactly why the plain window approach never showed there.
+    // The menu bar popover runs in a desktop_multi_window sub-window. That
+    // sub-window is a plain titled NSWindow, and that class is why every
+    // previous full-screen attempt failed: `.nonactivatingPanel` is honored
+    // only by NSPanel (inserting it into an NSWindow's style mask is a no-op),
+    // and a titled plain NSWindow is not allowed to join another app's
+    // full-screen Space even with `.fullScreenAuxiliary`. So re-host the
+    // Flutter content inside a real non-activating NSPanel we own.
     FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
       RegisterGeneratedPlugins(registry: controller)
-      PopoverPanel.configure(controller)
+      PopoverPanel.adopt(controller)
     }
 
     super.awakeFromNib()
   }
 }
 
-/// Configures the menu bar popover sub-window as a non-activating floating panel
-/// and bridges show / hide / outside-click dismissal to Dart over the
-/// `simsync/popover` method channel.
+/// Moves the popover sub-window's Flutter content into a floating,
+/// non-activating NSPanel and bridges show / hide / outside-click dismissal to
+/// Dart over the `simsync/popover` method channel.
 ///
 /// Why native: window_manager's `show()` calls `NSApp.activate`, which brings
-/// our app forward and switches away from any other app's full-screen Space, so
-/// the popover never appears over full-screen. A non-activating panel shown via
-/// `orderFrontRegardless()` floats over the current Space (full-screen included)
-/// without activating the app.
+/// our app forward and switches away from any other app's full-screen Space. A
+/// non-activating panel shown via `orderFrontRegardless()` floats over the
+/// current Space (full-screen included) without activating the app, and clicks
+/// inside it never activate the app either.
 enum PopoverPanel {
   // Keep the per-window bridges alive for the process lifetime.
   private static var bridges: [PopoverBridge] = []
 
-  static func configure(_ controller: FlutterViewController) {
-    guard let window = controller.view.window else { return }
+  static func adopt(_ controller: FlutterViewController) {
+    guard let pluginWindow = controller.view.window else { return }
 
-    // Non-activating: showing or clicking the popover never activates the app,
-    // so we stay on the current (possibly full-screen) Space.
-    window.styleMask.insert(.nonactivatingPanel)
-    window.level = .floating
-    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-    window.hidesOnDeactivate = false
-    window.isReleasedWhenClosed = false
+    let panel = NonActivatingPanel(
+      contentRect: pluginWindow.frame,
+      // .titled keeps the standard rounded-corner window shape (the title bar
+      // itself is hidden below). .closable/.miniaturizable make AppKit create
+      // the standard title-bar buttons — window_manager's titlebar helpers
+      // force-unwrap the close button's view hierarchy, so it must exist even
+      // though every button is hidden right below.
+      styleMask: [
+        .titled, .closable, .miniaturizable, .fullSizeContentView,
+        .nonactivatingPanel,
+      ],
+      backing: .buffered,
+      defer: false)
+    panel.titleVisibility = .hidden
+    panel.titlebarAppearsTransparent = true
+    panel.standardWindowButton(.closeButton)?.isHidden = true
+    panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
+    panel.standardWindowButton(.zoomButton)?.isHidden = true
+    panel.isMovable = false
+    panel.isFloatingPanel = true
+    panel.hidesOnDeactivate = false
+    panel.isReleasedWhenClosed = false
+    panel.animationBehavior = .none
+    // Above normal window levels so nothing on the full-screen Space covers it.
+    panel.level = .statusBar
+    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+
+    // Re-host: window_manager targets the Flutter view's window, so after this
+    // move its setSize/setPosition calls operate on the panel. The plugin's
+    // original window was created hidden (hiddenAtLaunch) and nothing ever
+    // shows it; it just keeps the plugin's window bookkeeping alive.
+    pluginWindow.contentViewController = nil
+    panel.contentViewController = controller
 
     let channel = FlutterMethodChannel(
       name: "simsync/popover",
       binaryMessenger: controller.engine.binaryMessenger)
-    let bridge = PopoverBridge(window: window, channel: channel)
+    let bridge = PopoverBridge(window: panel, channel: channel)
     channel.setMethodCallHandler { call, result in
       bridge.handle(call, result: result)
     }
@@ -62,8 +90,20 @@ enum PopoverPanel {
   }
 }
 
+/// NSPanel that can take key status (so the popover's editor receives
+/// keystrokes) without ever becoming the app's main window; combined with
+/// `.nonactivatingPanel` it never activates the app.
+final class NonActivatingPanel: NSPanel {
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { false }
+}
+
 final class PopoverBridge {
-  private weak var window: NSWindow?
+  // Strong on purpose: this bridge is the panel's only owner. The panel is not
+  // in the plugin's window bookkeeping (that still tracks the original hidden
+  // window) and a never-shown NSWindow with no strong owner is deallocated —
+  // taking the FlutterViewController and its engine down with it.
+  private let window: NSWindow
   private let channel: FlutterMethodChannel
   private var outsideClickMonitor: Any?
 
@@ -76,8 +116,8 @@ final class PopoverBridge {
     switch call.method {
     case "orderFront":
       // Show above everything on the current Space without activating the app.
-      window?.orderFrontRegardless()
-      window?.makeKey()
+      window.orderFrontRegardless()
+      window.makeKey()
       installOutsideClickMonitor()
       result(nil)
     case "hide":
@@ -109,7 +149,7 @@ final class PopoverBridge {
 
   private func hide() {
     removeOutsideClickMonitor()
-    window?.orderOut(nil)
+    window.orderOut(nil)
     // Tell Dart so it can flush any in-flight editor edits and reset state.
     channel.invokeMethod("dismissed", arguments: nil)
   }

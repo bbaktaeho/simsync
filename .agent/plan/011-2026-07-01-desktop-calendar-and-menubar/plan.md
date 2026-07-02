@@ -138,3 +138,21 @@ main.dart
 - Windows/Linux 트레이(요청은 macOS 상단바). 코드는 크래시 없이 무시하도록 가드.
 - mobile 프로젝트 반영.
 - popover와 메인 창의 실시간 양방향 라이브 동기화(재로딩 기반으로 충분).
+
+## Addendum (2026-07-02) — 구현 현황 갱신 + 후속 수정
+
+초기 계획의 D2(단일 창 재활용)는 구현 과정에서 **desktop_multi_window 기반 별도 popover 창**으로 대체되었다
+(메인 창을 건드리지 않기 위함). 이후 소유자 리포트 2건을 근본 원인 수준에서 수정했다.
+
+1. **popover 동기화 미동작**: popover 엔진이 자체 `StorageBundle`을 쓰면서 `GitHubSyncEngine`을
+   시작하지 않아 부팅 시점 캐시 스냅샷이 고정되던 문제. show 시 `SharedPreferences.reload()` +
+   설정 재로딩 + `syncNow`(즉시 폴) + 표시 중 폴링/dismiss 시 중지로 수정. popover 편집은
+   `notes_changed` 멀티윈도우 채널로 메인 창에 즉시 통지.
+2. **전체화면 위 미표시**: sub-window가 titled 일반 NSWindow라 `.nonactivatingPanel`이 무효였던 문제.
+   창 생성 콜백에서 Flutter 콘텐츠를 자체 `NonActivatingPanel`(NSPanel)로 re-host — statusBar level,
+   canJoinAllSpaces + fullScreenAuxiliary. 실기기에서 전체화면 앱 위 표시 확인.
+
+상세: [.agent/develop/daily/2026-07-02-menubar-sync-and-fullscreen-panel.md](../../develop/daily/2026-07-02-menubar-sync-and-fullscreen-panel.md)
+
+Out of Scope에 있던 "실시간 양방향 라이브 동기화"는 이번 수정으로 사실상 해소됨
+(popover 표시 중 폴링 + 편집 즉시 통지).

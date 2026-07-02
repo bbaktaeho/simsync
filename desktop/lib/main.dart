@@ -193,6 +193,8 @@ class _AppShellState extends State<_AppShell> {
       onOpenSettings: () => _openSettingsSignal.value++,
       onToggleTheme: _toggleTheme,
       isDark: _effectiveDark,
+      // Popover edits ping back over the multi-window channel; reload notes.
+      onNotesChanged: () => _refreshSignal.value++,
     );
     _settingsController.addListener(_syncThemeMode);
     unawaited(_menuBar.setUp());
