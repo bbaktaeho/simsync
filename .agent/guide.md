@@ -115,7 +115,10 @@ ls .agent/                          # 문서 카테고리
 - Synced storage: GitHub Contents API로 `notes/.../*.md` 파일 CRUD
 - Local storage: 사용자가 선택한 로컬 경로에 markdown 파일 저장
 - Sync: branch 최신 commit SHA polling 기반 변경 감지
-- AI/전용 backend: 현재 저장소에는 아직 구현되지 않음
+- AI: desktop에 위클리/먼슬리 2단계 리뷰 구현 (Anthropic API 또는 Claude Code/Codex CLI). mobile은 미지원
+- 전용 backend: 없음
+
+컴포넌트 단위 다이어그램(mermaid)과 외부 연동 정리는 [.agent/architecture.md](architecture.md) 참고.
 
 ## Key Design Decisions
 
