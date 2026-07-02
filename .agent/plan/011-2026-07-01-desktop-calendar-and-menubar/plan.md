@@ -33,6 +33,8 @@ related:
     - 노트/메모 추가 또는 리스트 클릭 시 **에디터를 오버레이로** 띄워 수정
 - 디자인 시스템(DESIGN.md, Notion 계열) 준수, UX 중시.
 - `tray_manager`, `window_manager` 패키지 추가 승인됨.
+- `desktop_multi_window` 패키지 추가 승인됨 (2026-07-03 사후 승인 — popover를 별도 창/엔진으로
+  분리하는 과정에서 채택, Addendum 참고).
 - 다크모드(System/Light/Dark) 지원 — 메뉴바 popover 포함(추가 요청).
 - 완료 후 PR 1개.
 
@@ -160,5 +162,5 @@ main.dart
 Out of Scope에 있던 "실시간 양방향 라이브 동기화"는 이번 수정으로 사실상 해소됨
 (메인 폴링 → popover push + 편집 즉시 통지).
 
-미결: `desktop_multi_window` 의존성은 구현 중 대체 채택된 것으로 계획서에 사전 승인 기록이 없다 —
-소유자 승인 기록 필요.
+`desktop_multi_window` 의존성은 구현 중 대체 채택되어 사전 승인 기록이 없었으나,
+2026-07-03 소유자가 사후 승인했다 (Confirmed Requirements에 기록).

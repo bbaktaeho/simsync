@@ -82,6 +82,7 @@ related:
 
 ### 미반영 (소유자 판단 필요)
 
-- `desktop_multi_window` 의존성이 계획서 승인 기록 없이 추가됨 (승인 기록 필요).
+- `desktop_multi_window` 의존성이 계획서 승인 기록 없이 추가됨 → 2026-07-03 소유자 사후 승인,
+  계획서 Confirmed Requirements에 기록 완료.
 - MenuBarController가 DocumentScreen의 파생 리스트/노트 생성 규칙을 복제 — 전면 상태 추출은 계획서 D1에서 기각된 리팩토링이라 유지. 노트 팩토리/파생 리스트 공용화는 후속 과제.
 - 메인 창 에디터의 debounce 저장은 여전히 "앱 종료"와 경합 가능(2초 debounce, 실사용 위험 낮음).
