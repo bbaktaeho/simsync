@@ -37,12 +37,17 @@ Future<void> runPopoverWindow(List<String> args) async {
   final position = _parsePosition(args.length > 2 ? args[2] : '');
 
   await windowManager.waitUntilReadyToShow(
+    // NOTE: deliberately no `skipTaskbar` — window_manager implements it as
+    // NSApp.setActivationPolicy(.accessory), which is process-wide (shared
+    // across engines) and makes the MAIN window unable to enter native
+    // full-screen. Keeping the app `.regular` preserves the main window's
+    // full-screen; the popover floats via alwaysOnTop + the native
+    // collectionBehavior set in MainFlutterWindow.swift.
     const WindowOptions(
       size: _browseSize,
       titleBarStyle: TitleBarStyle.hidden,
       windowButtonVisibility: false,
       alwaysOnTop: true,
-      skipTaskbar: true,
     ),
     () async {
       await windowManager.setPosition(position);
