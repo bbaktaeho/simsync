@@ -10,7 +10,7 @@ final _weekStart = DateTime(2026, 6, 15);
 
 Future<void> _pump(
   WidgetTester tester, {
-  required bool claudeEnabled,
+  required bool aiEnabled,
   required ReviewController controller,
   VoidCallback? onGenerateOutline,
   VoidCallback? onGenerateReview,
@@ -29,7 +29,7 @@ Future<void> _pump(
             weekStart: _weekStart,
             weekNotes: const [],
             reviewController: controller,
-            claudeEnabled: claudeEnabled,
+            aiEnabled: aiEnabled,
             onGenerateOutline: onGenerateOutline,
             onGenerateReview: onGenerateReview,
             onToggleOutlineItem: onToggleOutlineItem,
@@ -52,14 +52,14 @@ void main() {
   testWidgets('stage cards appear only when the integration is enabled',
       (tester) async {
     await _pump(tester,
-        claudeEnabled: false,
+        aiEnabled: false,
         controller: ReviewController(),
         onGenerateOutline: () {});
     expect(find.text('핵심 정리'), findsNothing);
     expect(find.text('Generate'), findsNothing);
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: ReviewController(),
         onGenerateOutline: () {});
     expect(find.text('핵심 정리'), findsOneWidget);
@@ -72,7 +72,7 @@ void main() {
       (tester) async {
     var calls = 0;
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: ReviewController(),
         onGenerateOutline: () => calls++);
 
@@ -88,7 +88,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째 항목\n- [ ] 둘째 항목');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onGenerateReview: () {},
@@ -108,7 +108,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [ ] 첫째\n- [ ] 둘째');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onToggleOutlineItem: (i) => toggled = i);
@@ -126,7 +126,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째\n- [ ] 둘째');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onToggleAllOutlineItems: (v) => requested = v);
@@ -147,7 +147,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [x] 첫째\n- [x] 둘째');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onToggleAllOutlineItems: (v) => requested = v);
@@ -167,7 +167,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [ ] 첫째');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {});
 
@@ -181,7 +181,7 @@ void main() {
       ..setLoadedWeeklyOutline(_weekStart, '- [x] 선택됨');
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onGenerateReview: () {});
@@ -197,7 +197,7 @@ void main() {
         generate: () => gen.future, persist: (_) async {}));
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         settle: false);
@@ -216,7 +216,7 @@ void main() {
         persist: (_) async {});
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {});
 
@@ -233,7 +233,7 @@ void main() {
         generate: () async => 'done in the background', persist: (_) async {});
 
     await _pump(tester,
-        claudeEnabled: true,
+        aiEnabled: true,
         controller: controller,
         onGenerateOutline: () {},
         onGenerateReview: () {});
@@ -262,7 +262,7 @@ void main() {
                 month: month,
                 monthNotes: const [],
                 reviewController: controller,
-                claudeEnabled: true,
+                aiEnabled: true,
                 onGenerateOutline: onGenerateOutline,
                 onGenerateReview: onGenerateReview,
                 onToggleOutlineItem: onToggleOutlineItem,

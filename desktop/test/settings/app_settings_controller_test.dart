@@ -65,7 +65,7 @@ void main() {
     expect(controller.value.localNotePath, '/tmp/custom-notes');
   });
 
-  test('defaults weekly instruction and disabled Claude integration', () async {
+  test('defaults weekly instruction and disabled AI integration', () async {
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
@@ -75,19 +75,21 @@ void main() {
       controller.value.weeklyInstruction,
       AppSettings.defaultWeeklyInstruction,
     );
-    expect(controller.value.claudeCodeEnabled, isFalse);
+    expect(controller.value.aiEnabled, isFalse);
     expect(controller.value.claudeCliPath, '');
+    expect(controller.value.codexCliPath, '');
   });
 
-  test('persists weekly instruction, claude toggle and cli path', () async {
+  test('persists weekly instruction, AI toggle and cli paths', () async {
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
     await controller.load();
 
     await controller.setWeeklyInstruction('내 지침');
-    await controller.setClaudeCodeEnabled(true);
+    await controller.setAiEnabled(true);
     await controller.setClaudeCliPath('/opt/homebrew/bin/claude');
+    await controller.setCodexCliPath('/opt/homebrew/bin/codex');
 
     final reloaded = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
@@ -95,8 +97,24 @@ void main() {
     await reloaded.load();
 
     expect(reloaded.value.weeklyInstruction, '내 지침');
-    expect(reloaded.value.claudeCodeEnabled, isTrue);
+    expect(reloaded.value.aiEnabled, isTrue);
     expect(reloaded.value.claudeCliPath, '/opt/homebrew/bin/claude');
+    expect(reloaded.value.codexCliPath, '/opt/homebrew/bin/codex');
+  });
+
+  test('falls back to the legacy claude/weekly preference keys', () async {
+    SharedPreferences.setMockInitialValues({
+      AppSettingsController.legacyClaudeCodeEnabledKey: true,
+      AppSettingsController.legacyWeeklyProviderKey: AppSettings.providerCli,
+    });
+
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    expect(controller.value.aiEnabled, isTrue);
+    expect(controller.value.aiProvider, AppSettings.providerCli);
   });
 
   test('blank weekly instruction falls back to the default', () async {
@@ -120,7 +138,7 @@ void main() {
     );
     await controller.load();
 
-    expect(controller.value.weeklyProvider, AppSettings.providerApi);
+    expect(controller.value.aiProvider, AppSettings.providerApi);
     expect(controller.value.anthropicApiKey, '');
     expect(controller.value.anthropicModel, AppSettings.defaultAnthropicModel);
   });
@@ -131,7 +149,7 @@ void main() {
     );
     await controller.load();
 
-    await controller.setWeeklyProvider(AppSettings.providerCli);
+    await controller.setAiProvider(AppSettings.providerCodex);
     await controller.setAnthropicApiKey('sk-ant-abc');
     await controller.setAnthropicModel('claude-sonnet-4-6');
 
@@ -140,7 +158,7 @@ void main() {
     );
     await reloaded.load();
 
-    expect(reloaded.value.weeklyProvider, AppSettings.providerCli);
+    expect(reloaded.value.aiProvider, AppSettings.providerCodex);
     expect(reloaded.value.anthropicApiKey, 'sk-ant-abc');
     expect(reloaded.value.anthropicModel, 'claude-sonnet-4-6');
   });
@@ -153,9 +171,9 @@ void main() {
     await controller.load();
 
     await controller.setAnthropicModel('  ');
-    await controller.setWeeklyProvider('bogus');
+    await controller.setAiProvider('bogus');
 
     expect(controller.value.anthropicModel, AppSettings.defaultAnthropicModel);
-    expect(controller.value.weeklyProvider, AppSettings.providerApi);
+    expect(controller.value.aiProvider, AppSettings.providerApi);
   });
 }

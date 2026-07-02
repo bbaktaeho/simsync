@@ -79,14 +79,10 @@ void main() {
     expect(find.text('Content zoom'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
 
-    // Weekly and Monthly panes (both above the fold — no nav scrolling needed).
-    await tester.tap(find.text('Weekly'));
+    // AI pane (above the fold — no nav scrolling needed).
+    await tester.tap(find.text('AI'));
     await tester.pumpAndSettle();
-    expect(find.text('Weekly summary'), findsOneWidget);
-
-    await tester.tap(find.text('Monthly'));
-    await tester.pumpAndSettle();
-    expect(find.text('Monthly summary'), findsOneWidget);
+    expect(find.text('AI review'), findsOneWidget);
 
     await tester.tap(find.text('Storage').first);
     await tester.pumpAndSettle();
@@ -192,7 +188,7 @@ void main() {
     );
   });
 
-  testWidgets('weekly pane toggles integration and switches provider', (
+  testWidgets('AI pane toggles integration and switches provider', (
     WidgetTester tester,
   ) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -213,12 +209,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Weekly'));
+    await tester.tap(find.text('AI'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Weekly summary'), findsOneWidget);
-    expect(find.text('위클리 지침'), findsOneWidget);
+    // One pane carries the provider card and both instruction editors.
+    expect(find.text('AI review'), findsOneWidget);
     expect(find.text('AI 요약 연동'), findsOneWidget);
+    expect(find.text('위클리 지침'), findsOneWidget);
+    expect(find.text('먼슬리 지침'), findsOneWidget);
 
     // Provider fields only appear once integration is enabled.
     expect(find.text('Anthropic API'), findsNothing);
@@ -226,19 +224,29 @@ void main() {
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
 
-    expect(controller.value.claudeCodeEnabled, isTrue);
+    expect(controller.value.aiEnabled, isTrue);
     // Default provider is the Anthropic API: provider chips + model field shown.
     expect(find.text('Anthropic API'), findsWidgets);
     expect(find.text('Claude Code CLI'), findsWidgets);
+    expect(find.text('Codex CLI'), findsWidgets);
     expect(find.text('모델'), findsOneWidget);
     expect(find.textContaining('console.anthropic.com'), findsOneWidget);
 
-    // Switch to the CLI provider — model field gone, CLI help shown.
+    // Switch to the Claude CLI provider — model field gone, CLI help shown.
     await tester.tap(find.widgetWithText(ChoiceChip, 'Claude Code CLI'));
     await tester.pumpAndSettle();
 
-    expect(controller.value.weeklyProvider, AppSettings.providerCli);
+    expect(controller.value.aiProvider, AppSettings.providerCli);
     expect(find.text('모델'), findsNothing);
     expect(find.textContaining('claude --print'), findsOneWidget);
+
+    // Switch to the Codex CLI provider — codex help shown instead.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex CLI'));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.aiProvider, AppSettings.providerCodex);
+    expect(find.text('모델'), findsNothing);
+    expect(find.textContaining('codex exec'), findsOneWidget);
+    expect(find.textContaining('claude --print'), findsNothing);
   });
 }

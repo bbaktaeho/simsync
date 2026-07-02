@@ -11,6 +11,7 @@ import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
+import '../services/codex_cli_service.dart';
 import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
@@ -128,6 +129,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   final FocusNode _searchFocusNode = FocusNode();
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
   final ClaudeCodeService _claudeService = ClaudeCodeService();
+  final CodexCliService _codexService = CodexCliService();
   final AnthropicApiService _anthropicService = AnthropicApiService();
   // Owns weekly/monthly review generation state so it survives the weekly panel
   // being closed or another note being opened (background generation).
@@ -778,20 +780,28 @@ class _DocumentScreenState extends State<DocumentScreen> {
   /// (Haiku does not). Independent of widget state — safe to keep running in the
   /// background after the panel is closed.
   ///
-  /// When [cliUseDefaultModel] is true and the CLI provider is active, no
+  /// When [cliUseDefaultModel] is true and the Claude CLI provider is active, no
   /// `--model` is passed so the CLI runs on whatever its subscription provides.
   /// Stage 2 uses this: the user's API model id may not exist on the Claude Code
   /// subscription, which otherwise fails the run — letting the CLI pick its own
-  /// model just works (like stage 1).
+  /// model just works (like stage 1). The Codex CLI always uses its own default
+  /// model — [model] is an Anthropic id and meaningless to it.
   Future<String> _runSummary(
       AppSettings settings, String instruction, String context,
       {required String model, bool cliUseDefaultModel = false}) {
-    if (settings.weeklyProvider == AppSettings.providerCli) {
+    if (settings.aiProvider == AppSettings.providerCli) {
       return _claudeService.summarizeWeek(
         instruction: instruction,
         notesContext: context,
         cliPath: settings.claudeCliPath,
         model: cliUseDefaultModel ? null : _cliModelAlias(model),
+      );
+    }
+    if (settings.aiProvider == AppSettings.providerCodex) {
+      return _codexService.summarize(
+        instruction: instruction,
+        notesContext: context,
+        cliPath: settings.codexCliPath,
       );
     }
     return _anthropicService.summarizeWeek(
@@ -1323,7 +1333,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         weekNotes: _weekNotes,
         reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
-        claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
+        aiEnabled: widget.settingsController.value.aiEnabled,
         onGenerateOutline: _onGenerateWeeklyOutline,
         onGenerateReview: _onGenerateWeeklyReview,
         onToggleOutlineItem: _onToggleWeeklyOutlineItem,
@@ -1338,7 +1348,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
         monthNotes: _monthNotes,
         reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
-        claudeEnabled: widget.settingsController.value.claudeCodeEnabled,
+        aiEnabled: widget.settingsController.value.aiEnabled,
         onGenerateOutline: _onGenerateMonthlyOutline,
         onGenerateReview: _onGenerateMonthlyReview,
         onToggleOutlineItem: _onToggleMonthlyOutlineItem,
