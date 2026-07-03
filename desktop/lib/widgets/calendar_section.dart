@@ -15,6 +15,17 @@ class CalendarSection extends StatelessWidget {
   final VoidCallback onPreviousMonth;
   final VoidCallback onNextMonth;
 
+  /// Optional right-click (secondary tap) handler on a day cell, with the tap's
+  /// global position. Used by the menu bar popover to offer "add note / memo";
+  /// null in the main sidebar, where it stays a no-op.
+  final void Function(DateTime date, Offset globalPosition)? onDateSecondaryTap;
+
+  /// When non-null, each day cell is a square of this side length (and the grid
+  /// is centered at a fixed width). Used by the compact menu bar popover so
+  /// dates aren't wide rectangles and the calendar can be resized; null in the
+  /// main sidebar, which keeps the fixed short-height cells.
+  final double? squareCellSize;
+
   const CalendarSection({
     super.key,
     required this.displayedMonth,
@@ -25,6 +36,8 @@ class CalendarSection extends StatelessWidget {
     required this.onDateSelected,
     required this.onPreviousMonth,
     required this.onNextMonth,
+    this.onDateSecondaryTap,
+    this.squareCellSize,
   });
 
   @override
@@ -106,24 +119,37 @@ class CalendarSection extends StatelessWidget {
   Widget _buildCalendarGrid(BuildContext context) {
     final year = displayedMonth.year;
     final month = displayedMonth.month;
-    final firstDayOfMonth = DateTime(year, month, 1);
-    final lastDayOfMonth = DateTime(year, month + 1, 0);
-    final startWeekday = firstDayOfMonth.weekday;
-    final daysInMonth = lastDayOfMonth.day;
+    final daysInMonth = DateTime(year, month + 1, 0).day;
+    // Days from the previous month shown to complete the first week (Mon-based:
+    // weekday 1 => 0 leading days).
+    final leadingDays = DateTime(year, month, 1).weekday - 1;
+    // Enough rows to cover the leading fill plus the whole month; the final
+    // week's remaining cells spill into the next month. Weeks stay 7-wide with
+    // no empty gaps.
+    final weekCount = ((leadingDays + daysInMonth) / 7).ceil();
 
     final today = DateTime.now();
     final todayNormalized = DateTime(today.year, today.month, today.day);
 
+    final grid = Column(
+      children: [
+        _buildWeekdayHeader(context),
+        const SizedBox(height: AppDimensions.spacingXs),
+        ..._buildWeeks(context, year, month, leadingDays, weekCount, todayNormalized),
+        const SizedBox(height: AppDimensions.spacingSm),
+      ],
+    );
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd),
-      child: Column(
-        children: [
-          _buildWeekdayHeader(context),
-          const SizedBox(height: AppDimensions.spacingXs),
-          ..._buildWeeks(context, startWeekday, daysInMonth, year, month, todayNormalized),
-          const SizedBox(height: AppDimensions.spacingSm),
-        ],
-      ),
+      // Square mode: constrain the whole grid to a fixed width (7 square cells)
+      // and center it, so both the weekday header and the day cells stay aligned
+      // and the dates render as compact squares rather than wide rectangles.
+      child: squareCellSize != null
+          ? Center(
+              child: SizedBox(width: 7 * squareCellSize!, child: grid),
+            )
+          : grid,
     );
   }
 
@@ -146,42 +172,48 @@ class CalendarSection extends StatelessWidget {
 
   List<Widget> _buildWeeks(
     BuildContext context,
-    int startWeekday,
-    int daysInMonth,
     int year,
     int month,
+    int leadingDays,
+    int weekCount,
     DateTime todayNormalized,
   ) {
     final weeks = <Widget>[];
-    var dayCounter = 1;
-    final blanks = startWeekday - 1;
 
-    for (var week = 0; dayCounter <= daysInMonth; week++) {
+    for (var week = 0; week < weekCount; week++) {
       final cells = <Widget>[];
       for (var col = 0; col < 7; col++) {
-        if (week == 0 && col < blanks || dayCounter > daysInMonth) {
-          cells.add(const Expanded(child: SizedBox.shrink()));
-        } else {
-          final day = dayCounter;
-          final date = DateTime(year, month, day);
-          final isToday = date == todayNormalized;
-          final isSelected = selectedDate != null &&
-              date.year == selectedDate!.year &&
-              date.month == selectedDate!.month &&
-              date.day == selectedDate!.day;
-          final hasNotes = datesWithNotes.contains(date);
+        // Day-of-month offset from the 1st: negative spills into the previous
+        // month, > daysInMonth into the next. DateTime normalizes the
+        // under/overflow, so this is DST-safe (unlike Duration arithmetic).
+        final dayOffset = week * 7 + col - leadingDays;
+        final date = DateTime(year, month, 1 + dayOffset);
+        final isCurrentMonth = date.month == month && date.year == year;
+        final isToday = date == todayNormalized;
+        final isSelected = selectedDate != null &&
+            date.year == selectedDate!.year &&
+            date.month == selectedDate!.month &&
+            date.day == selectedDate!.day;
+        final hasNotes = datesWithNotes.contains(date);
 
-          cells.add(Expanded(
-            child: _CalendarCell(
-              day: day,
-              isToday: isToday,
-              isSelected: isSelected,
-              hasNotes: hasNotes,
-              onTap: () => onDateSelected(date),
-            ),
-          ));
-          dayCounter++;
-        }
+        final cell = _CalendarCell(
+          day: date.day,
+          isCurrentMonth: isCurrentMonth,
+          isToday: isToday,
+          isSelected: isSelected,
+          hasNotes: hasNotes,
+          onTap: () => onDateSelected(date),
+          onSecondaryTap: onDateSecondaryTap == null
+              ? null
+              : (pos) => onDateSecondaryTap!(date, pos),
+        );
+        cells.add(Expanded(
+          // Square (popover) => height tracks the cell width; otherwise the
+          // fixed short height used in the sidebar.
+          child: squareCellSize != null
+              ? AspectRatio(aspectRatio: 1, child: cell)
+              : SizedBox(height: AppDimensions.calendarCellSize, child: cell),
+        ));
       }
       weeks.add(
         Padding(
@@ -196,17 +228,21 @@ class CalendarSection extends StatelessWidget {
 
 class _CalendarCell extends StatelessWidget {
   final int day;
+  final bool isCurrentMonth;
   final bool isToday;
   final bool isSelected;
   final bool hasNotes;
   final VoidCallback onTap;
+  final void Function(Offset globalPosition)? onSecondaryTap;
 
   const _CalendarCell({
     required this.day,
+    required this.isCurrentMonth,
     required this.isToday,
     required this.isSelected,
     required this.hasNotes,
     required this.onTap,
+    this.onSecondaryTap,
   });
 
   @override
@@ -219,16 +255,23 @@ class _CalendarCell extends StatelessWidget {
             ? c.accentSubtle
             : Colors.transparent;
 
+    // Adjacent-month days are subdued so the current month stays dominant.
     final textColor = isToday
         ? c.calendarToday
         : isSelected
             ? c.textPrimary
-            : c.textSecondary;
+            : isCurrentMonth
+                ? c.textSecondary
+                : c.textMuted;
 
     return GestureDetector(
       onTap: onTap,
+      onSecondaryTapDown: onSecondaryTap == null
+          ? null
+          : (details) => onSecondaryTap!(details.globalPosition),
       child: Container(
-        height: AppDimensions.calendarCellSize,
+        // Height comes from the wrapper (fixed in the sidebar, square in the
+        // popover), so the cell fills whatever box it's given.
         decoration: BoxDecoration(
           color: bgColor,
           borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
@@ -252,7 +295,9 @@ class _CalendarCell extends StatelessWidget {
                 height: AppDimensions.calendarDotSize,
                 margin: const EdgeInsets.only(top: 1),
                 decoration: BoxDecoration(
-                  color: c.calendarDot,
+                  color: isCurrentMonth
+                      ? c.calendarDot
+                      : c.calendarDot.withValues(alpha: 0.4),
                   shape: BoxShape.circle,
                 ),
               ),

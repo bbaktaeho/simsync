@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:simsync/auth/auth_models.dart';
+import 'package:simsync/auth/auth_provider.dart';
 import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
 import 'package:simsync/models/note.dart';
@@ -640,6 +641,17 @@ class _FakeNoteStorage implements NoteStorage {
 
   @override
   Future<void> saveNote(Note note) async {}
+
+  final Map<String, String> _textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      _textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    _textFiles[relativePath] = content;
+  }
 }
 
 class _MemoryNoteStorage implements NoteStorage {
@@ -717,6 +729,17 @@ class _MemoryNoteStorage implements NoteStorage {
     _notes.removeWhere((item) => item.id == note.id);
     _notes.add(note);
   }
+
+  final Map<String, String> _textFiles = {};
+
+  @override
+  Future<String?> readTextFile(String relativePath) async =>
+      _textFiles[relativePath];
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    _textFiles[relativePath] = content;
+  }
 }
 
 class _FakeFilePicker extends FilePicker {
@@ -780,13 +803,18 @@ class _FakeAuthService implements AuthService {
   Future<AuthSession?> restoreSession() async => restoreResult;
 
   @override
-  Future<AuthSession> signIn() async {
+  Future<AuthSession> signIn({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async {
     if (_signInHandler != null) {
       return _signInHandler();
     }
 
     throw UnimplementedError();
   }
+
+  @override
+  void cancelSignIn() {}
 
   @override
   Future<bool> validateSession(AuthSession session) async {

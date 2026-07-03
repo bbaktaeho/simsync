@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simsync/screens/settings_screen.dart';
+import 'package:simsync/settings/app_settings.dart';
 import 'package:simsync/settings/app_settings_controller.dart';
 import 'package:simsync/storage/github/repo_cache.dart';
 import 'package:simsync/theme/app_colors.dart';
@@ -24,6 +25,12 @@ void main() {
   testWidgets('renders distinct settings navigation and pane headings', (
     WidgetTester tester,
   ) async {
+    // Desktop-sized surface so all navigation items are comfortably visible.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final controller = AppSettingsController(
       defaultLocalNotePath: '/tmp/default-notes',
     );
@@ -72,13 +79,10 @@ void main() {
     expect(find.text('Content zoom'), findsOneWidget);
     expect(find.text('100%'), findsOneWidget);
 
-    await tester.tap(find.text('Sync'));
+    // AI pane (above the fold — no nav scrolling needed).
+    await tester.tap(find.text('AI'));
     await tester.pumpAndSettle();
-
-    expect(find.text('Sync'), findsOneWidget);
-    expect(find.text('Background sync'), findsOneWidget);
-    expect(find.text('GitHub sync interval'), findsOneWidget);
-    expect(find.text('5s'), findsOneWidget);
+    expect(find.text('AI review'), findsOneWidget);
 
     await tester.tap(find.text('Storage').first);
     await tester.pumpAndSettle();
@@ -182,5 +186,67 @@ void main() {
       find.byKey(const ValueKey('settings-nav-selected-shortcuts')),
       findsNothing,
     );
+  });
+
+  testWidgets('AI pane toggles integration and switches provider', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = AppSettingsController(
+      defaultLocalNotePath: '/tmp/default-notes',
+    );
+    await controller.load();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [AppColorsExtension.light]),
+        home: Scaffold(body: SettingsScreen(settingsController: controller)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('AI'));
+    await tester.pumpAndSettle();
+
+    // One pane carries the provider card and both instruction editors.
+    expect(find.text('AI review'), findsOneWidget);
+    expect(find.text('AI 요약 연동'), findsOneWidget);
+    expect(find.text('위클리 지침'), findsOneWidget);
+    expect(find.text('먼슬리 지침'), findsOneWidget);
+
+    // Provider fields only appear once integration is enabled.
+    expect(find.text('Anthropic API'), findsNothing);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.aiEnabled, isTrue);
+    // Default provider is the Anthropic API: provider chips + model field shown.
+    expect(find.text('Anthropic API'), findsWidgets);
+    expect(find.text('Claude Code CLI'), findsWidgets);
+    expect(find.text('Codex CLI'), findsWidgets);
+    expect(find.text('모델'), findsOneWidget);
+    expect(find.textContaining('console.anthropic.com'), findsOneWidget);
+
+    // Switch to the Claude CLI provider — model field gone, CLI help shown.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Claude Code CLI'));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.aiProvider, AppSettings.providerCli);
+    expect(find.text('모델'), findsNothing);
+    expect(find.textContaining('claude --print'), findsOneWidget);
+
+    // Switch to the Codex CLI provider — codex help shown instead.
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Codex CLI'));
+    await tester.pumpAndSettle();
+
+    expect(controller.value.aiProvider, AppSettings.providerCodex);
+    expect(find.text('모델'), findsNothing);
+    expect(find.textContaining('codex exec'), findsOneWidget);
+    expect(find.textContaining('claude --print'), findsNothing);
   });
 }

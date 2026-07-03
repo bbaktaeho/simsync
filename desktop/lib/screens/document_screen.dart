@@ -6,9 +6,18 @@ import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
 import '../search/search_result.dart';
+import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
+import '../services/anthropic_api_service.dart';
+import '../services/claude_code_service.dart';
+import '../services/codex_cli_service.dart';
+import '../services/note_merge.dart';
 import '../services/note_service.dart';
+import '../services/review_controller.dart';
+import '../services/review_outline.dart';
+import '../services/review_paths.dart';
+import '../services/review_service.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
@@ -17,8 +26,10 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
+import '../widgets/editor_tab_bar.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
+import '../widgets/search_filter_panel.dart';
 import '../widgets/search_results_panel.dart';
 import '../widgets/weekly_view_panel.dart';
 import 'settings_screen.dart';
@@ -43,6 +54,10 @@ class DocumentScreen extends StatefulWidget {
   /// Each value change triggers a full reload of notes from storage.
   final ValueNotifier<int>? refreshSignal;
 
+  /// Optional notifier that, when bumped, opens the settings dialog. Used by the
+  /// macOS menu bar tray "설정" item.
+  final ValueNotifier<int>? openSettingsSignal;
+
   const DocumentScreen({
     super.key,
     required this.onLogout,
@@ -51,6 +66,7 @@ class DocumentScreen extends StatefulWidget {
     this.localStorage,
     this.avatarUrl,
     this.refreshSignal,
+    this.openSettingsSignal,
     required this.settingsController,
     this.activeRepo,
     this.syncEngine,
@@ -78,13 +94,30 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return _storage;
   }
 
+  /// Storage wrapper for AI review files (synced store + optional local mirror).
+  /// Rebuilt each access so it tracks a changed local path.
+  ReviewService get _reviewService =>
+      ReviewService(storage: _storage, localStorage: widget.localStorage);
+
   List<Note> _allNotes = [];
   Note? _selectedNote;
+
+  /// Open editor tabs, in display order, identified by note id. The active tab
+  /// is [_selectedNote] (whose id is always present here, unless the list is
+  /// empty in which case the editor shows the create screen).
+  final List<String> _openTabIds = [];
+  static const int _maxTabs = 10;
+
+  /// True once the initial date's note has been auto-opened on first load, so
+  /// later reloads never reopen a tab the user deliberately closed.
+  bool _didInitialTabOpen = false;
+
   DateTime _displayedMonth = DateTime.now();
   DateTime? _selectedDate;
   bool _sidebarOpen = true;
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
+  bool _monthlyViewActive = false;
   bool _memoTabActive = false;
   bool _isLoading = true;
   Timer? _saveDebounce;
@@ -95,8 +128,17 @@ class _DocumentScreenState extends State<DocumentScreen> {
   late final TextEditingController _searchController;
   final FocusNode _searchFocusNode = FocusNode();
   final NoteSearchIndex _searchIndex = NoteSearchIndex();
+  final ClaudeCodeService _claudeService = ClaudeCodeService();
+  final CodexCliService _codexService = CodexCliService();
+  final AnthropicApiService _anthropicService = AnthropicApiService();
+  // Owns weekly/monthly review generation state so it survives the weekly panel
+  // being closed or another note being opened (background generation).
+  final ReviewController _reviewController = ReviewController();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
+  Timer? _searchDebounce;
+  final LayerLink _filterLink = LayerLink();
+  OverlayEntry? _filterOverlay;
   int _loadGeneration = 0;
 
   void _handleSettingsChanged() {
@@ -110,6 +152,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchController = TextEditingController();
     _loadNotes();
     widget.refreshSignal?.addListener(_onRefreshSignal);
+    widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     widget.settingsController.addListener(_handleSettingsChanged);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
   }
@@ -120,6 +163,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     if (oldWidget.refreshSignal != widget.refreshSignal) {
       oldWidget.refreshSignal?.removeListener(_onRefreshSignal);
       widget.refreshSignal?.addListener(_onRefreshSignal);
+    }
+    if (oldWidget.openSettingsSignal != widget.openSettingsSignal) {
+      oldWidget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
+      widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     }
     if (oldWidget.settingsController != widget.settingsController) {
       oldWidget.settingsController.removeListener(_handleSettingsChanged);
@@ -146,12 +193,20 @@ class _DocumentScreenState extends State<DocumentScreen> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _searchDebounce?.cancel();
+    _filterOverlay?.remove();
     _searchController.dispose();
     _searchFocusNode.dispose();
     widget.refreshSignal?.removeListener(_onRefreshSignal);
+    widget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
+    _reviewController.dispose();
     super.dispose();
+  }
+
+  void _onOpenSettingsSignal() {
+    if (mounted) unawaited(_openSettings());
   }
 
   void _onRefreshSignal() async {
@@ -195,44 +250,115 @@ class _DocumentScreenState extends State<DocumentScreen> {
     final previousSelectedId = _selectedNote?.id;
 
     // Merge remote notes with local dirty notes to prevent overwriting
-    // unsaved edits during sync.
-    final dirtyById = <String, Note>{};
-    for (final local in _allNotes) {
-      if (local.isDirty) {
-        dirtyById[local.id] = local;
-      }
-    }
-    if (dirtyById.isNotEmpty) {
-      // For each remote note, keep local version if it has unsaved edits.
-      for (var i = 0; i < notes.length; i++) {
-        final dirty = dirtyById.remove(notes[i].id);
-        if (dirty != null) {
-          notes[i] = dirty;
-        }
-      }
-      // Keep dirty notes that don't exist on remote yet (newly created).
-      notes.addAll(dirtyById.values);
-      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    }
+    // unsaved edits during sync (rule shared with the menu bar popover).
+    mergeDirtyNotes(loaded: notes, current: _allNotes);
+    notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
     setState(() {
       _allNotes = notes;
       _isLoading = false;
       _selectedDate ??= DateTime(now.year, now.month, now.day);
-      // Preserve selected note if it still exists after refresh.
+
+      // Drop tabs whose notes no longer exist (deleted locally or remotely).
+      final liveIds = notes.map((n) => n.id).toSet();
+      _openTabIds.removeWhere((id) => !liveIds.contains(id));
+
+      // Preserve the active note if it still exists after refresh.
       if (previousSelectedId != null) {
         final match = notes.where((n) => n.id == previousSelectedId);
         _selectedNote = match.isNotEmpty ? match.first : null;
       }
-      if (_selectedNote == null) {
-        final todayNotes = _notesForSelectedDate;
-        if (todayNotes.isNotEmpty) {
-          _selectedNote = todayNotes.first;
+
+      // First load only: open the selected date's first note in a tab so the
+      // app starts with content. Closed tabs are never reopened afterwards.
+      if (!_didInitialTabOpen) {
+        _didInitialTabOpen = true;
+        final dateNotes = _notesForSelectedDate;
+        if (dateNotes.isNotEmpty) {
+          final first = dateNotes.first;
+          if (!_openTabIds.contains(first.id)) _openTabIds.add(first.id);
+          _selectedNote = first;
         }
+      }
+
+      // Keep the active note consistent with the open tab set.
+      if (_selectedNote != null && !_openTabIds.contains(_selectedNote!.id)) {
+        _selectedNote = _activeNoteForOpenTabs();
+      } else if (_selectedNote == null && _openTabIds.isNotEmpty) {
+        _selectedNote = _activeNoteForOpenTabs();
       }
     });
 
     unawaited(_rebuildSearchIndex());
+  }
+
+  /// Resolves an open-tab id to its current [Note], or null if none remain.
+  Note? _noteForId(String id) =>
+      _allNotes.where((n) => n.id == id).firstOrNull;
+
+  /// The notes backing the currently open tabs, in tab order.
+  List<Note> get _openTabNotes {
+    final result = <Note>[];
+    for (final id in _openTabIds) {
+      final note = _noteForId(id);
+      if (note != null) result.add(note);
+    }
+    return result;
+  }
+
+  /// Picks a sensible active note from the open tabs (the last one), or null.
+  Note? _activeNoteForOpenTabs() {
+    for (final id in _openTabIds.reversed) {
+      final note = _noteForId(id);
+      if (note != null) return note;
+    }
+    return null;
+  }
+
+  /// Opens [note] in a tab and makes it active. Activates the existing tab if
+  /// already open; appends a new tab while under [_maxTabs]; otherwise replaces
+  /// the active tab so navigation stays within the cap.
+  void _openNote(Note note) {
+    setState(() {
+      _weeklyViewActive = false;
+      _monthlyViewActive = false;
+      final existing = _openTabIds.indexOf(note.id);
+      if (existing == -1) {
+        if (_openTabIds.length >= _maxTabs) {
+          final activeIndex =
+              _selectedNote == null ? -1 : _openTabIds.indexOf(_selectedNote!.id);
+          _openTabIds[activeIndex == -1 ? _openTabIds.length - 1 : activeIndex] =
+              note.id;
+        } else {
+          _openTabIds.add(note.id);
+        }
+      }
+      _selectedNote = note;
+    });
+  }
+
+  /// Activates an already-open tab without moving the calendar date.
+  void _activateTab(Note note) {
+    if (_selectedNote?.id == note.id) return;
+    setState(() => _selectedNote = note);
+  }
+
+  /// Closes the tab for [id]. When the active tab is closed, the neighbouring
+  /// tab becomes active; closing the last tab returns to the create screen.
+  void _closeTab(String id) {
+    setState(() {
+      final index = _openTabIds.indexOf(id);
+      if (index == -1) return;
+      _openTabIds.removeAt(index);
+      if (_selectedNote?.id == id) {
+        if (_openTabIds.isEmpty) {
+          _selectedNote = null;
+        } else {
+          final neighbour = index.clamp(0, _openTabIds.length - 1);
+          _selectedNote = _noteForId(_openTabIds[neighbour]);
+        }
+      }
+    });
   }
 
   bool get _syncEnabled => widget.settingsController.value.syncEnabled;
@@ -302,17 +428,39 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return DateTime(date.year, date.month, date.day - (weekday - 1));
   }
 
-  List<Note> get _weekNotes {
-    final start = _weekStart;
-    final end = start.add(const Duration(days: 7));
+  List<Note> _weekNotesFor(DateTime weekStart) {
+    final end = weekStart.add(const Duration(days: 7));
+    return _allNotes.where((n) {
+      final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
+      return !d.isBefore(weekStart) && d.isBefore(end);
+    }).toList()
+      ..sort((a, b) {
+        final cmp = a.noteDate.compareTo(b.noteDate);
+        if (cmp != 0) return cmp;
+        return a.createdAt.compareTo(b.createdAt);
+      });
+  }
+
+  List<Note> get _weekNotes => _weekNotesFor(_weekStart);
+
+  /// First day of the month of the selected date (the monthly review's month).
+  DateTime get _monthStart {
+    final d = _selectedDate ?? DateTime.now();
+    return DateTime(d.year, d.month, 1);
+  }
+
+  List<Note> get _monthNotes {
+    final start = _monthStart;
+    final end = DateTime(start.year, start.month + 1, 1);
     return _allNotes.where((n) {
       final d = DateTime(n.noteDate.year, n.noteDate.month, n.noteDate.day);
       return !d.isBefore(start) && d.isBefore(end);
-    }).toList()..sort((a, b) {
-      final cmp = a.noteDate.compareTo(b.noteDate);
-      if (cmp != 0) return cmp;
-      return a.createdAt.compareTo(b.createdAt);
-    });
+    }).toList()
+      ..sort((a, b) {
+        final cmp = a.noteDate.compareTo(b.noteDate);
+        if (cmp != 0) return cmp;
+        return a.createdAt.compareTo(b.createdAt);
+      });
   }
 
   // ── Sidebar resize ──
@@ -353,28 +501,45 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _onDateSelected(DateTime date) {
     setState(() {
       _selectedDate = date;
+      // Keep the visible grid on the selected date's month so tapping an
+      // adjacent-month day (now rendered in the grid) navigates to it.
+      _displayedMonth = DateTime(date.year, date.month);
       if (_memoTabActive) {
         _memoTabActive = false;
         _currentPage = 0;
       }
       if (!_weeklyViewActive && !_isSearchActive) {
         _currentPage = 0;
-        final notes = _notesForSelectedDate;
-        _selectedNote = notes.isNotEmpty ? notes.first : null;
       }
     });
+    // When viewing the weekly panel, switching dates may move to another week —
+    // load that week's saved review.
+    if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
+    if (_monthlyViewActive) unawaited(_loadMonthlyReview(_monthStart));
+    // Date-oriented one-click flow: open the date's default note in a tab.
+    // Existing tabs stay open (revisiting a date just re-activates its tab),
+    // and an empty date leaves the current tabs untouched — the user creates a
+    // note from the list "+". The cap is enforced inside [_openNote].
+    if (!_weeklyViewActive && !_isSearchActive) {
+      final notes = _notesForSelectedDate;
+      if (notes.isNotEmpty) {
+        _openNote(notes.first);
+      }
+    }
   }
 
   void _onNoteSelected(Note note) {
-    setState(() {
-      _selectedNote = note;
+    // Memos are date-independent quick notes. Selecting one must NOT move the
+    // daily calendar date, so switching back to the daily tab restores the
+    // date the user was viewing before opening the memo.
+    if (!note.isMemo) {
       _selectedDate = DateTime(
         note.noteDate.year,
         note.noteDate.month,
         note.noteDate.day,
       );
-      _weeklyViewActive = false;
-    });
+    }
+    _openNote(note);
   }
 
   void _onNoteChanged(Note updatedNote) {
@@ -387,7 +552,12 @@ class _DocumentScreenState extends State<DocumentScreen> {
       final idx = _allNotes.indexWhere((n) => n.id == updatedNote.id);
       if (idx != -1) {
         _allNotes[idx] = updatedNote;
-        _selectedNote = updatedNote;
+        // Only keep it active if it still IS the active tab. A deferred flush of
+        // a note the user just switched away from (or closed) must not steal
+        // focus back from the now-active tab.
+        if (_selectedNote?.id == updatedNote.id) {
+          _selectedNote = updatedNote;
+        }
       }
     });
     _searchIndex.upsert(updatedNote);
@@ -431,10 +601,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     await _storage.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
-      _selectedNote = newNote;
-      _weeklyViewActive = false;
       _memoTabActive = false;
     });
+    _openNote(newNote);
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
   }
@@ -456,10 +625,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
     await widget.localStorage!.saveNote(newNote);
     setState(() {
       _allNotes.add(newNote);
-      _selectedNote = newNote;
-      _weeklyViewActive = false;
       _memoTabActive = false;
     });
+    _openNote(newNote);
     _searchIndex.upsert(newNote);
     _applySearchQuery(_searchQuery, resetPage: false);
   }
@@ -500,7 +668,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           ),
           titlePadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, 14, AppDimensions.spacingLg, 0),
           contentPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, AppDimensions.spacingSm, AppDimensions.spacingLg, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingSm, AppDimensions.spacingXs, AppDimensions.spacingSm, 6),
+          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingMd, AppDimensions.spacingSm, AppDimensions.spacingMd, AppDimensions.spacingMd),
           title: Text(
             '노트 삭제',
             style: Theme.of(ctx).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
@@ -512,33 +680,26 @@ class _DocumentScreenState extends State<DocumentScreen> {
           actions: [
             TextButton(
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.spacingMd,
-                  vertical: 6,
-                ),
-                minimumSize: Size.zero,
+                foregroundColor: c.textSecondary,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(0, 36),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: AppTextStyles.captionMedium,
               ),
               onPressed: () => Navigator.pop(ctx, false),
-              child: Text(
-                '취소',
-                style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
-              ),
+              child: const Text('취소'),
             ),
-            TextButton(
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppDimensions.spacingMd,
-                  vertical: 6,
-                ),
-                minimumSize: Size.zero,
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: c.error,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                minimumSize: const Size(0, 36),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                textStyle: AppTextStyles.captionSemibold,
               ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: Text(
-                '삭제',
-                style: AppTextStyles.captionThin.copyWith(color: c.error),
-              ),
+              child: const Text('삭제'),
             ),
           ],
         );
@@ -551,9 +712,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
       await _storageFor(note).deleteNote(note);
       setState(() {
         _allNotes.removeWhere((n) => n.id == note.id);
+        final tabIndex = _openTabIds.indexOf(note.id);
+        if (tabIndex != -1) _openTabIds.removeAt(tabIndex);
         if (_selectedNote?.id == note.id) {
-          final remaining = _visibleNotes.where((n) => n.id != note.id);
-          _selectedNote = remaining.isNotEmpty ? remaining.first : null;
+          // Prefer the neighbouring tab; fall back to the create screen.
+          if (_openTabIds.isEmpty) {
+            _selectedNote = null;
+          } else {
+            final neighbour = tabIndex.clamp(0, _openTabIds.length - 1);
+            _selectedNote = _noteForId(_openTabIds[neighbour]);
+          }
         }
       });
       _searchIndex.remove(note.id);
@@ -570,8 +738,255 @@ class _DocumentScreenState extends State<DocumentScreen> {
   void _toggleWeeklyView() {
     setState(() {
       _weeklyViewActive = !_weeklyViewActive;
-      if (_weeklyViewActive) _memoTabActive = false;
+      if (_weeklyViewActive) {
+        _memoTabActive = false;
+        _monthlyViewActive = false;
+      }
     });
+    if (_weeklyViewActive) unawaited(_loadWeeklyReview(_weekStart));
+  }
+
+  /// Loads any saved outline + review for [weekStart] into the controller so the
+  /// panel shows both stages. Skips a stage whose generation is already running.
+  Future<void> _loadWeeklyReview(DateTime weekStart) async {
+    final outline = await _reviewService.loadWeeklyOutline(weekStart);
+    final review = await _reviewService.loadWeekly(weekStart);
+    if (!mounted) return;
+    _reviewController.setLoadedWeeklyOutline(weekStart, outline);
+    _reviewController.setLoadedWeeklyReview(weekStart, review);
+  }
+
+  /// Formats [notes] as the markdown context fed to the summary model.
+  String _buildNotesContext(List<Note> notes) {
+    final buffer = StringBuffer();
+    for (final note in notes) {
+      final date = _formatDate(note.noteDate);
+      final title = note.title.trim().isEmpty ? 'Untitled' : note.title.trim();
+      buffer.writeln('## $date · $title');
+      if (note.tags.isNotEmpty) {
+        buffer.writeln('tags: ${note.tags.join(', ')}');
+      }
+      final content = note.content.trim();
+      buffer.writeln(content.isEmpty ? '(내용 없음)' : content);
+      buffer.writeln();
+    }
+    return buffer.toString().trim();
+  }
+
+  /// Runs one AI pass with [instruction] (system prompt) over [context] using
+  /// [model], via the configured provider. Stage 1 (outline) passes a fast model
+  /// (Haiku); stage 2 (review) passes the user's model (Sonnet by default). For
+  /// the API a low reasoning effort is requested when the model supports it
+  /// (Haiku does not). Independent of widget state — safe to keep running in the
+  /// background after the panel is closed.
+  ///
+  /// When [cliUseDefaultModel] is true and the Claude CLI provider is active, no
+  /// `--model` is passed so the CLI runs on whatever its subscription provides.
+  /// Stage 2 uses this: the user's API model id may not exist on the Claude Code
+  /// subscription, which otherwise fails the run — letting the CLI pick its own
+  /// model just works (like stage 1). The Codex CLI always uses its own default
+  /// model — [model] is an Anthropic id and meaningless to it.
+  Future<String> _runSummary(
+      AppSettings settings, String instruction, String context,
+      {required String model, bool cliUseDefaultModel = false}) {
+    if (settings.aiProvider == AppSettings.providerCli) {
+      return _claudeService.summarizeWeek(
+        instruction: instruction,
+        notesContext: context,
+        cliPath: settings.claudeCliPath,
+        model: cliUseDefaultModel ? null : _cliModelAlias(model),
+      );
+    }
+    if (settings.aiProvider == AppSettings.providerCodex) {
+      return _codexService.summarize(
+        instruction: instruction,
+        notesContext: context,
+        cliPath: settings.codexCliPath,
+      );
+    }
+    return _anthropicService.summarizeWeek(
+      apiKey: settings.anthropicApiKey,
+      instruction: instruction,
+      notesContext: context,
+      model: model,
+      effort: model.contains('haiku') ? null : 'low',
+      onModelFallback: _onModelFallback,
+    );
+  }
+
+  /// Tells the user once when a configured model was unavailable and the review
+  /// was generated on the default model instead. Background-safe (guards mount).
+  void _onModelFallback(String requested, String used) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("AI 모델 '$requested'을(를) 사용할 수 없어 기본 모델 '$used'로 생성했습니다."),
+      ),
+    );
+  }
+
+  /// Maps an Anthropic API model id to a Claude Code CLI `--model` alias (the
+  /// CLI takes short aliases reliably; full ids vary by release).
+  String _cliModelAlias(String apiModel) {
+    if (apiModel.contains('haiku')) return 'haiku';
+    if (apiModel.contains('sonnet')) return 'sonnet';
+    if (apiModel.contains('opus')) return 'opus';
+    return apiModel;
+  }
+
+  /// Stage 1 (outline): distils the current week's notes into a checkbox list of
+  /// key items via the fixed system instruction. Explicit-consent, background.
+  void _onGenerateWeeklyOutline() {
+    final weekStart = _weekStart;
+    final settings = widget.settingsController.value;
+    final context = _buildNotesContext(_weekNotes);
+    unawaited(_reviewController.generateWeeklyOutline(
+      weekStart,
+      generate: () => _runSummary(
+          settings, AppSettings.weeklyOutlineSystemInstruction, context,
+          model: AppSettings.outlineModel),
+      persist: (content) => _reviewService.saveWeeklyOutline(weekStart, content),
+    ));
+  }
+
+  /// Stage 2 (review): runs the user instruction over the checked outline items.
+  /// No-op until stage 1 has produced at least one checked item.
+  void _onGenerateWeeklyReview() {
+    final weekStart = _weekStart;
+    final settings = widget.settingsController.value;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final checked = checkedItemsText(outline);
+    if (checked.trim().isEmpty) return;
+    unawaited(_reviewController.generateWeeklyReview(
+      weekStart,
+      generate: () => _runSummary(settings, settings.weeklyInstruction, checked,
+          model: settings.anthropicModel, cliUseDefaultModel: true),
+      persist: (content) => _reviewService.saveWeekly(weekStart, content),
+    ));
+  }
+
+  /// Toggles a stage-1 checkbox (by source line index) and persists the outline.
+  void _onToggleWeeklyOutlineItem(int lineIndex) {
+    final weekStart = _weekStart;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setWeeklyOutlineContent(weekStart, updated);
+    unawaited(_reviewService.saveWeeklyOutline(weekStart, updated));
+  }
+
+  /// Checks or clears every stage-1 weekly checkbox at once and persists it.
+  void _onToggleAllWeeklyOutlineItems(bool checked) {
+    final weekStart = _weekStart;
+    final outline = _reviewController.weekly(weekStart).outline.content;
+    if (outline == null) return;
+    final updated = setAllOutlineItems(outline, checked);
+    _reviewController.setWeeklyOutlineContent(weekStart, updated);
+    unawaited(_reviewService.saveWeeklyOutline(weekStart, updated));
+  }
+
+  void _toggleMonthlyView() {
+    setState(() {
+      _monthlyViewActive = !_monthlyViewActive;
+      if (_monthlyViewActive) {
+        _memoTabActive = false;
+        _weeklyViewActive = false;
+      }
+    });
+    if (_monthlyViewActive) unawaited(_loadMonthlyReview(_monthStart));
+  }
+
+  /// Loads any saved outline + review for [month] into the controller so the
+  /// panel shows both stages. Skips a stage whose generation is already running.
+  Future<void> _loadMonthlyReview(DateTime month) async {
+    final outline = await _reviewService.loadMonthlyOutline(month);
+    final review = await _reviewService.loadMonthly(month);
+    if (!mounted) return;
+    _reviewController.setLoadedMonthlyOutline(month, outline);
+    _reviewController.setLoadedMonthlyReview(month, review);
+  }
+
+  /// Stage 1 (monthly outline): for each week of the month, in parallel, reuse a
+  /// saved weekly review or build that week's outline from its notes; combine
+  /// the per-week results and distil them into a monthly checkbox outline via
+  /// the monthly system instruction. Independent of widget state.
+  Future<String> _runMonthlyOutline(
+      AppSettings settings, DateTime month) async {
+    final weekStarts = weekStartsForMonth(month.year, month.month);
+    final perWeek = await Future.wait(weekStarts.map((w) async {
+      final existing = await _reviewService.loadWeekly(w);
+      if (existing != null && existing.trim().isNotEmpty) return existing;
+      final notes = _weekNotesFor(w);
+      if (notes.isEmpty) return '';
+      try {
+        return await _runSummary(settings,
+            AppSettings.weeklyOutlineSystemInstruction, _buildNotesContext(notes),
+            model: AppSettings.outlineModel);
+      } catch (_) {
+        return '';
+      }
+    }));
+    final parts = perWeek.where((r) => r.trim().isNotEmpty).toList();
+    if (parts.isEmpty) {
+      throw Exception('이번 달에 요약할 노트가 없습니다.');
+    }
+    final buffer = StringBuffer();
+    for (var i = 0; i < parts.length; i++) {
+      buffer.writeln('## ${i + 1}주차');
+      buffer.writeln(parts[i].trim());
+      buffer.writeln();
+    }
+    return _runSummary(settings, AppSettings.monthlyOutlineSystemInstruction,
+        buffer.toString().trim(), model: AppSettings.outlineModel);
+  }
+
+  /// Stage 1 (outline) for the current month — background, explicit consent.
+  void _onGenerateMonthlyOutline() {
+    final month = _monthStart;
+    final settings = widget.settingsController.value;
+    unawaited(_reviewController.generateMonthlyOutline(
+      month,
+      generate: () => _runMonthlyOutline(settings, month),
+      persist: (content) => _reviewService.saveMonthlyOutline(month, content),
+    ));
+  }
+
+  /// Stage 2 (review): runs the user instruction over the checked monthly
+  /// outline items. No-op until stage 1 has at least one checked item.
+  void _onGenerateMonthlyReview() {
+    final month = _monthStart;
+    final settings = widget.settingsController.value;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final checked = checkedItemsText(outline);
+    if (checked.trim().isEmpty) return;
+    unawaited(_reviewController.generateMonthlyReview(
+      month,
+      generate: () => _runSummary(settings, settings.monthlyInstruction, checked,
+          model: settings.anthropicModel, cliUseDefaultModel: true),
+      persist: (content) => _reviewService.saveMonthly(month, content),
+    ));
+  }
+
+  /// Toggles a stage-1 monthly checkbox and persists the outline.
+  void _onToggleMonthlyOutlineItem(int lineIndex) {
+    final month = _monthStart;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final updated = toggleOutlineItem(outline, lineIndex);
+    _reviewController.setMonthlyOutlineContent(month, updated);
+    unawaited(_reviewService.saveMonthlyOutline(month, updated));
+  }
+
+  /// Checks or clears every stage-1 monthly checkbox at once and persists it.
+  void _onToggleAllMonthlyOutlineItems(bool checked) {
+    final month = _monthStart;
+    final outline = _reviewController.monthly(month).outline.content;
+    if (outline == null) return;
+    final updated = setAllOutlineItems(outline, checked);
+    _reviewController.setMonthlyOutlineContent(month, updated);
+    unawaited(_reviewService.saveMonthlyOutline(month, updated));
   }
 
   void _onMemoTabChanged(bool active) {
@@ -581,14 +996,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _currentPage = 0;
       if (active) {
         _weeklyViewActive = false;
+        _monthlyViewActive = false;
       }
       if (_searchController.text.isNotEmpty || !_searchQuery.isEmpty) {
         _searchController.clear();
         _searchQuery = const NoteSearchQuery();
         _searchResults = [];
       }
-      final notes = _visibleNotes;
-      _selectedNote = notes.isNotEmpty ? notes.first : null;
+      // Switching the daily/memo list filter only changes the sidebar list; the
+      // open editor tabs and the active document stay put.
     });
   }
 
@@ -638,23 +1054,33 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _applySearchQuery(_searchQuery, resetPage: false);
   }
 
+  bool _settingsOpen = false;
+
   Future<void> _openSettings() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return SettingsScreen(
-          settingsController: widget.settingsController,
-          activeRepo: widget.activeRepo,
-          loadCachedRepos: widget.loadCachedRepos,
-          onLocalNotePathChanged: widget.onLocalNotePathChanged,
-          onSyncEnabledChanged: widget.onSyncEnabledChanged,
-          onRepoSelected: widget.onRepoSelected,
-          onCreateRepo: widget.onCreateRepo,
-          onConnectRepo: widget.onConnectRepo,
-          onSyncIntervalChanged: _applySyncInterval,
-        );
-      },
-    );
+    // Guard re-entrancy: the tray "설정" signal can fire while the dialog is
+    // already open, which would otherwise stack a second dialog.
+    if (_settingsOpen) return;
+    _settingsOpen = true;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return SettingsScreen(
+            settingsController: widget.settingsController,
+            activeRepo: widget.activeRepo,
+            loadCachedRepos: widget.loadCachedRepos,
+            onLocalNotePathChanged: widget.onLocalNotePathChanged,
+            onSyncEnabledChanged: widget.onSyncEnabledChanged,
+            onRepoSelected: widget.onRepoSelected,
+            onCreateRepo: widget.onCreateRepo,
+            onConnectRepo: widget.onConnectRepo,
+            onSyncIntervalChanged: _applySyncInterval,
+          );
+        },
+      );
+    } finally {
+      _settingsOpen = false;
+    }
   }
 
   Future<void> _increaseContentScale() async {
@@ -707,30 +1133,27 @@ class _DocumentScreenState extends State<DocumentScreen> {
       if (_currentPage > maxPage) {
         _currentPage = maxPage;
       }
-
-      if (_isSearchActive) {
-        final selected =
-            results.where((r) => r.note.id == _selectedNote?.id);
-        _selectedNote = selected.isNotEmpty
-            ? selected.first.note
-            : results.firstOrNull?.note;
-        if (_selectedNote != null) {
-          _selectedDate = DateTime(
-            _selectedNote!.noteDate.year,
-            _selectedNote!.noteDate.month,
-            _selectedNote!.noteDate.day,
-          );
-        }
-      }
+      // Typing a query never opens or switches editor tabs — the open documents
+      // stay put. The user taps a search result to open it in a tab.
     });
+    // Keep an open filter popover in sync with the latest query + tag list.
+    _filterOverlay?.markNeedsBuild();
   }
 
   void _onSearchTextChanged(String value) {
-    _applySearchQuery(_searchQuery.copyWith(text: value));
+    // Debounce typing so the index isn't queried on every keystroke; the field
+    // still shows the text immediately via its controller.
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 120), () {
+      if (!mounted) return;
+      _applySearchQuery(_searchQuery.copyWith(text: value));
+    });
   }
 
   void _clearSearch() {
+    _searchDebounce?.cancel();
     _searchController.clear();
+    _closeSearchFilters();
     _applySearchQuery(const NoteSearchQuery());
   }
 
@@ -739,153 +1162,56 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _onSearchResultTap(SearchResult result) {
-    setState(() {
-      _selectedNote = result.note;
+    if (!result.note.isMemo) {
       _selectedDate = DateTime(
         result.note.noteDate.year,
         result.note.noteDate.month,
         result.note.noteDate.day,
       );
-    });
+    }
+    _openNote(result.note);
   }
 
-  Future<void> _openSearchFilters() async {
-    final tagController = TextEditingController(text: _searchQuery.tag);
-    DateTime? startDate = _searchQuery.startDate;
-    DateTime? endDate = _searchQuery.endDate;
-
-    final result = await showDialog<NoteSearchQuery>(
-      context: context,
+  void _openSearchFilters() {
+    if (_filterOverlay != null) {
+      _closeSearchFilters();
+      return;
+    }
+    final overlay = Overlay.of(context);
+    _filterOverlay = OverlayEntry(
       builder: (context) {
-        final c = context.colors;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> pickStartDate() async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: startDate ?? _selectedDate ?? DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-              );
-              if (picked == null) return;
-
-              setState(() {
-                startDate = DateTime(picked.year, picked.month, picked.day);
-                if (endDate != null && endDate!.isBefore(startDate!)) {
-                  endDate = startDate;
-                }
-              });
-            }
-
-            Future<void> pickEndDate() async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate:
-                    endDate ?? startDate ?? _selectedDate ?? DateTime.now(),
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-              );
-              if (picked == null) return;
-
-              setState(() {
-                endDate = DateTime(picked.year, picked.month, picked.day);
-                if (startDate != null && startDate!.isAfter(endDate!)) {
-                  startDate = endDate;
-                }
-              });
-            }
-
-            return AlertDialog(
-              backgroundColor: c.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
-                side: BorderSide(color: c.border),
+        return Stack(
+          children: [
+            // Dismiss when tapping outside the panel.
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _closeSearchFilters,
               ),
-              title: const Text('Search Filters'),
-              content: SizedBox(
-                width: 360,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: tagController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tag',
-                        hintText: 'work',
-                      ),
-                    ),
-                    const SizedBox(height: AppDimensions.spacingMd),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: pickStartDate,
-                            child: Text(
-                              startDate == null
-                                  ? 'Start date'
-                                  : _formatDate(startDate),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: AppDimensions.spacingSm),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: pickEndDate,
-                            child: Text(
-                              endDate == null
-                                  ? 'End date'
-                                  : _formatDate(endDate),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            ),
+            CompositedTransformFollower(
+              link: _filterLink,
+              targetAnchor: Alignment.bottomRight,
+              followerAnchor: Alignment.topRight,
+              offset: const Offset(0, AppDimensions.spacingSm),
+              child: SearchFilterPanel(
+                query: _searchQuery,
+                availableTags: _searchIndex.allTags,
+                onChanged: _applySearchQuery,
               ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    tagController.clear();
-                    Navigator.of(context).pop(
-                      _searchQuery.copyWith(
-                        tag: '',
-                        startDate: null,
-                        endDate: null,
-                      ),
-                    );
-                  },
-                  child: const Text('Clear'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(
-                      _searchQuery.copyWith(
-                        tag: tagController.text.trim(),
-                        startDate: startDate,
-                        endDate: endDate,
-                      ),
-                    );
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          },
+            ),
+          ],
         );
       },
     );
+    overlay.insert(_filterOverlay!);
+    setState(() {});
+  }
 
-    tagController.dispose();
-
-    if (result != null) {
-      _applySearchQuery(result);
-    }
+  void _closeSearchFilters() {
+    _filterOverlay?.remove();
+    _filterOverlay = null;
+    if (mounted) setState(() {});
   }
 
   String _formatDate(DateTime? value) {
@@ -919,6 +1245,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
             unawaited(_decreaseContentScale());
           case ShortcutAction.search:
             _activateSearch();
+          case ShortcutAction.closeTab:
+            final activeId = _selectedNote?.id;
+            if (activeId != null) _closeTab(activeId);
         }
         return true;
       }
@@ -941,15 +1270,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
   }
 
   void _onWeeklyNoteTap(Note note) {
-    setState(() {
-      _selectedNote = note;
+    if (!note.isMemo) {
       _selectedDate = DateTime(
         note.noteDate.year,
         note.noteDate.month,
         note.noteDate.day,
       );
-      _weeklyViewActive = false;
-    });
+    }
+    _openNote(note);
   }
 
   @override
@@ -1003,7 +1331,29 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return WeeklyViewPanel(
         weekStart: _weekStart,
         weekNotes: _weekNotes,
+        reviewController: _reviewController,
         onNoteTap: _onWeeklyNoteTap,
+        aiEnabled: widget.settingsController.value.aiEnabled,
+        onGenerateOutline: _onGenerateWeeklyOutline,
+        onGenerateReview: _onGenerateWeeklyReview,
+        onToggleOutlineItem: _onToggleWeeklyOutlineItem,
+        onToggleAllOutlineItems: _onToggleAllWeeklyOutlineItems,
+        onOpenSettings: () => unawaited(_openSettings()),
+      );
+    }
+
+    if (_monthlyViewActive) {
+      return MonthlyViewPanel(
+        month: _monthStart,
+        monthNotes: _monthNotes,
+        reviewController: _reviewController,
+        onNoteTap: _onWeeklyNoteTap,
+        aiEnabled: widget.settingsController.value.aiEnabled,
+        onGenerateOutline: _onGenerateMonthlyOutline,
+        onGenerateReview: _onGenerateMonthlyReview,
+        onToggleOutlineItem: _onToggleMonthlyOutlineItem,
+        onToggleAllOutlineItems: _onToggleAllMonthlyOutlineItems,
+        onOpenSettings: () => unawaited(_openSettings()),
       );
     }
 
@@ -1021,10 +1371,26 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,
       onSetContentScale: _setContentScale,
-      allowSplit: !_isSearchActive,
     );
 
-    if (!_isSearchActive) return editor;
+    final openTabs = _openTabNotes;
+    final editorWithTabs = Column(
+      // Stretch so the tab bar fills the full width and its tabs align to the
+      // left edge (the Column otherwise centers a min-width tab strip).
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (openTabs.isNotEmpty)
+          EditorTabBar(
+            tabs: openTabs,
+            activeNoteId: _selectedNote?.id,
+            onSelect: _activateTab,
+            onClose: (note) => _closeTab(note.id),
+          ),
+        Expanded(child: editor),
+      ],
+    );
+
+    if (!_isSearchActive) return editorWithTabs;
 
     return Row(
       children: [
@@ -1038,7 +1404,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
           ),
         ),
         VerticalDivider(width: 1, thickness: 1, color: context.colors.border),
-        Expanded(child: editor),
+        Expanded(child: editorWithTabs),
       ],
     );
   }
@@ -1075,15 +1441,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
               controller: _searchController,
               focusNode: _searchFocusNode,
               query: _searchQuery.text,
-              tag: _searchQuery.tag,
-              startDate: _searchQuery.startDate,
-              endDate: _searchQuery.endDate,
+              hasActiveFilters: _searchQuery.hasFilters,
+              filterLink: _filterLink,
               onQueryChanged: _onSearchTextChanged,
               onClear: _clearSearch,
-              onOpenFilters: () => unawaited(_openSearchFilters()),
+              onOpenFilters: _openSearchFilters,
             ),
           ),
           const Spacer(),
+          _ThemeToggleButton(settings: widget.settingsController),
+          const SizedBox(width: AppDimensions.spacingXs),
           IconButton(
             icon: Icon(
               Icons.settings_outlined,
@@ -1131,15 +1498,25 @@ class _DocumentScreenState extends State<DocumentScreen> {
             onPreviousMonth: _previousMonth,
             onNextMonth: _nextMonth,
           ),
-          _WeeklyViewButton(
+          _ReviewViewButton(
+            icon: Icons.calendar_view_week_rounded,
+            label: 'Weekly View',
             isActive: _weeklyViewActive,
             onTap: _toggleWeeklyView,
+          ),
+          _ReviewViewButton(
+            icon: Icons.calendar_month_rounded,
+            label: 'Monthly View',
+            isActive: _monthlyViewActive,
+            onTap: _toggleMonthlyView,
           ),
           Divider(height: 1, color: c.border),
           Expanded(
             child: NoteListSection(
               notes: _paginatedNotes,
-              selectedNoteId: _weeklyViewActive ? null : _selectedNote?.id,
+              selectedNoteId: (_weeklyViewActive || _monthlyViewActive)
+                  ? null
+                  : _selectedNote?.id,
               currentPage: _currentPage,
               totalPages: _totalPages,
               totalCount: _visibleNotes.length,
@@ -1202,17 +1579,24 @@ class _ResizeHandleState extends State<_ResizeHandle> {
 }
 
 /// Weekly view toggle button placed between calendar and note list.
-class _WeeklyViewButton extends StatefulWidget {
+class _ReviewViewButton extends StatefulWidget {
+  final IconData icon;
+  final String label;
   final bool isActive;
   final VoidCallback onTap;
 
-  const _WeeklyViewButton({required this.isActive, required this.onTap});
+  const _ReviewViewButton({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.onTap,
+  });
 
   @override
-  State<_WeeklyViewButton> createState() => _WeeklyViewButtonState();
+  State<_ReviewViewButton> createState() => _ReviewViewButtonState();
 }
 
-class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
+class _ReviewViewButtonState extends State<_ReviewViewButton> {
   bool _isHovered = false;
 
   @override
@@ -1252,17 +1636,57 @@ class _WeeklyViewButtonState extends State<_WeeklyViewButton> {
           child: Row(
             children: [
               Icon(
-                Icons.calendar_view_week_rounded,
+                widget.icon,
                 size: 14,
                 color: widget.isActive ? c.accent : c.textMuted,
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                'Weekly View',
+                widget.label,
                 style: AppTextStyles.microSemibold.copyWith(color: widget.isActive ? c.accent : c.textSecondary),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Title-bar button that flips the app between light and dark. Reads the current
+/// brightness (so it's correct in System mode too) and cross-fades + rotates the
+/// sun/moon icon on toggle.
+class _ThemeToggleButton extends StatelessWidget {
+  const _ThemeToggleButton({required this.settings});
+
+  final AppSettingsController settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return IconButton(
+      onPressed: () => unawaited(
+        settings.setThemeMode(
+          isDark ? AppThemeMode.light : AppThemeMode.dark,
+        ),
+      ),
+      tooltip: isDark ? '라이트 모드로' : '다크 모드로',
+      splashRadius: 16,
+      icon: AnimatedSwitcher(
+        duration: AppDimensions.animFast,
+        transitionBuilder: (child, anim) => FadeTransition(
+          opacity: anim,
+          child: RotationTransition(
+            turns: Tween<double>(begin: 0.7, end: 1.0).animate(anim),
+            child: child,
+          ),
+        ),
+        child: Icon(
+          isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+          key: ValueKey<bool>(isDark),
+          size: 18,
+          color: c.textSecondary,
         ),
       ),
     );

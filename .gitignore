@@ -6,6 +6,7 @@
 
 # Local secrets (OAuth client id/secret 등) — 절대 커밋 금지
 .env.local
+.env.local.*
 .env.*.local
 *.local.sh
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +14,20 @@ class AppSettingsController extends ChangeNotifier {
   static const String syncIntervalSecondsKey = 'sync_interval_seconds';
   static const String syncEnabledKey = 'sync_enabled';
   static const String searchContextLinesKey = 'search_context_lines';
+  static const String weeklyInstructionKey = 'weekly_instruction';
+  static const String monthlyInstructionKey = 'monthly_instruction';
+  static const String aiEnabledKey = 'ai_enabled';
+  static const String claudeCliPathKey = 'claude_cli_path';
+  static const String codexCliPathKey = 'codex_cli_path';
+  static const String aiProviderKey = 'ai_provider';
+
+  /// Pre-unification keys (the AI settings were once claude/weekly-specific).
+  /// Still read as load-time fallbacks so existing devices keep their values.
+  static const String legacyClaudeCodeEnabledKey = 'claude_code_enabled';
+  static const String legacyWeeklyProviderKey = 'weekly_provider';
+  static const String anthropicApiKeyKey = 'anthropic_api_key';
+  static const String anthropicModelKey = 'anthropic_model';
+  static const String themeModeKey = 'theme_mode';
   static const String _shortcutPrefix = 'shortcut_';
 
   AppSettingsController({required String defaultLocalNotePath})
@@ -52,9 +67,164 @@ class AppSettingsController extends ChangeNotifier {
         AppSettings.minSearchContextLines,
         AppSettings.maxSearchContextLines,
       ),
+      weeklyInstruction: prefs.getString(weeklyInstructionKey) ??
+          AppSettings.defaultWeeklyInstruction,
+      monthlyInstruction: prefs.getString(monthlyInstructionKey) ??
+          AppSettings.defaultMonthlyInstruction,
+      aiEnabled: prefs.getBool(aiEnabledKey) ??
+          prefs.getBool(legacyClaudeCodeEnabledKey) ??
+          false,
+      claudeCliPath: prefs.getString(claudeCliPathKey) ?? '',
+      codexCliPath: prefs.getString(codexCliPathKey) ?? '',
+      aiProvider: _sanitizeProvider(
+        prefs.getString(aiProviderKey) ??
+            prefs.getString(legacyWeeklyProviderKey),
+      ),
+      anthropicApiKey: prefs.getString(anthropicApiKeyKey) ?? '',
+      anthropicModel: prefs.getString(anthropicModelKey) ??
+          AppSettings.defaultAnthropicModel,
+      themeMode: _parseThemeMode(prefs.getString(themeModeKey)),
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
+  }
+
+  /// Clamps a stored/imported provider value to a known one; unknown → API.
+  static String _sanitizeProvider(String? value) {
+    switch (value) {
+      case AppSettings.providerCli:
+        return AppSettings.providerCli;
+      case AppSettings.providerCodex:
+        return AppSettings.providerCodex;
+      default:
+        return AppSettings.providerApi;
+    }
+  }
+
+  static AppThemeMode _parseThemeMode(String? name) {
+    switch (name) {
+      case 'light':
+        return AppThemeMode.light;
+      case 'dark':
+        return AppThemeMode.dark;
+      default:
+        return AppThemeMode.system;
+    }
+  }
+
+  /// Persists the theme preference (device-local) and notifies listeners so the
+  /// app (light/dark/system) — including the menu bar popover — updates live.
+  Future<void> setThemeMode(AppThemeMode mode) async {
+    if (_value.themeMode == mode) return;
+    _value = _value.copyWith(themeMode: mode);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(themeModeKey, mode.name);
+  }
+
+  /// The portable settings as pretty JSON — what the JSON editor shows and what
+  /// is synced to `settings/settings.json`. Secrets / device paths are excluded.
+  String exportSyncJson() =>
+      const JsonEncoder.withIndent('  ').convert(_value.toSyncJson());
+
+  /// Applies portable settings from a decoded JSON map, validating/clamping each
+  /// known field and persisting it. Unknown keys and any secret/device fields
+  /// present in the map are ignored. Returns the keys that were applied.
+  Future<List<String>> importSyncJson(Map<String, Object?> json) async {
+    final prefs = await SharedPreferences.getInstance();
+    var next = _value;
+    final applied = <String>[];
+
+    final contentScale = json['contentScale'];
+    if (contentScale is num) {
+      final v = contentScale.toDouble().clamp(
+            AppSettings.minContentScale,
+            AppSettings.maxContentScale,
+          );
+      next = next.copyWith(contentScale: v);
+      await prefs.setDouble(contentScaleKey, v);
+      applied.add('contentScale');
+    }
+
+    final syncInterval = json['syncIntervalSeconds'];
+    if (syncInterval is num) {
+      final v = syncInterval.toInt().clamp(
+            AppSettings.minSyncIntervalSeconds,
+            AppSettings.maxSyncIntervalSeconds,
+          );
+      next = next.copyWith(syncIntervalSeconds: v);
+      await prefs.setInt(syncIntervalSecondsKey, v);
+      applied.add('syncIntervalSeconds');
+    }
+
+    final syncEnabled = json['syncEnabled'];
+    if (syncEnabled is bool) {
+      next = next.copyWith(syncEnabled: syncEnabled);
+      await prefs.setBool(syncEnabledKey, syncEnabled);
+      applied.add('syncEnabled');
+    }
+
+    final searchLines = json['searchContextLines'];
+    if (searchLines is num) {
+      final v = searchLines.toInt().clamp(
+            AppSettings.minSearchContextLines,
+            AppSettings.maxSearchContextLines,
+          );
+      next = next.copyWith(searchContextLines: v);
+      await prefs.setInt(searchContextLinesKey, v);
+      applied.add('searchContextLines');
+    }
+
+    final weeklyInstruction = json['weeklyInstruction'];
+    if (weeklyInstruction is String) {
+      final trimmed = weeklyInstruction.trim();
+      final v = trimmed.isEmpty
+          ? AppSettings.defaultWeeklyInstruction
+          : trimmed;
+      next = next.copyWith(weeklyInstruction: v);
+      await prefs.setString(weeklyInstructionKey, v);
+      applied.add('weeklyInstruction');
+    }
+
+    final monthlyInstruction = json['monthlyInstruction'];
+    if (monthlyInstruction is String) {
+      final trimmed = monthlyInstruction.trim();
+      final v = trimmed.isEmpty
+          ? AppSettings.defaultMonthlyInstruction
+          : trimmed;
+      next = next.copyWith(monthlyInstruction: v);
+      await prefs.setString(monthlyInstructionKey, v);
+      applied.add('monthlyInstruction');
+    }
+
+    // Accept the legacy claude/weekly key names from older exports.
+    final aiEnabled = json['aiEnabled'] ?? json['claudeCodeEnabled'];
+    if (aiEnabled is bool) {
+      next = next.copyWith(aiEnabled: aiEnabled);
+      await prefs.setBool(aiEnabledKey, aiEnabled);
+      applied.add('aiEnabled');
+    }
+
+    final aiProvider = json['aiProvider'] ?? json['weeklyProvider'];
+    if (aiProvider is String) {
+      final v = _sanitizeProvider(aiProvider);
+      next = next.copyWith(aiProvider: v);
+      await prefs.setString(aiProviderKey, v);
+      applied.add('aiProvider');
+    }
+
+    final anthropicModel = json['anthropicModel'];
+    if (anthropicModel is String) {
+      final trimmed = anthropicModel.trim();
+      final v = trimmed.isEmpty ? AppSettings.defaultAnthropicModel : trimmed;
+      next = next.copyWith(anthropicModel: v);
+      await prefs.setString(anthropicModelKey, v);
+      applied.add('anthropicModel');
+    }
+
+    _value = next;
+    notifyListeners();
+    return applied;
   }
 
   List<ShortcutBinding> _loadBindings(SharedPreferences prefs) {
@@ -121,6 +291,76 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(syncEnabledKey, value);
+  }
+
+  Future<void> setWeeklyInstruction(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty
+        ? AppSettings.defaultWeeklyInstruction
+        : trimmed;
+    _value = _value.copyWith(weeklyInstruction: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(weeklyInstructionKey, next);
+  }
+
+  Future<void> setMonthlyInstruction(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty
+        ? AppSettings.defaultMonthlyInstruction
+        : trimmed;
+    _value = _value.copyWith(monthlyInstruction: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(monthlyInstructionKey, next);
+  }
+
+  Future<void> setAiEnabled(bool value) async {
+    _value = _value.copyWith(aiEnabled: value);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(aiEnabledKey, value);
+  }
+
+  Future<void> setClaudeCliPath(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(claudeCliPath: trimmed);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(claudeCliPathKey, trimmed);
+  }
+
+  Future<void> setCodexCliPath(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(codexCliPath: trimmed);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(codexCliPathKey, trimmed);
+  }
+
+  Future<void> setAiProvider(String value) async {
+    final next = _sanitizeProvider(value);
+    _value = _value.copyWith(aiProvider: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(aiProviderKey, next);
+  }
+
+  Future<void> setAnthropicApiKey(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(anthropicApiKey: trimmed);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(anthropicApiKeyKey, trimmed);
+  }
+
+  Future<void> setAnthropicModel(String value) async {
+    final trimmed = value.trim();
+    final next = trimmed.isEmpty ? AppSettings.defaultAnthropicModel : trimmed;
+    _value = _value.copyWith(anthropicModel: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(anthropicModelKey, next);
   }
 
   Future<void> setShortcutBinding(ShortcutBinding binding) async {

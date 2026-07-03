@@ -10,13 +10,13 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
-import 'markdown_preview.dart';
+import 'editor_block_decorations.dart';
+import 'inline_table_view.dart';
+import 'markdown_editing_controller.dart';
+import 'table_editor_dialog.dart';
 
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
-
-/// Editor display mode: edit only, side-by-side split, or preview only.
-enum EditorViewMode { edit, split, preview }
 
 class EditorPanel extends StatefulWidget {
   final Note? note;
@@ -31,11 +31,6 @@ class EditorPanel extends StatefulWidget {
   final Future<void> Function()? onDecreaseContentScale;
   final Future<void> Function(double value)? onSetContentScale;
 
-  /// Whether the side-by-side split view is permitted. Disabled when the
-  /// surrounding layout is already space-constrained (e.g. the search results
-  /// panel is showing), in which case split falls back to edit.
-  final bool allowSplit;
-
   const EditorPanel({
     super.key,
     this.note,
@@ -49,7 +44,6 @@ class EditorPanel extends StatefulWidget {
     this.onIncreaseContentScale,
     this.onDecreaseContentScale,
     this.onSetContentScale,
-    this.allowSplit = true,
   });
 
   @override
@@ -58,9 +52,10 @@ class EditorPanel extends StatefulWidget {
 
 class _EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
+  late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
-  EditorViewMode _viewMode = EditorViewMode.split;
+  late FocusNode _contentFocusNode;
+  late ScrollController _contentScrollController;
   Timer? _autoSaveTimer;
   DateTime? _lastSaved;
   String? _loadedNoteId;
@@ -70,9 +65,18 @@ class _EditorPanelState extends State<EditorPanel> {
   void initState() {
     super.initState();
     _titleController = TextEditingController();
-    _contentController = TextEditingController();
+    _contentController = MarkdownEditingController();
     _tagController = TextEditingController();
+    _contentFocusNode = FocusNode()..addListener(_onContentFocusChanged);
+    _contentScrollController = ScrollController();
     _syncControllers();
+  }
+
+  /// When the editor gains/loses focus, the controller re-renders so the caret's
+  /// line reveals its markdown markers (focused) or everything renders (blurred).
+  void _onContentFocusChanged() {
+    if (!mounted) return;
+    setState(() => _contentController.focused = _contentFocusNode.hasFocus);
   }
 
   @override
@@ -102,16 +106,24 @@ class _EditorPanelState extends State<EditorPanel> {
   /// Flushes the current controller text into [note] via [onNoteChanged] if
   /// the note has unsaved edits. Cancels the pending auto-save timer to avoid
   /// it firing later against a stale note reference.
+  ///
+  /// The captured text is snapshotted synchronously (before the controllers are
+  /// re-synced to the next note), but the parent callback is invoked after the
+  /// frame: [didUpdateWidget] runs mid-build when the note prop changes (e.g.
+  /// switching or closing a tab), so calling the parent's setState synchronously
+  /// here would throw "setState() called during build".
   void _flushPending(Note note) {
     if (widget.isReadOnly || !note.isDirty) return;
     _autoSaveTimer?.cancel();
     _autoSaveTimer = null;
+    final callback = widget.onNoteChanged;
+    if (callback == null) return;
     final updated = note.copyWith(
       title: _titleController.text,
       content: _contentController.text,
       updatedAt: DateTime.now(),
     );
-    widget.onNoteChanged?.call(updated);
+    WidgetsBinding.instance.addPostFrameCallback((_) => callback(updated));
   }
 
   @override
@@ -130,6 +142,8 @@ class _EditorPanelState extends State<EditorPanel> {
     _titleController.dispose();
     _contentController.dispose();
     _tagController.dispose();
+    _contentFocusNode.dispose();
+    _contentScrollController.dispose();
     super.dispose();
   }
 
@@ -198,14 +212,166 @@ class _EditorPanelState extends State<EditorPanel> {
     _onContentChanged();
   }
 
+  /// Opens the table grid editor. If the caret is inside an existing table it
+  /// edits that table in-place; otherwise it inserts a new one. Either way the
+  /// user fills cells in a real grid instead of typing pipe syntax.
   Future<void> _insertTable() async {
     if (widget.isReadOnly || widget.note == null) return;
-    final spec = await showDialog<_TableSpec>(
-      context: context,
-      builder: (_) => const _InsertTableDialog(),
+    final selection = _contentController.selection;
+    final offset = selection.isValid ? selection.baseOffset : -1;
+    final found =
+        offset >= 0 ? tableAtOffset(_contentController.text, offset) : null;
+    if (found != null) {
+      await _editTableAt(found);
+      return;
+    }
+    final markdown = await TableEditorDialog.show(context, initial: null);
+    if (markdown == null || !mounted) return;
+    _insertBlock(markdown);
+  }
+
+  Future<void> _editTableAt(
+      ({MarkdownTableData table, int start, int end}) found) async {
+    if (widget.isReadOnly || widget.note == null) return;
+    final markdown =
+        await TableEditorDialog.show(context, initial: found.table);
+    if (markdown == null || !mounted) return;
+    _replaceRange(found.start, found.end, markdown);
+  }
+
+  // Tapping a rendered table moves the caret into it, which marks it active and
+  // reveals the +col/+row controls (the table widget hides its raw markdown).
+  void _activateTable(TableRegion table) {
+    if (widget.isReadOnly) return;
+    _contentFocusNode.requestFocus();
+    _contentController.selection =
+        TextSelection.collapsed(offset: table.start.clamp(0, _contentController.text.length));
+  }
+
+  void _addTableRow(TableRegion table) {
+    final data = table.table;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [...data.rows, List.filled(data.columns, '')],
+        data.aligns,
+      ),
     );
-    if (spec == null) return;
-    _insertBlock(buildMarkdownTable(columns: spec.columns, rows: spec.rows));
+  }
+
+  void _addTableColumn(TableRegion table) {
+    final data = table.table;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [for (final row in data.rows) [...row, '']],
+        [...data.aligns, MarkdownTableAlign.left],
+      ),
+    );
+  }
+
+  // Removes one body row. The header row (index 0) is kept so the table stays a
+  // valid markdown table even after all data rows are gone.
+  void _removeTableRow(TableRegion table, int row) {
+    final data = table.table;
+    if (row <= 0 || row >= data.rows.length) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var i = 0; i < data.rows.length; i++)
+            if (i != row) data.rows[i],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
+  // Removes one column from every row (and its alignment). Keeps at least one
+  // column; use the X control to remove the table entirely.
+  void _removeTableColumn(TableRegion table, int col) {
+    final data = table.table;
+    if (col < 0 || col >= data.columns || data.columns <= 1) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (final row in data.rows)
+            [
+              for (var j = 0; j < data.columns; j++)
+                if (j != col) (j < row.length ? row[j] : ''),
+            ],
+        ],
+        [
+          for (var j = 0; j < data.columns; j++)
+            if (j != col) data.aligns[j],
+        ],
+      ),
+    );
+  }
+
+  // Writes one cell's text in place (inline cell editing) and re-serializes the
+  // table. Keeps the table active so the caret/controls stay put while typing.
+  void _setTableCell(TableRegion table, int row, int col, String value) {
+    final data = table.table;
+    if (row < 0 || row >= data.rows.length || col < 0 || col >= data.columns) {
+      return;
+    }
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var r = 0; r < data.rows.length; r++)
+            [
+              for (var k = 0; k < data.columns; k++)
+                (r == row && k == col)
+                    ? value
+                    : (k < data.rows[r].length ? data.rows[r][k] : ''),
+            ],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
+  // Replaces the table's markdown in place and keeps the caret inside it so it
+  // stays active (the +col/+row controls remain visible after the change).
+  void _mutateTable(TableRegion table, MarkdownTableData next) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = table.start.clamp(0, text.length);
+    final e = table.end.clamp(s, text.length);
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, serializeMarkdownTable(next)),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
+  }
+
+  // Removes the whole table (the X control). Also drops the table's trailing
+  // newline so no blank line is left where it was. Undoable via the editor.
+  void _removeTable(TableRegion table) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = table.start.clamp(0, text.length);
+    var e = table.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
+  }
+
+  void _replaceRange(int start, int end, String replacement) {
+    final text = _contentController.text;
+    final s = start.clamp(0, text.length);
+    final e = end.clamp(s, text.length);
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, replacement),
+      selection: TextSelection.collapsed(offset: s + replacement.length),
+    );
+    _onContentChanged();
   }
 
   @override
@@ -222,7 +388,7 @@ class _EditorPanelState extends State<EditorPanel> {
         Divider(height: 1, color: c.border),
         _buildMetaHeader(c),
         Divider(height: 1, color: c.border),
-        Expanded(child: _buildBody(c)),
+        Expanded(child: _buildEditor(c)),
         _buildStatusBar(c),
       ],
     );
@@ -319,8 +485,38 @@ class _EditorPanelState extends State<EditorPanel> {
           const SizedBox(width: AppDimensions.spacingMd),
           if (!widget.isReadOnly) ...[
             _ToolbarIconButton(
+              icon: Icons.format_bold_rounded,
+              tooltip: 'Bold',
+              onTap: () => _wrapSelection('**'),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.format_italic_rounded,
+              tooltip: 'Italic',
+              onTap: () => _wrapSelection('*'),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.title_rounded,
+              tooltip: 'Heading',
+              onTap: () => _toggleLinePrefix('# '),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.format_list_bulleted_rounded,
+              tooltip: 'Bullet list',
+              onTap: () => _toggleLinePrefix('- '),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
+              icon: Icons.checklist_rounded,
+              tooltip: 'Checklist',
+              onTap: () => _toggleLinePrefix('- [ ] '),
+            ),
+            const SizedBox(width: AppDimensions.spacingMd),
+            _ToolbarIconButton(
               icon: Icons.table_chart_outlined,
-              tooltip: 'Insert table',
+              tooltip: '표 삽입 / 편집',
               onTap: () => unawaited(_insertTable()),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
@@ -329,13 +525,7 @@ class _EditorPanelState extends State<EditorPanel> {
               tooltip: 'Renumber list',
               onTap: _renumberList,
             ),
-            const SizedBox(width: AppDimensions.spacingMd),
           ],
-          _ViewModeControl(
-            mode: _effectiveViewMode,
-            allowSplit: widget.allowSplit,
-            onChanged: (mode) => setState(() => _viewMode = mode),
-          ),
         ],
       ),
     );
@@ -405,77 +595,279 @@ class _EditorPanelState extends State<EditorPanel> {
   }
 
   Widget _buildEditor(AppColorsExtension c) {
-    return _buildZoomAwareSurface(
-      Container(
-        color: c.scaffold,
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: TextField(
-          controller: _contentController,
-          onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
-          readOnly: widget.isReadOnly,
-          inputFormatters:
-              widget.isReadOnly ? null : [MarkdownListInputFormatter()],
-          maxLines: null,
-          expands: true,
-          textAlignVertical: TextAlignVertical.top,
-          style: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textPrimary),
-          decoration: InputDecoration(
-            hintText: 'Start writing in markdown...',
-            hintStyle: AppTextStyles.codeMonoBody(widget.contentScale).copyWith(color: c.textMuted),
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            filled: false,
-            contentPadding: EdgeInsets.zero,
+    // The controller renders markdown styling inline as you type (Notion /
+    // Obsidian style) — there is no separate preview pane.
+    _contentController.scale = widget.contentScale;
+    final baseStyle =
+        AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
+    // A Material TextField does not render with the raw `style` we pass — it
+    // merges it onto the theme's body style, which injects extras like
+    // `letterSpacing` and an even `leadingDistribution`. The decoration painter
+    // and table overlays lay out their OWN TextPainter, so they must measure
+    // with the SAME effective style the field's RenderEditable uses; otherwise
+    // wrapping and baseline diverge and the code boxes / rules / table overlays
+    // drift from the text. Mirror the field's merge here and share the result.
+    final bodyStyle =
+        (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
+            .merge(baseStyle);
+    // The decoration painter lays out an identical TextPainter, so the field and
+    // the painter must share strut + text scaler + width for the boxes to align.
+    // The strut mirrors the body style so the caret lines up with the text.
+    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
+    final textScaler = MediaQuery.textScalerOf(context);
+
+    final field = TextField(
+      controller: _contentController,
+      focusNode: _contentFocusNode,
+      scrollController: _contentScrollController,
+      onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
+      readOnly: widget.isReadOnly,
+      inputFormatters:
+          widget.isReadOnly ? null : [MarkdownListInputFormatter()],
+      maxLines: null,
+      expands: true,
+      textAlignVertical: TextAlignVertical.top,
+      cursorColor: c.accent,
+      style: bodyStyle,
+      strutStyle: strut,
+      decoration: InputDecoration(
+        hintText: 'Start writing in markdown...',
+        hintStyle: bodyStyle.copyWith(color: c.textMuted),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        filled: false,
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+
+    final Widget body = Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            // Rebuild the decoration layer on every text/caret change so code
+            // boxes (and `---` rules / quote bars) grow and shrink with the
+            // content as you type — the rest of the editor does not rebuild.
+            child: ListenableBuilder(
+              listenable: _contentController,
+              builder: (context, _) {
+                final allRegions =
+                    parseEditorBlockRegions(_contentController.text);
+                final tables = findTableRegions(_contentController.text);
+                // A pipe-less `---` table separator also matches the `---` rule;
+                // drop that rule so it is not drawn as a line inside the table.
+                final sepStarts = {for (final t in tables) t.separatorRange.start};
+                final regions = sepStarts.isEmpty
+                    ? allRegions
+                    : allRegions
+                        .where((r) => !(r.kind == EditorBlockKind.rule &&
+                            sepStarts.contains(r.start)))
+                        .toList();
+                if (regions.isEmpty) {
+                  return const SizedBox.expand();
+                }
+                return CustomPaint(
+                  painter: EditorBlockDecorationPainter(
+                    span: _contentController.buildTextSpan(
+                      context: context,
+                      style: bodyStyle,
+                      withComposing: false,
+                    ),
+                    regions: regions,
+                    strutStyle: strut,
+                    textScaler: textScaler,
+                    scrollController: _contentScrollController,
+                    codeBackground: c.surfaceLight,
+                    codeBorder: c.border,
+                    ruleColor: c.border,
+                    quoteBar: c.textMuted,
+                  ),
+                );
+              },
+            ),
           ),
         ),
-      ),
+        field,
+        // Tables render as real, scrollable widgets over their hidden markdown,
+        // on top of the field so they can take taps and show the +col/+row
+        // controls when the caret is inside them.
+        Positioned.fill(
+          child: _buildTableOverlays(c, bodyStyle, strut, textScaler),
+        ),
+      ],
     );
-  }
 
-  EditorViewMode get _effectiveViewMode {
-    if (_viewMode == EditorViewMode.split && !widget.allowSplit) {
-      return EditorViewMode.edit;
-    }
-    return _viewMode;
-  }
-
-  Widget _buildBody(AppColorsExtension c) {
-    switch (_effectiveViewMode) {
-      case EditorViewMode.edit:
-        return _buildEditor(c);
-      case EditorViewMode.preview:
-        return _buildLivePreview(c);
-      case EditorViewMode.split:
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(child: _buildEditor(c)),
-            VerticalDivider(width: 1, thickness: 1, color: c.border),
-            Expanded(child: _buildLivePreview(c)),
-          ],
-        );
-    }
-  }
-
-  Widget _buildLivePreview(AppColorsExtension c) {
-    return ValueListenableBuilder<TextEditingValue>(
-      valueListenable: _contentController,
-      builder: (context, value, _) => _buildPreviewSurface(c, value.text),
-    );
-  }
-
-  Widget _buildPreviewSurface(AppColorsExtension c, String content) {
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
         padding: const EdgeInsets.all(AppDimensions.spacingLg),
-        child: MarkdownPreviewWidget(
-          content: content,
-          contentScale: widget.contentScale,
-        ),
+        child: body,
       ),
     );
+  }
+
+  // Positions an [InlineTableView] over each table's hidden markdown. It rebuilds
+  // on every text/caret/scroll change so the overlays follow the content; the
+  // table containing the caret renders active (with the +col/+row controls).
+  Widget _buildTableOverlays(
+    AppColorsExtension c,
+    TextStyle bodyStyle,
+    StrutStyle strut,
+    TextScaler textScaler,
+  ) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([_contentController, _contentScrollController]),
+      builder: (context, _) {
+        final tables = findTableRegions(_contentController.text);
+        if (tables.isEmpty) return const SizedBox.shrink();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final span = _contentController.buildTextSpan(
+                context: context, style: bodyStyle, withComposing: false);
+            final measured = measureTableRegions(
+                span, tables, strut, textScaler, constraints.maxWidth);
+            final scrollY = _contentScrollController.hasClients
+                ? _contentScrollController.offset
+                : 0.0;
+            final sel = _contentController.selection;
+            final caret = sel.isValid ? sel.baseOffset : -1;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final m in measured)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: m.top - scrollY,
+                    height: m.bottom - m.top,
+                    child: InlineTableView(
+                      key: ValueKey(m.table.start),
+                      data: m.table.table,
+                      active: !widget.isReadOnly &&
+                          caret >= m.table.start &&
+                          caret <= m.table.end,
+                      cellStyle: bodyStyle,
+                      onActivate: () => _activateTable(m.table),
+                      onAddRow: () => _addTableRow(m.table),
+                      onAddColumn: () => _addTableColumn(m.table),
+                      onRemove: () => _removeTable(m.table),
+                      onCellChanged: (row, col, value) =>
+                          _setTableCell(m.table, row, col, value),
+                      onRemoveRow: (row) => _removeTableRow(m.table, row),
+                      onRemoveColumn: (col) =>
+                          _removeTableColumn(m.table, col),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  static final RegExp _leadingIndent = RegExp(r'^[ \t]*');
+  static final List<RegExp> _blockPrefixes = [
+    RegExp(r'^#{1,6} '), // heading
+    RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (before bullet)
+    RegExp(r'^[-*+] '), // bullet
+    RegExp(r'^\d+[.)] '), // ordered
+    RegExp(r'^> '), // quote
+  ];
+
+  /// Length of any recognized block prefix at the start of [body] (no indent),
+  /// or 0 when the line has no block marker.
+  int _blockPrefixLength(String body) {
+    for (final pattern in _blockPrefixes) {
+      final match = pattern.firstMatch(body);
+      if (match != null) return match.end;
+    }
+    return 0;
+  }
+
+  /// Toggles inline [marker] (e.g. `**` for bold) on the selection. An empty
+  /// selection inserts the markers with the cursor between them; a selection
+  /// already wrapped in [marker] is un-wrapped.
+  void _wrapSelection(String marker) {
+    if (widget.isReadOnly) return;
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final selected = text.substring(start, end);
+
+    // Un-wrap if the selection is already exactly wrapped.
+    if (selected.length >= marker.length * 2 &&
+        selected.startsWith(marker) &&
+        selected.endsWith(marker)) {
+      final inner =
+          selected.substring(marker.length, selected.length - marker.length);
+      _contentController.value = TextEditingValue(
+        text: text.replaceRange(start, end, inner),
+        selection:
+            TextSelection(baseOffset: start, extentOffset: start + inner.length),
+      );
+      _onContentChanged();
+      return;
+    }
+
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(start, end, '$marker$selected$marker'),
+      selection: selected.isEmpty
+          ? TextSelection.collapsed(offset: start + marker.length)
+          : TextSelection(
+              baseOffset: start + marker.length,
+              extentOffset: end + marker.length,
+            ),
+    );
+    _onContentChanged();
+  }
+
+  /// Toggles a line-level [prefix] (`# `, `- `, `- [ ] `) on the caret's line.
+  /// Setting a new block type replaces any existing one (Notion/Obsidian style)
+  /// rather than stacking; pressing the same type again clears it. Leading
+  /// indentation is preserved.
+  void _toggleLinePrefix(String prefix) {
+    if (widget.isReadOnly) return;
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    final caret =
+        (selection.isValid ? selection.baseOffset : text.length).clamp(0, text.length);
+    final lineStart = caret == 0 ? 0 : text.lastIndexOf('\n', caret - 1) + 1;
+    var lineEnd = text.indexOf('\n', caret);
+    if (lineEnd == -1) lineEnd = text.length;
+    final line = text.substring(lineStart, lineEnd);
+
+    final indent = _leadingIndent.firstMatch(line)!.group(0)!;
+    final body = line.substring(indent.length);
+    final existingLen = _blockPrefixLength(body);
+    final content = body.substring(existingLen);
+    // Toggle off only when the existing block prefix is exactly this one;
+    // otherwise replace it (e.g. checkbox -> bullet, not strip to plain).
+    final toggleOff = body.substring(0, existingLen) == prefix;
+    final newPrefixLen = toggleOff ? 0 : prefix.length;
+    final newBody = toggleOff ? content : '$prefix$content';
+    final newLine = '$indent$newBody';
+
+    final caretInLine = caret - lineStart;
+    final contentStart = indent.length + existingLen;
+    final newContentStart = indent.length + newPrefixLen;
+    final newCaretInLine = caretInLine <= contentStart
+        ? newContentStart
+        : caretInLine - contentStart + newContentStart;
+
+    final newText = text.replaceRange(lineStart, lineEnd, newLine);
+    final newCaret =
+        (lineStart + newCaretInLine).clamp(lineStart, lineStart + newLine.length);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCaret),
+    );
+    _onContentChanged();
   }
 
   Widget _buildZoomAwareSurface(Widget child) {
@@ -596,217 +988,6 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Segmented control switching between Edit / Split / Preview view modes.
-/// The Split segment is omitted when [allowSplit] is false.
-class _ViewModeControl extends StatelessWidget {
-  final EditorViewMode mode;
-  final bool allowSplit;
-  final ValueChanged<EditorViewMode> onChanged;
-
-  const _ViewModeControl({
-    required this.mode,
-    required this.allowSplit,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-        border: Border.all(color: c.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _ViewModeSegment(
-            label: 'Edit',
-            active: mode == EditorViewMode.edit,
-            onTap: () => onChanged(EditorViewMode.edit),
-          ),
-          if (allowSplit)
-            _ViewModeSegment(
-              label: 'Split',
-              active: mode == EditorViewMode.split,
-              onTap: () => onChanged(EditorViewMode.split),
-            ),
-          _ViewModeSegment(
-            label: 'Preview',
-            active: mode == EditorViewMode.preview,
-            onTap: () => onChanged(EditorViewMode.preview),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ViewModeSegment extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _ViewModeSegment({
-    required this.label,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppDimensions.animFast,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: active ? c.accentMuted : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-          ),
-          child: Text(
-            label,
-            style: AppTextStyles.microMedium.copyWith(
-              color: active ? c.accent : c.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Column/row count returned by [_InsertTableDialog].
-class _TableSpec {
-  const _TableSpec(this.columns, this.rows);
-  final int columns;
-  final int rows;
-}
-
-/// Dialog to choose the dimensions of a markdown table to insert.
-class _InsertTableDialog extends StatefulWidget {
-  const _InsertTableDialog();
-
-  @override
-  State<_InsertTableDialog> createState() => _InsertTableDialogState();
-}
-
-class _InsertTableDialogState extends State<_InsertTableDialog> {
-  int _columns = 2;
-  int _rows = 2;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return AlertDialog(
-      backgroundColor: c.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-        side: BorderSide(color: c.border),
-      ),
-      title: Text(
-        'Insert table',
-        style: Theme.of(context).textTheme.titleSmall!.copyWith(
-          fontWeight: FontWeight.w600,
-          color: c.textPrimary,
-        ),
-      ),
-      content: SizedBox(
-        width: 240,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _StepperRow(
-              label: 'Columns',
-              value: _columns,
-              onChanged: (v) => setState(() => _columns = v),
-            ),
-            const SizedBox(height: AppDimensions.spacingMd),
-            _StepperRow(
-              label: 'Rows',
-              value: _rows,
-              onChanged: (v) => setState(() => _rows = v),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: AppTextStyles.captionThin.copyWith(color: c.textMuted),
-          ),
-        ),
-        FilledButton(
-          onPressed: () =>
-              Navigator.pop(context, _TableSpec(_columns, _rows)),
-          child: const Text('Insert'),
-        ),
-      ],
-    );
-  }
-}
-
-class _StepperRow extends StatelessWidget {
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  const _StepperRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  static const int _min = 1;
-  static const int _max = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.remove_circle_outline_rounded, size: 18),
-          color: c.textSecondary,
-          splashRadius: 14,
-          onPressed: value > _min ? () => onChanged(value - 1) : null,
-        ),
-        SizedBox(
-          width: 24,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(color: c.textPrimary),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
-          color: c.textSecondary,
-          splashRadius: 14,
-          onPressed: value < _max ? () => onChanged(value + 1) : null,
-        ),
-      ],
     );
   }
 }

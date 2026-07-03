@@ -5,16 +5,24 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/anthropic_api_service.dart';
+import '../services/claude_code_service.dart';
+import '../services/codex_cli_service.dart';
 import '../settings/app_settings.dart';
 import '../settings/app_settings_controller.dart';
 import '../settings/shortcut_binding.dart';
+import '../widgets/settings_json_dialog.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 
-enum _SettingsPane { storage, editor, sync, shortcuts }
+enum _SettingsPane { storage, editor, ai, sync, shortcuts }
+
+/// Outcome of an AI provider availability probe shown in the AI pane
+/// (API key validation, or a `--version` check for the selected CLI).
+enum _AiProbe { idle, checking, available, unavailable }
 
 String? resolveDirectoryPickerInitialPath(String currentPath) {
   final normalized = currentPath.trim();
@@ -63,16 +71,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final TextEditingController _connectController = TextEditingController();
   final TextEditingController _createController = TextEditingController();
+  late final TextEditingController _weeklyInstructionController;
+  late final TextEditingController _monthlyInstructionController;
+  late final TextEditingController _claudeCliPathController;
+  late final TextEditingController _codexCliPathController;
+  late final TextEditingController _apiKeyController;
+  late final TextEditingController _modelController;
+  final ClaudeCodeService _claudeService = ClaudeCodeService();
+  final CodexCliService _codexService = CodexCliService();
+  final AnthropicApiService _anthropicService = AnthropicApiService();
 
   _SettingsPane _selectedPane = _SettingsPane.storage;
   List<RepoEntry> _cachedRepos = [];
   bool _isRepoLoading = false;
   bool _isRepoMutating = false;
   String? _repoError;
+  _AiProbe _aiProbe = _AiProbe.idle;
 
   @override
   void initState() {
     super.initState();
+    final settings = widget.settingsController.value;
+    _weeklyInstructionController =
+        TextEditingController(text: settings.weeklyInstruction);
+    _monthlyInstructionController =
+        TextEditingController(text: settings.monthlyInstruction);
+    _claudeCliPathController =
+        TextEditingController(text: settings.claudeCliPath);
+    _codexCliPathController =
+        TextEditingController(text: settings.codexCliPath);
+    _apiKeyController = TextEditingController(text: settings.anthropicApiKey);
+    _modelController = TextEditingController(text: settings.anthropicModel);
     _loadCachedRepos();
   }
 
@@ -80,6 +109,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _connectController.dispose();
     _createController.dispose();
+    _weeklyInstructionController.dispose();
+    _monthlyInstructionController.dispose();
+    _claudeCliPathController.dispose();
+    _codexCliPathController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -300,6 +335,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: AppDimensions.spacingSm),
                   _NavigationItem(
+                    selectionKey: 'ai',
+                    label: 'AI',
+                    description: 'Weekly/Monthly instructions & provider',
+                    icon: Icons.auto_awesome_rounded,
+                    isSelected: _selectedPane == _SettingsPane.ai,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.ai),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
                     selectionKey: 'sync',
                     label: 'Sync',
                     description: 'Polling and cadence',
@@ -322,11 +367,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          TextButton.icon(
+            onPressed: () =>
+                SettingsJsonDialog.show(context, widget.settingsController),
+            icon: Icon(Icons.data_object_rounded,
+                size: 15, color: c.textSecondary),
+            label: const Text('JSON으로 편집'),
+            style: TextButton.styleFrom(
+              foregroundColor: c.textSecondary,
+              padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
+              textStyle: Theme.of(context).textTheme.labelMedium,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingXs),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(
               foregroundColor: c.textSecondary,
               padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
             ),
             child: Text(
               'Done',
@@ -348,11 +408,384 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildStoragePane(c, settings, recentRepos);
       case _SettingsPane.editor:
         return _buildEditorPane(c, settings);
+      case _SettingsPane.ai:
+        return _buildAiPane(c, settings);
       case _SettingsPane.sync:
         return _buildSyncPane(c, settings);
       case _SettingsPane.shortcuts:
         return _buildShortcutsPane(c);
     }
+  }
+
+  Widget _buildAiPane(AppColorsExtension c, AppSettings settings) {
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.ai),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'AI review',
+            description:
+                '캘린더 아래 Weekly/Monthly 버튼의 2단계 리뷰 생성에 사용할 연동 '
+                '방식과 지침을 설정합니다. 생성은 항상 버튼을 눌렀을 때만 실행됩니다.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'AI 요약 연동',
+            description:
+                '위클리/먼슬리 리뷰를 어떤 방식으로 생성할지 설정합니다. Anthropic '
+                'API 키 또는 로컬 CLI(Claude Code, Codex)를 사용할 수 있습니다.',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        settings.aiEnabled ? 'Enabled' : 'Disabled',
+                        style: AppTextStyles.captionBold
+                            .copyWith(color: c.textPrimary),
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: settings.aiEnabled,
+                      onChanged: (value) {
+                        widget.settingsController.setAiEnabled(value);
+                        setState(() => _aiProbe = _AiProbe.idle);
+                      },
+                    ),
+                  ],
+                ),
+                if (settings.aiEnabled) ...[
+                  const SizedBox(height: AppDimensions.spacingLg),
+                  _SectionLabel(label: '연동 방식'),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  Wrap(
+                    spacing: AppDimensions.spacingSm,
+                    children: [
+                      _providerChip(
+                        c,
+                        label: 'Anthropic API',
+                        selected:
+                            settings.aiProvider == AppSettings.providerApi,
+                        onSelected: () =>
+                            _selectProvider(AppSettings.providerApi),
+                      ),
+                      _providerChip(
+                        c,
+                        label: 'Claude Code CLI',
+                        selected:
+                            settings.aiProvider == AppSettings.providerCli,
+                        onSelected: () =>
+                            _selectProvider(AppSettings.providerCli),
+                      ),
+                      _providerChip(
+                        c,
+                        label: 'Codex CLI',
+                        selected:
+                            settings.aiProvider == AppSettings.providerCodex,
+                        onSelected: () =>
+                            _selectProvider(AppSettings.providerCodex),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppDimensions.spacingLg),
+                  if (settings.aiProvider == AppSettings.providerApi)
+                    ..._buildApiProviderFields(c)
+                  else if (settings.aiProvider == AppSettings.providerCodex)
+                    ..._buildCodexCliFields(c)
+                  else
+                    ..._buildClaudeCliFields(c),
+                  if (_aiProbe == _AiProbe.available ||
+                      _aiProbe == _AiProbe.unavailable)
+                    _buildProbeResult(c, settings),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: '위클리 지침',
+            description:
+                '주간 리뷰(2단계) 생성 시 모델에 전달되는 지침입니다. 1단계에서 '
+                '체크한 항목이 컨텍스트로 함께 전달됩니다.',
+            action: _ActionButton(
+              label: 'Reset',
+              onTap: () {
+                _weeklyInstructionController.text =
+                    AppSettings.defaultWeeklyInstruction;
+                widget.settingsController.setWeeklyInstruction(
+                  AppSettings.defaultWeeklyInstruction,
+                );
+              },
+            ),
+            child: TextField(
+              controller: _weeklyInstructionController,
+              minLines: 3,
+              maxLines: 8,
+              style: AppTextStyles.caption
+                  .copyWith(color: c.textPrimary, height: 1.5),
+              decoration: const InputDecoration(
+                hintText: '이번 주에 한 일을 정리해 주세요...',
+              ),
+              onChanged: (value) =>
+                  widget.settingsController.setWeeklyInstruction(value),
+            ),
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: '먼슬리 지침',
+            description:
+                '월간 리뷰(2단계) 생성 시 모델에 전달되는 지침입니다. 1단계에서 '
+                '체크한 항목이 컨텍스트로 함께 전달됩니다.',
+            action: _ActionButton(
+              label: 'Reset',
+              onTap: () {
+                _monthlyInstructionController.text =
+                    AppSettings.defaultMonthlyInstruction;
+                widget.settingsController.setMonthlyInstruction(
+                  AppSettings.defaultMonthlyInstruction,
+                );
+              },
+            ),
+            child: TextField(
+              controller: _monthlyInstructionController,
+              minLines: 3,
+              maxLines: 8,
+              style: AppTextStyles.caption
+                  .copyWith(color: c.textPrimary, height: 1.5),
+              decoration: const InputDecoration(
+                hintText: '이번 달의 성과와 다음 달 목표를 정리해 주세요...',
+              ),
+              onChanged: (value) =>
+                  widget.settingsController.setMonthlyInstruction(value),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Switches the AI provider and resets the probe (its result belongs to the
+  /// previously selected provider).
+  void _selectProvider(String provider) {
+    widget.settingsController.setAiProvider(provider);
+    setState(() => _aiProbe = _AiProbe.idle);
+  }
+
+  List<Widget> _buildApiProviderFields(AppColorsExtension c) {
+    return [
+      Text(
+        'console.anthropic.com에서 발급한 API 키(sk-ant-...)를 입력하세요. '
+        '결제 설정이 필요하며 Claude.ai 구독과 별개로 사용량만큼 과금됩니다.',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _apiKeyController,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(hintText: 'sk-ant-...'),
+              onChanged: (value) {
+                widget.settingsController.setAnthropicApiKey(value);
+                setState(() => _aiProbe = _AiProbe.idle);
+              },
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _ActionButton(
+            label: _aiProbe == _AiProbe.checking ? 'Checking...' : 'Test',
+            onTap: _aiProbe == _AiProbe.checking ? null : _probe,
+          ),
+        ],
+      ),
+      const SizedBox(height: AppDimensions.spacingLg),
+      _SectionLabel(label: '모델'),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Text(
+        '기본값은 ${AppSettings.defaultAnthropicModel} 입니다. 모델 id를 바꿔 '
+        '비용과 품질을 조절할 수 있습니다.',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      TextField(
+        controller: _modelController,
+        style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+        decoration: const InputDecoration(hintText: AppSettings.defaultAnthropicModel),
+        onChanged: (value) =>
+            widget.settingsController.setAnthropicModel(value),
+      ),
+    ];
+  }
+
+  List<Widget> _buildClaudeCliFields(AppColorsExtension c) {
+    return [
+      Text(
+        'Claude Code CLI(claude --print)로 리뷰를 생성합니다. CLI가 구독 계정으로 '
+        '로그인되어 있으면 구독을 사용합니다. 비워두면 일반 설치 경로를 자동으로 찾고, '
+        'macOS GUI 앱에서 찾지 못하면 절대 경로를 입력하세요 (예: /opt/homebrew/bin/claude).',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _claudeCliPathController,
+              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(hintText: 'claude'),
+              onChanged: (value) {
+                widget.settingsController.setClaudeCliPath(value);
+                setState(() => _aiProbe = _AiProbe.idle);
+              },
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _ActionButton(
+            label: _aiProbe == _AiProbe.checking ? 'Checking...' : 'Test',
+            onTap: _aiProbe == _AiProbe.checking ? null : _probe,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  List<Widget> _buildCodexCliFields(AppColorsExtension c) {
+    return [
+      Text(
+        'OpenAI Codex CLI(codex exec)로 리뷰를 생성합니다. CLI가 ChatGPT 계정으로 '
+        '로그인되어 있어야 하며(codex login), 모델은 CLI 기본값을 사용합니다. '
+        '비워두면 일반 설치 경로를 자동으로 찾고, 찾지 못하면 절대 경로를 입력하세요 '
+        '(예: /opt/homebrew/bin/codex).',
+        style: Theme.of(context)
+            .textTheme
+            .labelSmall!
+            .copyWith(color: c.textSecondary, height: 1.5),
+      ),
+      const SizedBox(height: AppDimensions.spacingSm),
+      Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _codexCliPathController,
+              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(hintText: 'codex'),
+              onChanged: (value) {
+                widget.settingsController.setCodexCliPath(value);
+                setState(() => _aiProbe = _AiProbe.idle);
+              },
+            ),
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+          _ActionButton(
+            label: _aiProbe == _AiProbe.checking ? 'Checking...' : 'Test',
+            onTap: _aiProbe == _AiProbe.checking ? null : _probe,
+          ),
+        ],
+      ),
+    ];
+  }
+
+  Widget _buildProbeResult(AppColorsExtension c, AppSettings settings) {
+    final ok = _aiProbe == _AiProbe.available;
+    final String message;
+    switch (settings.aiProvider) {
+      case AppSettings.providerApi:
+        message = ok
+            ? 'API 키가 확인되었습니다.'
+            : 'API 키를 확인하지 못했습니다. 키와 네트워크를 확인하세요.';
+      case AppSettings.providerCodex:
+        message = ok
+            ? 'Codex CLI를 찾았습니다. 로그인 문제는 생성 시점에 표시됩니다.'
+            : 'Codex CLI를 찾지 못했습니다. 경로를 확인하세요.';
+      default:
+        message = ok
+            ? 'Claude Code를 찾았습니다.'
+            : 'Claude Code를 찾지 못했습니다. 경로를 확인하세요.';
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimensions.spacingSm),
+      child: Row(
+        children: [
+          Icon(
+            ok
+                ? Icons.check_circle_outline_rounded
+                : Icons.error_outline_rounded,
+            size: 14,
+            color: ok ? c.success : c.error,
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.micro.copyWith(color: ok ? c.success : c.error),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _providerChip(
+    AppColorsExtension c, {
+    required String label,
+    required bool selected,
+    required VoidCallback onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      showCheckmark: false,
+      backgroundColor: c.surface,
+      selectedColor: c.accent,
+      side: BorderSide(color: selected ? c.accent : c.border),
+      labelStyle: AppTextStyles.captionSemibold.copyWith(
+        color: selected ? Colors.white : c.textSecondary,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+      ),
+    );
+  }
+
+  Future<void> _probe() async {
+    setState(() => _aiProbe = _AiProbe.checking);
+    final settings = widget.settingsController.value;
+    // Defense-in-depth: the probe must never crash the app, whatever a provider
+    // call does. Any unexpected error simply reports "unavailable".
+    var ok = false;
+    try {
+      if (settings.aiProvider == AppSettings.providerApi) {
+        ok = await _anthropicService.validateKey(apiKey: _apiKeyController.text);
+      } else if (settings.aiProvider == AppSettings.providerCodex) {
+        ok = await _codexService.isAvailable(
+            cliPath: _codexCliPathController.text);
+      } else {
+        ok = await _claudeService.isAvailable(
+            cliPath: _claudeCliPathController.text);
+      }
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() => _aiProbe = ok ? _AiProbe.available : _AiProbe.unavailable);
   }
 
   Widget _buildStoragePane(
@@ -503,6 +936,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: 'Reading & zoom',
             description:
                 'Tune reading density and make sure zoom interactions feel immediate.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: 'Appearance',
+            description:
+                '라이트/다크 또는 시스템 설정을 따릅니다. 메뉴바 팝오버에도 함께 적용됩니다.',
+            child: Wrap(
+              spacing: AppDimensions.spacingSm,
+              children: [
+                _providerChip(
+                  c,
+                  label: 'System',
+                  selected: settings.themeMode == AppThemeMode.system,
+                  onSelected: () => widget.settingsController
+                      .setThemeMode(AppThemeMode.system),
+                ),
+                _providerChip(
+                  c,
+                  label: 'Light',
+                  selected: settings.themeMode == AppThemeMode.light,
+                  onSelected: () =>
+                      widget.settingsController.setThemeMode(AppThemeMode.light),
+                ),
+                _providerChip(
+                  c,
+                  label: 'Dark',
+                  selected: settings.themeMode == AppThemeMode.dark,
+                  onSelected: () =>
+                      widget.settingsController.setThemeMode(AppThemeMode.dark),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
@@ -774,8 +1239,11 @@ class _NavigationItem extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
-      child: AnimatedContainer(
-        duration: AppDimensions.animFast,
+      // Plain Container (not AnimatedContainer): selection must change atomically
+      // with the icon/text/bar, which switch instantly. Animating only the
+      // background/border made the previously-selected item linger and read as a
+      // flicker when a different item was clicked.
+      child: Container(
         padding: const EdgeInsets.symmetric(
           horizontal: AppDimensions.spacingMd,
           vertical: AppDimensions.spacingMd,

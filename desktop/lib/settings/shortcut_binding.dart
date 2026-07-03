@@ -5,7 +5,8 @@ enum ShortcutAction {
   openSettings('설정 열기'),
   zoomIn('확대'),
   zoomOut('축소'),
-  search('검색');
+  search('검색'),
+  closeTab('탭 닫기');
 
   const ShortcutAction(this.label);
   final String label;
@@ -122,5 +123,10 @@ const List<ShortcutBinding> defaultShortcutBindings = [
     key: LogicalKeyboardKey.keyF,
     meta: true,
     shift: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.closeTab,
+    key: LogicalKeyboardKey.keyW,
+    meta: true,
   ),
 ];

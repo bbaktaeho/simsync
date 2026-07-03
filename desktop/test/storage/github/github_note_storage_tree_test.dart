@@ -75,6 +75,10 @@ content of $title''';
             'truncated': truncated,
           }),
           200,
+          // GitHub serves UTF-8; tree paths may contain non-Latin1 chars
+          // (e.g. `N주차` review folders). Without this the mock's default
+          // Latin1 body encoding throws on those paths.
+          headers: const {'content-type': 'application/json; charset=utf-8'},
         );
       }
 
@@ -387,6 +391,47 @@ content of $title''';
       // Only the B.md blob should be fetched, not A.md or C.md.
       expect(blobGets.length, 1);
       expect(blobGets.first, endsWith('B.md'));
+    });
+
+    test(
+        'listAllNotes excludes review files in non-day folders and never fetches them',
+        () async {
+      final pathToSha = {
+        'notes/2026-06/01/Note A.md': 'sha-a',
+        // Reviews live in non-day folders — must be ignored by the note list.
+        'notes/2026-06/1주차/weekly-review.md': 'sha-w',
+        'notes/2026-06/monthly-review.md': 'sha-m',
+      };
+      final pathToMd = {
+        'notes/2026-06/01/Note A.md': md('a', 'Note A', DateTime(2026, 6, 1)),
+        'notes/2026-06/1주차/weekly-review.md': '# Weekly Review\n\n- did things',
+        'notes/2026-06/monthly-review.md': '# Monthly Review',
+      };
+      final mock = makeTreeMock(
+        notePathToSha: pathToSha,
+        notePathToMarkdown: pathToMd,
+      );
+
+      final apiClient = GitHubApiClient(
+        token: token,
+        owner: owner,
+        repo: repo,
+        httpClient: mock.client,
+      );
+      final storage = GitHubNoteStorage(apiClient, branch: branch);
+
+      final notes = await storage.listAllNotes();
+      expect(notes.length, 1);
+      expect(notes.first.id, 'a');
+
+      // Review files are filtered by path → never even fetched as blobs.
+      final contentGets = mock.requests
+          .where((r) => r.method == 'GET')
+          .map((r) => Uri.decodeFull(r.url.path))
+          .where((p) => p.contains('/contents/'))
+          .toList();
+      expect(contentGets.any((p) => p.contains('weekly-review')), isFalse);
+      expect(contentGets.any((p) => p.contains('monthly-review')), isFalse);
     });
 
     test('listDates extracts day directories from tree without API calls',
