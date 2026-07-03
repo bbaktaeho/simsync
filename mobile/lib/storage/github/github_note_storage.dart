@@ -215,6 +215,16 @@ class GitHubNoteStorage implements NoteStorage {
     return 'notes/$yearMonth';
   }
 
+  /// Matches a day-note path `notes/YYYY-MM/DD/<file>.md`. Review files live in
+  /// non-numeric folders (`notes/YYYY-MM/N주차/...`) or directly under the month
+  /// (`notes/YYYY-MM/monthly-review.md`), so they don't match and stay out of
+  /// the note list.
+  static final RegExp _dailyNotePathRe =
+      RegExp(r'^notes/\d{4}-\d{2}/\d{1,2}/[^/]+\.md$');
+
+  static bool _isDailyNotePath(String path) =>
+      _dailyNotePathRe.hasMatch(path);
+
   // --- Serialization ---
 
   /// Serializes a Note to markdown with YAML frontmatter.
@@ -341,7 +351,11 @@ class GitHubNoteStorage implements NoteStorage {
   }
 
   Future<List<Note>> _listAllNotesFromTree(Map<String, String> tree) async {
-    final paths = tree.keys.toList();
+    // Only `notes/YYYY-MM/DD/*.md` are day notes. Files in non-day folders
+    // (e.g. review files under `notes/YYYY-MM/N주차/` written by desktop) are
+    // excluded so they never surface in the note list — and are not needlessly
+    // fetched/parsed.
+    final paths = tree.keys.where(_isDailyNotePath).toList();
     await _hydrateNotesFromTree(paths: paths, tree: tree);
     _pruneStaleEntries(currentPaths: paths.toSet());
     final notes = paths

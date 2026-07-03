@@ -16,9 +16,15 @@ class AppSettingsController extends ChangeNotifier {
   static const String searchContextLinesKey = 'search_context_lines';
   static const String weeklyInstructionKey = 'weekly_instruction';
   static const String monthlyInstructionKey = 'monthly_instruction';
-  static const String claudeCodeEnabledKey = 'claude_code_enabled';
+  static const String aiEnabledKey = 'ai_enabled';
   static const String claudeCliPathKey = 'claude_cli_path';
-  static const String weeklyProviderKey = 'weekly_provider';
+  static const String codexCliPathKey = 'codex_cli_path';
+  static const String aiProviderKey = 'ai_provider';
+
+  /// Pre-unification keys (the AI settings were once claude/weekly-specific).
+  /// Still read as load-time fallbacks so existing devices keep their values.
+  static const String legacyClaudeCodeEnabledKey = 'claude_code_enabled';
+  static const String legacyWeeklyProviderKey = 'weekly_provider';
   static const String anthropicApiKeyKey = 'anthropic_api_key';
   static const String anthropicModelKey = 'anthropic_model';
   static const String themeModeKey = 'theme_mode';
@@ -65,10 +71,15 @@ class AppSettingsController extends ChangeNotifier {
           AppSettings.defaultWeeklyInstruction,
       monthlyInstruction: prefs.getString(monthlyInstructionKey) ??
           AppSettings.defaultMonthlyInstruction,
-      claudeCodeEnabled: prefs.getBool(claudeCodeEnabledKey) ?? false,
+      aiEnabled: prefs.getBool(aiEnabledKey) ??
+          prefs.getBool(legacyClaudeCodeEnabledKey) ??
+          false,
       claudeCliPath: prefs.getString(claudeCliPathKey) ?? '',
-      weeklyProvider:
-          prefs.getString(weeklyProviderKey) ?? AppSettings.providerApi,
+      codexCliPath: prefs.getString(codexCliPathKey) ?? '',
+      aiProvider: _sanitizeProvider(
+        prefs.getString(aiProviderKey) ??
+            prefs.getString(legacyWeeklyProviderKey),
+      ),
       anthropicApiKey: prefs.getString(anthropicApiKeyKey) ?? '',
       anthropicModel: prefs.getString(anthropicModelKey) ??
           AppSettings.defaultAnthropicModel,
@@ -76,6 +87,18 @@ class AppSettingsController extends ChangeNotifier {
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
+  }
+
+  /// Clamps a stored/imported provider value to a known one; unknown → API.
+  static String _sanitizeProvider(String? value) {
+    switch (value) {
+      case AppSettings.providerCli:
+        return AppSettings.providerCli;
+      case AppSettings.providerCodex:
+        return AppSettings.providerCodex;
+      default:
+        return AppSettings.providerApi;
+    }
   }
 
   static AppThemeMode _parseThemeMode(String? name) {
@@ -174,21 +197,20 @@ class AppSettingsController extends ChangeNotifier {
       applied.add('monthlyInstruction');
     }
 
-    final claudeCodeEnabled = json['claudeCodeEnabled'];
-    if (claudeCodeEnabled is bool) {
-      next = next.copyWith(claudeCodeEnabled: claudeCodeEnabled);
-      await prefs.setBool(claudeCodeEnabledKey, claudeCodeEnabled);
-      applied.add('claudeCodeEnabled');
+    // Accept the legacy claude/weekly key names from older exports.
+    final aiEnabled = json['aiEnabled'] ?? json['claudeCodeEnabled'];
+    if (aiEnabled is bool) {
+      next = next.copyWith(aiEnabled: aiEnabled);
+      await prefs.setBool(aiEnabledKey, aiEnabled);
+      applied.add('aiEnabled');
     }
 
-    final weeklyProvider = json['weeklyProvider'];
-    if (weeklyProvider is String) {
-      final v = weeklyProvider == AppSettings.providerCli
-          ? AppSettings.providerCli
-          : AppSettings.providerApi;
-      next = next.copyWith(weeklyProvider: v);
-      await prefs.setString(weeklyProviderKey, v);
-      applied.add('weeklyProvider');
+    final aiProvider = json['aiProvider'] ?? json['weeklyProvider'];
+    if (aiProvider is String) {
+      final v = _sanitizeProvider(aiProvider);
+      next = next.copyWith(aiProvider: v);
+      await prefs.setString(aiProviderKey, v);
+      applied.add('aiProvider');
     }
 
     final anthropicModel = json['anthropicModel'];
@@ -293,11 +315,11 @@ class AppSettingsController extends ChangeNotifier {
     await prefs.setString(monthlyInstructionKey, next);
   }
 
-  Future<void> setClaudeCodeEnabled(bool value) async {
-    _value = _value.copyWith(claudeCodeEnabled: value);
+  Future<void> setAiEnabled(bool value) async {
+    _value = _value.copyWith(aiEnabled: value);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(claudeCodeEnabledKey, value);
+    await prefs.setBool(aiEnabledKey, value);
   }
 
   Future<void> setClaudeCliPath(String value) async {
@@ -308,14 +330,20 @@ class AppSettingsController extends ChangeNotifier {
     await prefs.setString(claudeCliPathKey, trimmed);
   }
 
-  Future<void> setWeeklyProvider(String value) async {
-    final next = value == AppSettings.providerCli
-        ? AppSettings.providerCli
-        : AppSettings.providerApi;
-    _value = _value.copyWith(weeklyProvider: next);
+  Future<void> setCodexCliPath(String value) async {
+    final trimmed = value.trim();
+    _value = _value.copyWith(codexCliPath: trimmed);
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(weeklyProviderKey, next);
+    await prefs.setString(codexCliPathKey, trimmed);
+  }
+
+  Future<void> setAiProvider(String value) async {
+    final next = _sanitizeProvider(value);
+    _value = _value.copyWith(aiProvider: next);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(aiProviderKey, next);
   }
 
   Future<void> setAnthropicApiKey(String value) async {

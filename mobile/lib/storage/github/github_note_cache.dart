@@ -93,9 +93,20 @@ class GitHubNoteCache {
     final file = File(path);
     await file.parent.create(recursive: true);
     // Atomic write: stage to a sibling tmp file, then rename. Avoids partial
-    // files if the process is killed mid-write.
-    final tmp = File('$path.tmp');
-    await tmp.writeAsString(encoded);
-    await tmp.rename(path);
+    // files if the process is killed mid-write. The tmp name is unique per
+    // cache INSTANCE: re-selecting a repo rebuilds the storage bundle, so an
+    // old instance's debounced write can overlap the new instance on the same
+    // path — a shared tmp name would let one rename the other's staging file
+    // away mid-write.
+    final tmp = File('$path.${identityHashCode(this)}.tmp');
+    try {
+      await tmp.writeAsString(encoded);
+      await tmp.rename(path);
+    } on FileSystemException {
+      // Lost a write race with another instance (or the disk refused). This is
+      // a cache: dropping one snapshot is fine, but the failure must not
+      // poison [_saveInFlight] — a failed future in the chain would silently
+      // kill every future save for this instance's lifetime.
+    }
   }
 }

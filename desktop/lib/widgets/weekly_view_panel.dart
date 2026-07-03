@@ -19,7 +19,7 @@ class WeeklyViewPanel extends StatelessWidget {
   final ValueChanged<Note>? onNoteTap;
 
   /// Whether the AI review integration is enabled in settings.
-  final bool claudeEnabled;
+  final bool aiEnabled;
 
   /// Holds two-stage review state (outline + review) OUTSIDE this widget so
   /// generation continues across panel rebuilds / unmounts.
@@ -46,7 +46,7 @@ class WeeklyViewPanel extends StatelessWidget {
     required this.weekNotes,
     required this.reviewController,
     this.onNoteTap,
-    this.claudeEnabled = false,
+    this.aiEnabled = false,
     this.onGenerateOutline,
     this.onGenerateReview,
     this.onToggleOutlineItem,
@@ -88,7 +88,7 @@ class WeeklyViewPanel extends StatelessWidget {
       ),
       children: [
         _TwoStageReviewSection(
-          enabled: claudeEnabled,
+          enabled: aiEnabled,
           controller: reviewController,
           entryOf: () => reviewController.weekly(weekStart),
           title: 'Weekly Summary',
@@ -309,8 +309,9 @@ class _TwoStageReviewSectionState extends State<_TwoStageReviewSection> {
                   .copyWith(color: c.textSecondary, height: 1.5),
               children: [
                 const TextSpan(
-                  text: '설정 > Weekly에서 요약을 켜고 provider(Anthropic API 키 또는 '
-                      'Claude Code CLI)를 설정하면 2단계 리뷰를 사용할 수 있습니다. ',
+                  text: '설정 > AI에서 AI 요약을 켜고 연동 방식(Anthropic API 키, '
+                      'Claude Code CLI 또는 Codex CLI)을 설정하면 2단계 리뷰를 사용할 수 '
+                      '있습니다. ',
                 ),
                 if (widget.onOpenSettings != null)
                   TextSpan(
@@ -748,7 +749,7 @@ class MonthlyViewPanel extends StatelessWidget {
   final DateTime month; // any day within the month
   final List<Note> monthNotes;
   final ValueChanged<Note>? onNoteTap;
-  final bool claudeEnabled;
+  final bool aiEnabled;
   final ReviewController reviewController;
   final VoidCallback? onGenerateOutline;
   final VoidCallback? onGenerateReview;
@@ -762,7 +763,7 @@ class MonthlyViewPanel extends StatelessWidget {
     required this.monthNotes,
     required this.reviewController,
     this.onNoteTap,
-    this.claudeEnabled = false,
+    this.aiEnabled = false,
     this.onGenerateOutline,
     this.onGenerateReview,
     this.onToggleOutlineItem,
@@ -798,7 +799,7 @@ class MonthlyViewPanel extends StatelessWidget {
       ),
       children: [
         _TwoStageReviewSection(
-          enabled: claudeEnabled,
+          enabled: aiEnabled,
           controller: reviewController,
           entryOf: () => reviewController.monthly(month),
           title: 'Monthly Summary',

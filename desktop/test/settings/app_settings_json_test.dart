@@ -18,6 +18,7 @@ void main() {
         weeklyInstruction: 'do it',
         anthropicApiKey: 'sk-ant-SECRET',
         claudeCliPath: '/opt/homebrew/bin/claude',
+        codexCliPath: '/opt/homebrew/bin/codex',
       );
       final json = settings.toSyncJson();
 
@@ -25,6 +26,7 @@ void main() {
       expect(json.containsKey('anthropicApiKey'), isFalse);
       expect(json.containsKey('localNotePath'), isFalse);
       expect(json.containsKey('claudeCliPath'), isFalse);
+      expect(json.containsKey('codexCliPath'), isFalse);
       expect(jsonEncode(json).contains('SECRET'), isFalse);
 
       // Portable fields are present.
@@ -42,7 +44,7 @@ void main() {
       await a.load();
       await a.setContentScale(1.4);
       await a.setSearchContextLines(5);
-      await a.setWeeklyProvider(AppSettings.providerCli);
+      await a.setAiProvider(AppSettings.providerCodex);
       final json = a.exportSyncJson();
 
       SharedPreferences.setMockInitialValues({});
@@ -52,9 +54,24 @@ void main() {
 
       expect(b.value.contentScale, closeTo(1.4, 0.001));
       expect(b.value.searchContextLines, 5);
-      expect(b.value.weeklyProvider, AppSettings.providerCli);
+      expect(b.value.aiProvider, AppSettings.providerCodex);
       // The importing device keeps its own local path.
       expect(b.value.localNotePath, '/y');
+    });
+
+    test('imports the legacy claude/weekly key names from older exports',
+        () async {
+      final c = AppSettingsController(defaultLocalNotePath: '/x');
+      await c.load();
+
+      final applied = await c.importSyncJson({
+        'claudeCodeEnabled': true,
+        'weeklyProvider': AppSettings.providerCli,
+      });
+
+      expect(c.value.aiEnabled, isTrue);
+      expect(c.value.aiProvider, AppSettings.providerCli);
+      expect(applied, containsAll(['aiEnabled', 'aiProvider']));
     });
 
     test('clamps out-of-range values and ignores secret/unknown keys', () async {
@@ -64,7 +81,7 @@ void main() {
       final applied = await c.importSyncJson({
         'contentScale': 99.0, // above max → clamp
         'searchContextLines': 0, // below min → clamp
-        'weeklyProvider': 'nonsense', // invalid → falls back to api
+        'aiProvider': 'nonsense', // invalid → falls back to api
         'anthropicApiKey': 'sk-ant-LEAK', // not a portable key → ignored
         'localNotePath': '/evil', // device path → ignored
         'unknownKey': 'x', // ignored
@@ -72,7 +89,7 @@ void main() {
 
       expect(c.value.contentScale, AppSettings.maxContentScale);
       expect(c.value.searchContextLines, AppSettings.minSearchContextLines);
-      expect(c.value.weeklyProvider, AppSettings.providerApi);
+      expect(c.value.aiProvider, AppSettings.providerApi);
       // Secrets / device paths are untouched by an import.
       expect(c.value.anthropicApiKey, '');
       expect(c.value.localNotePath, '/x');

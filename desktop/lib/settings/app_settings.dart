@@ -63,15 +63,18 @@ class AppSettings {
       '다음 달에 이어갈 목표를 간결하게 정리해 주세요. '
       '한국어로 작성하고, 핵심만 불릿으로 정리하세요.';
 
-  /// Weekly summary provider. [providerApi] calls the Anthropic Messages API
-  /// directly with an API key (robust, works from a GUI app). [providerCli]
-  /// shells out to the Claude Code CLI (uses a Claude.ai subscription when the
-  /// CLI is logged in via subscription).
+  /// AI review provider (weekly + monthly). [providerApi] calls the Anthropic
+  /// Messages API directly with an API key (robust, works from a GUI app).
+  /// [providerCli] shells out to the Claude Code CLI (uses a Claude.ai
+  /// subscription when the CLI is logged in via subscription). [providerCodex]
+  /// shells out to the OpenAI Codex CLI (`codex exec`, ChatGPT subscription).
   static const String providerApi = 'api';
   static const String providerCli = 'cli';
+  static const String providerCodex = 'codex';
 
   /// Default model for the stage-2 review (Sonnet — balanced; Opus is overkill
-  /// for summarization). User-overridable in settings.
+  /// for summarization). User-overridable in settings. Applies to the Anthropic
+  /// API and Claude CLI providers only — Codex always uses its own default.
   static const String defaultAnthropicModel = 'claude-sonnet-4-6';
 
   /// Fixed fast, cheap model for the stage-1 outline (simple extraction/recall).
@@ -89,14 +92,17 @@ class AppSettings {
   /// Instruction text sent to the model when generating the monthly summary.
   final String monthlyInstruction;
 
-  /// Whether the weekly-summary AI integration is enabled.
-  final bool claudeCodeEnabled;
+  /// Whether the AI review integration (weekly + monthly) is enabled.
+  final bool aiEnabled;
 
   /// Optional absolute path to the `claude` CLI. Empty means auto-detect.
   final String claudeCliPath;
 
-  /// Selected weekly summary provider: [providerApi] or [providerCli].
-  final String weeklyProvider;
+  /// Optional absolute path to the `codex` CLI. Empty means auto-detect.
+  final String codexCliPath;
+
+  /// Selected AI provider: [providerApi], [providerCli] or [providerCodex].
+  final String aiProvider;
 
   /// Anthropic API key (`sk-ant-...`) for the API provider.
   final String anthropicApiKey;
@@ -115,9 +121,10 @@ class AppSettings {
     this.searchContextLines = defaultSearchContextLines,
     this.weeklyInstruction = defaultWeeklyInstruction,
     this.monthlyInstruction = defaultMonthlyInstruction,
-    this.claudeCodeEnabled = false,
+    this.aiEnabled = false,
     this.claudeCliPath = '',
-    this.weeklyProvider = providerApi,
+    this.codexCliPath = '',
+    this.aiProvider = providerApi,
     this.anthropicApiKey = '',
     this.anthropicModel = defaultAnthropicModel,
     this.themeMode = AppThemeMode.system,
@@ -131,9 +138,10 @@ class AppSettings {
     int? searchContextLines,
     String? weeklyInstruction,
     String? monthlyInstruction,
-    bool? claudeCodeEnabled,
+    bool? aiEnabled,
     String? claudeCliPath,
-    String? weeklyProvider,
+    String? codexCliPath,
+    String? aiProvider,
     String? anthropicApiKey,
     String? anthropicModel,
     AppThemeMode? themeMode,
@@ -146,9 +154,10 @@ class AppSettings {
       searchContextLines: searchContextLines ?? this.searchContextLines,
       weeklyInstruction: weeklyInstruction ?? this.weeklyInstruction,
       monthlyInstruction: monthlyInstruction ?? this.monthlyInstruction,
-      claudeCodeEnabled: claudeCodeEnabled ?? this.claudeCodeEnabled,
+      aiEnabled: aiEnabled ?? this.aiEnabled,
       claudeCliPath: claudeCliPath ?? this.claudeCliPath,
-      weeklyProvider: weeklyProvider ?? this.weeklyProvider,
+      codexCliPath: codexCliPath ?? this.codexCliPath,
+      aiProvider: aiProvider ?? this.aiProvider,
       anthropicApiKey: anthropicApiKey ?? this.anthropicApiKey,
       anthropicModel: anthropicModel ?? this.anthropicModel,
       themeMode: themeMode ?? this.themeMode,
@@ -159,8 +168,9 @@ class AppSettings {
   /// to JSON and synced via `settings/settings.json`.
   ///
   /// Deliberately EXCLUDES [anthropicApiKey] (a secret that must never be
-  /// committed to the synced repo) and [localNotePath] / [claudeCliPath]
-  /// (device-specific paths that differ per machine). Those stay local-only.
+  /// committed to the synced repo) and [localNotePath] / [claudeCliPath] /
+  /// [codexCliPath] (device-specific paths that differ per machine). Those stay
+  /// local-only.
   Map<String, Object?> toSyncJson() => {
         'contentScale': contentScale,
         'syncIntervalSeconds': syncIntervalSeconds,
@@ -168,12 +178,14 @@ class AppSettings {
         'searchContextLines': searchContextLines,
         'weeklyInstruction': weeklyInstruction,
         'monthlyInstruction': monthlyInstruction,
-        'claudeCodeEnabled': claudeCodeEnabled,
-        'weeklyProvider': weeklyProvider,
+        'aiEnabled': aiEnabled,
+        'aiProvider': aiProvider,
         'anthropicModel': anthropicModel,
       };
 
   /// Keys carried by [toSyncJson]; used to validate/round-trip imports.
+  /// Imports additionally accept the legacy `claudeCodeEnabled` /
+  /// `weeklyProvider` keys from JSON exported by older builds.
   static const List<String> syncJsonKeys = [
     'contentScale',
     'syncIntervalSeconds',
@@ -181,8 +193,8 @@ class AppSettings {
     'searchContextLines',
     'weeklyInstruction',
     'monthlyInstruction',
-    'claudeCodeEnabled',
-    'weeklyProvider',
+    'aiEnabled',
+    'aiProvider',
     'anthropicModel',
   ];
 
@@ -197,9 +209,10 @@ class AppSettings {
         other.searchContextLines == searchContextLines &&
         other.weeklyInstruction == weeklyInstruction &&
         other.monthlyInstruction == monthlyInstruction &&
-        other.claudeCodeEnabled == claudeCodeEnabled &&
+        other.aiEnabled == aiEnabled &&
         other.claudeCliPath == claudeCliPath &&
-        other.weeklyProvider == weeklyProvider &&
+        other.codexCliPath == codexCliPath &&
+        other.aiProvider == aiProvider &&
         other.anthropicApiKey == anthropicApiKey &&
         other.anthropicModel == anthropicModel &&
         other.themeMode == themeMode;
@@ -214,9 +227,10 @@ class AppSettings {
     searchContextLines,
     weeklyInstruction,
     monthlyInstruction,
-    claudeCodeEnabled,
+    aiEnabled,
     claudeCliPath,
-    weeklyProvider,
+    codexCliPath,
+    aiProvider,
     anthropicApiKey,
     anthropicModel,
     themeMode,
