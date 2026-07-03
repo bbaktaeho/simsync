@@ -45,7 +45,7 @@ Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 �
 |------|------|
 | **Flutter / Dart** | adaptive layout (LayoutBuilder/MediaQuery), state management 패턴, `flutter analyze` clean 유지 |
 | **Cross-platform UX** | desktop vs. mobile 차이 (입력 방식, file dialog, OAuth callback, IA) |
-| **GitHub OAuth App** | loopback callback (desktop), Custom URL Scheme `simsync://callback` (mobile), token 안전 저장 |
+| **GitHub OAuth App** | Device Flow (desktop, 시크릿 불요), Custom URL Scheme `simsync://callback` (mobile), token 안전 저장 |
 | **GitHub Contents API** | file CRUD, base64 인코딩, sha 기반 conflict 감지, rate limit 대응 |
 | **Sync patterns** | Last-Write-Wins, polling-based change detection, dirty note 보호 |
 | **Markdown ecosystem** | CommonMark, frontmatter, 편집 UX 패턴 |
@@ -57,8 +57,8 @@ Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 �
 |-----------|-----------|--------|
 | Client (Desktop) | Flutter (Dart) | `desktop/` - macOS/Windows/Linux |
 | Client (Mobile) | Flutter (Dart) | `mobile/` - Android/iOS |
-| Auth (Desktop) | GitHub OAuth App | loopback callback + local session restore |
-| Auth (Mobile) | GitHub OAuth App | Custom URL Scheme (`simsync://callback`) + app_links |
+| Auth (Desktop) | GitHub OAuth App | Device Flow (client_id만, 시크릿 불요) + local session restore |
+| Auth (Mobile) | GitHub OAuth App | Custom URL Scheme (`simsync://callback`) + app_links (아직 redirect flow) |
 | Synced Storage | GitHub Contents API | 로컬 git clone 없이 API로 markdown 파일 CRUD |
 | Local Storage | Local filesystem | 사용자가 고른 디렉토리 아래 markdown 파일 저장 |
 
@@ -142,7 +142,12 @@ Flutter 생태계의 안정적이고 널리 사용되는 패키지를 선택한�
 
 ### Local secrets (`.env.local`)
 
-OAuth client id/secret 등 비밀값은 `.env.local` 에 둔다 (gitignored). 템플릿은 `.env.local.example` 참고.
+**desktop**은 Device Flow를 쓰므로 시크릿이 필요 없다. 공식 앱의 공개 client_id가
+`app_bootstrap.dart`에 기본값으로 포함되어 있어 `.env.local` 없이 빌드해도 로그인이 된다.
+포크에서 자기 OAuth App을 쓸 때만 `--dart-define=SIMSYNC_GITHUB_CLIENT_ID=...` 로 오버라이드한다.
+
+**mobile**은 아직 redirect flow라 빌드 시 client id/secret이 모두 필요하다. 비밀값은
+`.env.local` 에 둔다 (gitignored). 템플릿은 `.env.local.example` 참고.
 
 ```bash
 cp .env.local.example .env.local
@@ -152,7 +157,7 @@ cp .env.local.example .env.local
 set -a; source .env.local; set +a
 ```
 
-새 secret이 필요하면 GitHub → Settings → Developer settings → OAuth Apps 에서 **Reset client secret** 으로 발급받는다. 이미 외부(채팅·로그·git)에 노출된 secret은 즉시 reset 한다.
+새 secret이 필요하면 GitHub → Settings → Developer settings → OAuth Apps 에서 **Reset client secret** 으로 발급받는다. 이미 외부(채팅·로그·git)에 노출된 secret은 즉시 reset 한다. Device Flow는 OAuth App 설정에서 **Enable Device Flow** 가 켜져 있어야 한다.
 
 ### Flutter App
 
