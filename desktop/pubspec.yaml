@@ -31,7 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  crypto: ^3.0.7
   google_fonts: ^8.0.2
   flutter_highlight: ^0.7.0
   flutter_markdown: ^0.7.6

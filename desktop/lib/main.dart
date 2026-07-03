@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app_bootstrap.dart';
 import 'auth/auth_models.dart';
+import 'auth/auth_provider.dart';
 import 'auth/auth_service.dart';
 import 'settings/app_settings.dart';
 import 'settings/app_settings_controller.dart';
@@ -229,8 +230,11 @@ class _AppShellState extends State<_AppShell> {
     ));
   }
 
-  Future<void> _handleLogin() async {
-    final session = await widget.authService.signIn();
+  Future<void> _handleLogin({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async {
+    final session = await widget.authService
+        .signIn(onAuthorizationPrompt: onAuthorizationPrompt);
     if (!mounted) return;
     _session = session;
     _startSessionMonitor();
@@ -481,7 +485,10 @@ class _AppShellState extends State<_AppShell> {
         onConnectRepo: _handleConnectRepo,
       );
     }
-    return LoginScreen(onGitHubLogin: _handleLogin);
+    return LoginScreen(
+      onGitHubLogin: _handleLogin,
+      onCancelLogin: widget.authService.cancelSignIn,
+    );
   }
 }
 

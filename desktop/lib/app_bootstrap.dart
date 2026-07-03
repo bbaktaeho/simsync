@@ -141,9 +141,15 @@ ThemeMode flutterThemeMode(AppThemeMode mode) {
 }
 
 AuthService createDefaultAuthService() {
+  // Device flow needs only the client id, which is public by design — the
+  // official SimSync id is the compiled-in default so release binaries (and
+  // source builds without .env.local) sign in out of the box. Forks can point
+  // at their own OAuth App with --dart-define=SIMSYNC_GITHUB_CLIENT_ID=...
   const config = GitHubOAuthConfig(
-    clientId: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_ID'),
-    clientSecret: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_SECRET'),
+    clientId: String.fromEnvironment(
+      'SIMSYNC_GITHUB_CLIENT_ID',
+      defaultValue: 'Ov23likpPsGK5U4sCxI5',
+    ),
   );
 
   return DefaultAuthService(

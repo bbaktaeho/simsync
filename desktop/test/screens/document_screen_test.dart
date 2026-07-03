@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simsync/auth/auth_models.dart';
+import 'package:simsync/auth/auth_provider.dart';
 import 'package:simsync/auth/auth_service.dart';
 import 'package:simsync/main.dart';
 import 'package:simsync/models/note.dart';
@@ -88,7 +89,13 @@ class _FakeAuthService implements AuthService {
   Future<AuthSession?> restoreSession() async => restoreResult;
 
   @override
-  Future<AuthSession> signIn() async => throw UnimplementedError();
+  Future<AuthSession> signIn({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async =>
+      throw UnimplementedError();
+
+  @override
+  void cancelSignIn() {}
 
   @override
   Future<bool> validateSession(AuthSession session) async => true;

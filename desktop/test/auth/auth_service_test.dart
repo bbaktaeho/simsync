@@ -258,10 +258,15 @@ class _FakeAuthProvider implements AuthProvider {
   final List<String> validatedAccessTokens = [];
 
   @override
-  Future<AuthGrant> signIn() async {
+  Future<AuthGrant> signIn({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async {
     signInCalls += 1;
     return result;
   }
+
+  @override
+  void cancelSignIn() {}
 
   @override
   Future<SessionValidationResult> validateAccessToken(String accessToken) async {
