@@ -19,6 +19,14 @@ List<(String, TextStyle?)> _flatten(InlineSpan root) {
   return out;
 }
 
+/// [fragment]를 포함하는 첫 스팬의 스타일 (Task 6/12 렌더링 검증용).
+TextStyle? _styleOf(TextSpan root, String fragment) {
+  for (final (text, style) in _flatten(root)) {
+    if (text.contains(fragment)) return style;
+  }
+  return null;
+}
+
 Future<TextSpan> _build(
   WidgetTester tester,
   String text, {
@@ -294,5 +302,125 @@ void main() {
   ) async {
     final span = await _build(tester, '```nonsenselang\nsome code\n```');
     expect(span.toPlainText(), '```nonsenselang\nsome code\n```');
+  });
+
+  group('pipe blockquote', () {
+    testWidgets('| 인용문 줄도 문자 보존 invariant를 지킨다', (tester) async {
+      const text = '| quoted line\nplain';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+
+    testWidgets('레거시 > 인용문도 여전히 매칭된다', (tester) async {
+      const text = '> old quote';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+  });
+
+  group('details rendering', () {
+    const closed = '<details>\n<summary>제목</summary>\nbody line\n</details>';
+    const opened = '<details open>\n<summary>제목</summary>\nbody line\n</details>';
+
+    String joined(TextSpan span) => _flatten(span).map((e) => e.$1).join();
+
+    testWidgets('invariant: 닫힘/펼침/활성 모두 문자 보존', (tester) async {
+      expect(joined(await _build(tester, closed)), closed);
+      expect(joined(await _build(tester, opened)), opened);
+      expect(
+        joined(await _build(tester, closed,
+            focused: true,
+            selection: const TextSelection.collapsed(offset: 12))),
+        closed,
+      ); // summary 줄 활성
+    });
+
+    testWidgets('태그 줄은 inactive에서 높이까지 접힌다', (tester) async {
+      final span = await _build(tester, closed);
+      final style = _styleOf(span, '<details>');
+      expect(style!.color, Colors.transparent);
+      // 극소 폰트 = 실제 접힘 (에디터 스트럿이 극소 명시값이라 floor 없음).
+      expect(style.fontSize, lessThan(1));
+    });
+
+    testWidgets('닫힌 블록의 본문 줄은 개행까지 접힌다', (tester) async {
+      final span = await _build(tester, closed);
+      final style = _styleOf(span, 'body line');
+      expect(style!.color, Colors.transparent);
+      expect(style.fontSize, lessThan(1));
+      // 본문 줄을 끝내는 개행도 접혀야 라인 박스가 완전히 사라진다.
+      final flat = _flatten(span);
+      final bodyIdx = flat.indexWhere((e) => e.$1.contains('body line'));
+      final newline = flat[bodyIdx + 1];
+      expect(newline.$1, '\n');
+      expect(newline.$2!.fontSize, lessThan(1));
+    });
+
+    testWidgets('열린 블록의 본문 줄은 일반 렌더링된다', (tester) async {
+      final span = await _build(tester, opened);
+      final style = _styleOf(span, 'body line');
+      expect(style?.color, isNot(Colors.transparent));
+      expect(style?.fontSize ?? 100, greaterThan(1));
+    });
+
+    testWidgets('캐럿이 태그 줄에 있으면 원문이 노출된다 (편집 가능)', (tester) async {
+      final span = await _build(tester, closed,
+          focused: true, selection: const TextSelection.collapsed(offset: 2));
+      final style = _styleOf(span, '<details>');
+      expect(style!.color, isNot(Colors.transparent));
+      expect(style.fontSize ?? 100, greaterThan(1));
+    });
+
+    testWidgets('summary 제목은 semibold, 태그는 마커로 접힌다', (tester) async {
+      final span = await _build(tester, closed);
+      expect(_styleOf(span, '제목')!.fontWeight, FontWeight.w600);
+      // 접기 버튼은 텍스트 왼쪽 거터에 있으므로 <summary> 태그는 다른 인라인
+      // 마커처럼 폭을 극소로 접는다.
+      final marker = _styleOf(span, '<summary>');
+      expect(marker!.color, Colors.transparent);
+      expect(marker.fontSize, lessThan(1));
+    });
+  });
+
+  group('detectFenceLanguage', () {
+    test('명백한 JSON을 감지한다', () {
+      const block = '{\n  "name": "simsync",\n  "count": 3,\n  "ok": true\n}';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNotNull);
+    });
+
+    test('명백한 Dart/유사 코드를 감지한다', () {
+      const block = '''
+void main() {
+  final list = <int>[1, 2, 3];
+  for (final v in list) {
+    print(v);
+  }
+}''';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNotNull);
+    });
+
+    test('평범한 산문은 감지하지 않는다 (낮은 relevance)', () {
+      const block = '오늘은 날씨가 좋았다 그래서 산책을 했다';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNull);
+    });
+  });
+
+  group('image line rendering', () {
+    const img = '<img src="assets/a.png" width="300" height="200">';
+
+    testWidgets('invariant: img 줄도 문자 보존', (tester) async {
+      final text = 'before\n$img\nafter';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+
+    testWidgets('img 줄 첫 글자가 이미지 높이만큼 폰트를 갖는다 (높이 예약)',
+        (tester) async {
+      final span = await _build(tester, img);
+      final style = _styleOf(span, '<');
+      // 예약 높이 = (height 200 + 패딩 12) * scale(1.0)
+      expect(style!.fontSize, greaterThan(200));
+      expect(style.color, Colors.transparent);
+    });
   });
 }

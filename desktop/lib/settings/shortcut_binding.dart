@@ -6,7 +6,14 @@ enum ShortcutAction {
   zoomIn('확대'),
   zoomOut('축소'),
   search('검색'),
-  closeTab('탭 닫기');
+  closeTab('탭 닫기'),
+  formatBold('굵게'),
+  formatItalic('기울임'),
+  formatStrikethrough('취소선'),
+  formatInlineCode('인라인 코드'),
+  formatLink('링크'),
+  formatCheckbox('체크박스'),
+  formatHighlight('하이라이트');
 
   const ShortcutAction(this.label);
   final String label;
@@ -128,5 +135,46 @@ const List<ShortcutBinding> defaultShortcutBindings = [
     action: ShortcutAction.closeTab,
     key: LogicalKeyboardKey.keyW,
     meta: true,
+  ),
+  // Formatting shortcuts. We require shift for strikethrough, checkbox, and
+  // highlight to avoid conflicts with system shortcuts like cmd+X (cut),
+  // cmd+C (copy), and cmd+H (hide app on macOS).
+  ShortcutBinding(
+    action: ShortcutAction.formatBold,
+    key: LogicalKeyboardKey.keyB,
+    meta: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatItalic,
+    key: LogicalKeyboardKey.keyI,
+    meta: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatStrikethrough,
+    key: LogicalKeyboardKey.keyX,
+    meta: true,
+    shift: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatInlineCode,
+    key: LogicalKeyboardKey.keyE,
+    meta: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatLink,
+    key: LogicalKeyboardKey.keyK,
+    meta: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatCheckbox,
+    key: LogicalKeyboardKey.keyC,
+    meta: true,
+    shift: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.formatHighlight,
+    key: LogicalKeyboardKey.keyH,
+    meta: true,
+    shift: true,
   ),
 ];
