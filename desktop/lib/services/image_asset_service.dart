@@ -30,6 +30,9 @@ class ImageAssetService {
     required Uint8List bytes,
     required String extension,
   }) async {
+    if (extension.contains('/') || extension.contains('..')) {
+      throw ArgumentError.value(extension, 'extension', '경로 문자를 포함할 수 없다');
+    }
     final stamp = _stampFmt.format(DateTime.now());
     final rand =
         _random.nextInt(0x10000).toRadixString(16).padLeft(4, '0');
@@ -51,19 +54,31 @@ class ImageAssetService {
     final memory = _memoryCache[rel];
     if (memory != null) return memory;
 
-    final cacheFile = await _diskCacheFileFor(rel);
-    if (cacheFile != null && await cacheFile.exists()) {
-      final bytes = await cacheFile.readAsBytes();
-      _cacheInMemory(rel, bytes);
-      return bytes;
+    File? cacheFile;
+    try {
+      cacheFile = await _diskCacheFileFor(rel);
+      if (cacheFile != null && await cacheFile.exists()) {
+        final bytes = await cacheFile.readAsBytes();
+        _cacheInMemory(rel, bytes);
+        return bytes;
+      }
+    } catch (_) {
+      // 디스크 캐시는 최적화일 뿐 — 읽기 실패(손상/삭제/권한)해도 로드는
+      // 성공해야 한다. 스토리지 읽기로 폴백한다.
+      cacheFile = null;
     }
 
     final bytes = await storage.readBinaryFile(rel);
     if (bytes == null) return null;
     _cacheInMemory(rel, bytes);
     if (cacheFile != null) {
-      await cacheFile.parent.create(recursive: true);
-      await cacheFile.writeAsBytes(bytes);
+      try {
+        await cacheFile.parent.create(recursive: true);
+        await cacheFile.writeAsBytes(bytes);
+      } catch (_) {
+        // 디스크 캐시는 최적화일 뿐 — 쓰기 실패(디스크 부족/권한)해도 이미
+        // 바이트를 확보했으므로 로드는 성공해야 한다.
+      }
     }
     return bytes;
   }

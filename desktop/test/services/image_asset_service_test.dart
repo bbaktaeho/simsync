@@ -63,4 +63,28 @@ void main() {
     expect(await service.loadImage(noteDate: date, src: 'assets/nope.png'),
         isNull);
   });
+
+  test('경로 문자가 든 extension은 거부한다', () async {
+    final service = ImageAssetService(storage: _FakeStorage());
+    expect(
+        () => service.saveImage(
+            noteDate: date, bytes: bytes, extension: '../png'),
+        throwsArgumentError);
+    expect(
+        () =>
+            service.saveImage(noteDate: date, bytes: bytes, extension: 'p/ng'),
+        throwsArgumentError);
+  });
+
+  test('디스크 캐시 실패는 격리된다 — 스토리지 폴백으로 로드 성공', () async {
+    // 유닛 테스트 환경에는 path_provider 플러그인이 없어
+    // getApplicationSupportDirectory()가 throw한다. best-effort 정책이면
+    // 디스크 캐시 계층의 예외가 loadImage를 깨지 않고 스토리지로 폴백한다.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final storage = _FakeStorage();
+    storage.files['notes/2026-07/19/assets/a.png'] = bytes;
+    final service = ImageAssetService(storage: storage, useDiskCache: true);
+    expect(await service.loadImage(noteDate: date, src: 'assets/a.png'), bytes);
+    expect(storage.reads, 1);
+  });
 }
