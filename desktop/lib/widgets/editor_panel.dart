@@ -311,6 +311,43 @@ class EditorPanelState extends State<EditorPanel> {
   /// 삽입 시 기본 표시 폭 (px). 원본이 더 작으면 원본 폭.
   static const int _defaultImageWidth = 480;
 
+  /// 이미지 태그를 캐럿이 있는 줄의 끝 뒤에 삽입한다. 줄 중간에서 붙여넣어도
+  /// 줄을 쪼개지 않고, 태그 앞뒤로 빈 줄 하나를 보장해 위/아래 텍스트와
+  /// 붙어 보이지 않게 한다 (이미 빈 줄이 있으면 추가하지 않는다).
+  void _insertImageBlock(String tag) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final caret = (selection.isValid ? selection.baseOffset : text.length)
+        .clamp(0, text.length);
+    var lineEnd = text.indexOf('\n', caret);
+    if (lineEnd == -1) lineEnd = text.length;
+    final insertAt = lineEnd;
+
+    final before = text.substring(0, insertAt);
+    final prefix = before.isEmpty || before.endsWith('\n\n')
+        ? ''
+        : before.endsWith('\n')
+            ? '\n'
+            : '\n\n';
+    final after = text.substring(insertAt);
+    final suffix = after.isEmpty
+        ? '\n'
+        : after.startsWith('\n\n')
+            ? ''
+            : after.startsWith('\n')
+                ? '\n'
+                : '\n\n';
+
+    final insertion = '$prefix$tag$suffix';
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(insertAt, insertAt, insertion),
+      selection: TextSelection.collapsed(
+          offset: insertAt + prefix.length + tag.length),
+    );
+    _onContentChanged();
+  }
+
   /// 이미지 바이트를 업로드하고 캐럿 위치에 <img> 태그를 삽입한다.
   /// (테스트에서 직접 호출할 수 있게 public)
   Future<void> attachImageBytes(Uint8List bytes, String extension) async {
@@ -330,7 +367,7 @@ class EditorPanelState extends State<EditorPanel> {
       // 업로드 중 노트가 바뀌었으면 삽입하지 않는다 (_save의 stale 타이머 가드와
       // 같은 패턴). 파일은 원래 노트의 assets/에 저장돼 있으므로 유실은 없다.
       if (widget.note?.id != noteId || _loadedNoteId != noteId) return;
-      _insertBlock(serializeImageTag(src, w, h));
+      _insertImageBlock(serializeImageTag(src, w, h));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -897,16 +934,20 @@ class EditorPanelState extends State<EditorPanel> {
         // Tables render as real, scrollable widgets over their hidden markdown,
         // on top of the field so they can take taps and show the +col/+row
         // controls when the caret is inside them.
+        //
+        // 각 오버레이 레이어는 ClipRect로 감싼다: CustomMultiChildLayout은
+        // 자식 페인트를 클리핑하지 않아서, 스크롤로 밴드가 뷰포트를 벗어나면
+        // 오버레이(특히 큰 이미지)가 에디터 영역 밖까지 그려진다.
         Positioned.fill(
-          child: _buildTableOverlays(c, bodyStyle),
+          child: ClipRect(child: _buildTableOverlays(c, bodyStyle)),
         ),
-        // details 접기/펼치기 chevron — summary 줄 왼쪽에 겹친다.
+        // details 접기/펼치기 chevron — summary 줄 왼쪽 거터에 겹친다.
         Positioned.fill(
-          child: _buildDetailsToggles(c),
+          child: ClipRect(child: _buildDetailsToggles(c)),
         ),
         // 인라인 이미지 — 숨겨진 <img> 줄의 예약 밴드 위에 그린다.
         Positioned.fill(
-          child: _buildImageOverlays(c),
+          child: ClipRect(child: _buildImageOverlays(c)),
         ),
       ],
     );
