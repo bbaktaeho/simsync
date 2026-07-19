@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/github.dart';
@@ -465,6 +467,7 @@ class MarkdownEditingController extends TextEditingController {
   String? _autoLang(String blockText, int blockStart, bool caretInside) {
     if (_autoLangCache.containsKey(blockText)) {
       final cached = _autoLangCache[blockText];
+      if (_stickyAutoLang.length >= _autoLangCacheLimit) _stickyAutoLang.clear();
       _stickyAutoLang[blockStart] = cached;
       return cached;
     }
@@ -472,6 +475,7 @@ class MarkdownEditingController extends TextEditingController {
     final lang = detectFenceLanguage(blockText);
     if (_autoLangCache.length >= _autoLangCacheLimit) _autoLangCache.clear();
     _autoLangCache[blockText] = lang;
+    if (_stickyAutoLang.length >= _autoLangCacheLimit) _stickyAutoLang.clear();
     _stickyAutoLang[blockStart] = lang;
     return lang;
   }
@@ -501,7 +505,15 @@ class MarkdownEditingController extends TextEditingController {
   /// (무채색 유지). highlight의 auto-detection은 비싸므로 호출부에서 캐시한다.
   static String? detectFenceLanguage(String blockText) {
     try {
-      final result = highlight.parse(blockText, autoDetection: true);
+      final result = runZoned(
+        () => highlight.parse(blockText, autoDetection: true),
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) {
+            // highlight의 autoDetection은 언어별 시도 중 실패를 print로 흘린다.
+            // 라이브러리 내부 노이즈이므로 이 호출 범위에서만 무음 처리한다.
+          },
+        ),
+      );
       if ((result.relevance ?? 0) < 5) return null;
       return result.language;
     } catch (_) {
