@@ -48,6 +48,20 @@ void main() {
     expect(find.byType(InlineImageView), findsOneWidget);
   });
 
+  testWidgets('이미지 오버레이 레이어는 ClipRect로 감싸여 에디터 밖으로 새지 않는다',
+      (tester) async {
+    // CustomMultiChildLayout은 자식 페인트를 클리핑하지 않으므로, 스크롤로
+    // 밴드가 뷰포트를 벗어나면 ClipRect가 없을 때 이미지가 에디터 영역
+    // 밖까지 그려진다 (v0.2.1 버그).
+    await pump(tester, note('$img\ntext'));
+    await tester.pumpAndSettle();
+    expect(
+      find.ancestor(
+          of: find.byType(InlineImageView), matching: find.byType(ClipRect)),
+      findsWidgets,
+    );
+  });
+
   testWidgets('onLoadImage가 없으면 오버레이를 만들지 않는다', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildLightTheme(),
@@ -104,6 +118,65 @@ void main() {
     expect(uploaded, _png);
     expect(saved!.content,
         '<img src="assets/img-test.png" width="1" height="1">\n');
+  });
+
+  testWidgets('줄 중간에서 첨부해도 줄을 쪼개지 않고 앞뒤 빈 줄과 함께 삽입된다',
+      (tester) async {
+    Note? saved;
+    final key = GlobalKey<EditorPanelState>();
+    await tester.pumpWidget(MaterialApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: EditorPanel(
+          key: key,
+          note: note('abc\ndef'),
+          onNoteChanged: (n) => saved = n,
+          onLoadImage: (src) async => _png,
+          onAttachImage: (bytes, ext) async => 'assets/img-test.$ext',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 캐럿을 'abc' 중간(offset 1)에 둔다.
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    field.controller!.selection = const TextSelection.collapsed(offset: 1);
+    await tester.runAsync(() async {
+      await key.currentState!.attachImageBytes(_png, 'png');
+      await Future<void>.delayed(const Duration(seconds: 2));
+    });
+    await tester.pump();
+    // 'abc'는 쪼개지지 않고, 태그는 줄 끝 뒤에 빈 줄과 함께 들어간다.
+    expect(saved!.content,
+        'abc\n\n<img src="assets/img-test.png" width="1" height="1">\n\ndef');
+  });
+
+  testWidgets('앞뒤에 이미 빈 줄이 있으면 추가하지 않는다', (tester) async {
+    Note? saved;
+    final key = GlobalKey<EditorPanelState>();
+    await tester.pumpWidget(MaterialApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: EditorPanel(
+          key: key,
+          note: note('abc\n\n\n\ndef'),
+          onNoteChanged: (n) => saved = n,
+          onLoadImage: (src) async => _png,
+          onAttachImage: (bytes, ext) async => 'assets/img-test.$ext',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    // 캐럿을 두 번째 빈 줄(offset 5)에 둔다: 'abc\n' + '' + '\n' + ...
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    field.controller!.selection = const TextSelection.collapsed(offset: 5);
+    await tester.runAsync(() async {
+      await key.currentState!.attachImageBytes(_png, 'png');
+      await Future<void>.delayed(const Duration(seconds: 2));
+    });
+    await tester.pump();
+    // 기존 빈 줄을 재사용하고 이중 빈 줄을 쌓지 않는다.
+    expect(saved!.content,
+        'abc\n\n<img src="assets/img-test.png" width="1" height="1">\n\ndef');
   });
 
   testWidgets('onAttachImage 실패 시 태그를 삽입하지 않고 스낵바를 띄운다',
