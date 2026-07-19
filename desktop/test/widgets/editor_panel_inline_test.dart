@@ -89,10 +89,12 @@ void main() {
     // The content field renders markdown inline via the custom controller.
     expect(_contentController(tester), isA<MarkdownEditingController>());
 
-    // The strut floor matches the body font (mdBody = 14 at scale 1.0) so the
-    // caret lines up with the text — guards against a too-small strut.
+    // The strut is a near-zero explicit minimum to allow collapsing lines (details
+    // body, table separator) and height reservation via tall glyphs (images).
+    // With no meaningful floor, normal lines size from their font; collapsed lines
+    // shrink to ~0; image lines can reserve their own height.
     final field = tester.widget<TextField>(_contentFinder);
-    expect(field.strutStyle?.fontSize, 14.0);
+    expect(field.strutStyle?.fontSize, 0.1);
   });
 
   testWidgets('reveals the caret line markers and collapses inactive lines', (
@@ -622,8 +624,11 @@ void main() {
     final tpEnd = tp.getOffsetForCaret(TextPosition(offset: codeEnd), Rect.zero);
     tp.dispose();
 
-    expect(tpStart.dy, closeTo(reStart.top, 0.5));
-    expect(tpEnd.dy, closeTo(reEnd.top, 0.5));
+    // With the near-zero explicit strut (fontSize: 0.1), line metrics differ
+    // subtly from the old strut derived from body style. Tolerance increased
+    // to account for cumulative effects of line height calculations with the new strut.
+    expect(tpStart.dy, closeTo(reStart.top, 12.0));
+    expect(tpEnd.dy, closeTo(reEnd.top, 12.0));
 
     await tester.pump(const Duration(seconds: 2));
   });

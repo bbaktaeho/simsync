@@ -664,8 +664,12 @@ class EditorPanelState extends State<EditorPanel> {
             .merge(baseStyle);
     // The decoration painter lays out an identical TextPainter, so the field and
     // the painter must share strut + text scaler + width for the boxes to align.
-    // The strut mirrors the body style so the caret lines up with the text.
-    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
+    // The strut is a near-zero explicit minimum (NOT StrutStyle.disabled:
+    // EditableText inherits a null strut fontSize from the body style, which
+    // resurrects a per-line floor). With no meaningful floor, collapsed lines
+    // (details body, table separator) shrink to ~0 and image lines can reserve
+    // their own height via a tall first glyph. Normal lines size from their font.
+    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
     final textScaler = MediaQuery.textScalerOf(context);
 
     final field = TextField(
