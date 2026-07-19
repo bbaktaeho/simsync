@@ -673,3 +673,62 @@ class DetailsBlockInputFormatter extends TextInputFormatter {
     );
   }
 }
+
+// ── 인라인 이미지 (`<img>` 한 줄 태그) ────────────────────────────────────────
+
+final RegExp _imgLineRe = RegExp(
+    r'^\s*<img\s+src="([^"]+)"\s+width="(\d+)"\s+height="(\d+)"\s*/?>\s*$');
+
+/// 에디터 텍스트에서 찾은 한 줄짜리 `<img>` 태그. width/height를 둘 다
+/// 저장하는 이유: 이미지 바이트를 받기 전에 줄 높이를 예약해야 한다.
+class ImageRegion {
+  const ImageRegion({
+    required this.start,
+    required this.end,
+    required this.src,
+    required this.width,
+    required this.height,
+  });
+
+  /// 줄 시작 오프셋 (inclusive).
+  final int start;
+
+  /// 줄 끝 오프셋 (exclusive).
+  final int end;
+
+  final String src;
+  final int width;
+  final int height;
+}
+
+/// 한 줄 `<img src width height>` 태그를 모두 찾는다. fence 내부는 무시.
+/// 형식이 깨진 태그는 매칭되지 않아 원문 텍스트로 노출된다(자가 복구).
+List<ImageRegion> findImageRegions(String text) {
+  if (text.isEmpty) return const [];
+  final lines = text.split('\n');
+  final result = <ImageRegion>[];
+  var offset = 0;
+  var inFence = false;
+  for (final line in lines) {
+    if (_fenceRe.hasMatch(line)) {
+      inFence = !inFence;
+    } else if (!inFence) {
+      final m = _imgLineRe.firstMatch(line);
+      if (m != null) {
+        result.add(ImageRegion(
+          start: offset,
+          end: offset + line.length,
+          src: m.group(1)!,
+          width: int.parse(m.group(2)!),
+          height: int.parse(m.group(3)!),
+        ));
+      }
+    }
+    offset += line.length + 1;
+  }
+  return result;
+}
+
+/// 이미지 태그 직렬화. [_imgLineRe] 파서와 왕복 대칭.
+String serializeImageTag(String src, int width, int height) =>
+    '<img src="$src" width="$width" height="$height">';

@@ -352,4 +352,36 @@ void main() {
       expect(result.text, '> ');
     });
   });
+
+  group('findImageRegions', () {
+    test('한 줄 img 태그를 파싱한다', () {
+      const text = 'before\n<img src="assets/a.png" width="300" height="200">\nafter';
+      final regions = findImageRegions(text);
+      expect(regions, hasLength(1));
+      final r = regions.first;
+      expect(r.src, 'assets/a.png');
+      expect(r.width, 300);
+      expect(r.height, 200);
+      expect(text.substring(r.start, r.end),
+          '<img src="assets/a.png" width="300" height="200">');
+    });
+
+    test('serializeImageTag는 파서와 왕복 대칭이다', () {
+      final tag = serializeImageTag('assets/a.png', 300, 200);
+      final regions = findImageRegions(tag);
+      expect(regions.single.src, 'assets/a.png');
+      expect(regions.single.width, 300);
+      expect(regions.single.height, 200);
+    });
+
+    test('fence 안의 img 태그는 무시한다', () {
+      const text = '```\n<img src="a.png" width="1" height="1">\n```';
+      expect(findImageRegions(text), isEmpty);
+    });
+
+    test('속성이 빠진 태그는 무시한다 (원문 노출 = 자가 복구)', () {
+      const text = '<img src="a.png" width="300">';
+      expect(findImageRegions(text), isEmpty);
+    });
+  });
 }

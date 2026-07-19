@@ -136,6 +136,12 @@ class MarkdownEditingController extends TextEditingController {
       detailsSummaryStarts.add(d.summaryLineRange.start);
     }
 
+    // 인라인 이미지 줄: 태그 텍스트는 항상 숨기고 오버레이가 이미지를 그린다.
+    final imageStarts = <int, ImageRegion>{};
+    for (final r in findImageRegions(text)) {
+      imageStarts[r.start] = r;
+    }
+
     final lines = text.split('\n');
     final autoLangByFence =
         _computeAutoLangs(lines, selStart, selEnd, hasActive);
@@ -173,6 +179,8 @@ class MarkdownEditingController extends TextEditingController {
             style: base.copyWith(fontSize: 0.1, color: Colors.transparent)));
       } else if (tableRowStarts.contains(lineStart)) {
         spans.add(TextSpan(text: line, style: base.copyWith(color: Colors.transparent)));
+      } else if (imageStarts.containsKey(lineStart)) {
+        spans.addAll(_imageLineSpans(line, imageStarts[lineStart]!, base));
       } else if (detailsTagStarts.contains(lineStart)) {
         spans.add(TextSpan(text: line, style: _hideKeepHeight(base, c, active)));
       } else if (detailsSummaryStarts.contains(lineStart)) {
@@ -207,6 +215,33 @@ class MarkdownEditingController extends TextEditingController {
     return active
         ? lineStyle.copyWith(color: c.textMuted)
         : lineStyle.copyWith(color: Colors.transparent);
+  }
+
+  /// 이미지 줄 상하 여백 (오버레이의 그림 여백과 일치해야 한다).
+  static const double imagePadding = 6.0;
+
+  /// 이미지 줄: 첫 글자에 (이미지 높이 + 여백) 크기 폰트를 줘 줄 높이를
+  /// 예약하고, 전체를 투명 처리한다. 오버레이가 이 밴드 위에 이미지를 그린다.
+  /// 캐럿이 줄에 있어도 원문을 노출하지 않는다(높이 요동 방지) — 수정/삭제는
+  /// 오버레이 컨트롤로 한다.
+  List<InlineSpan> _imageLineSpans(String line, ImageRegion r, TextStyle base) {
+    final reserved = (r.height + imagePadding * 2) * scale;
+    return [
+      TextSpan(
+        text: line.substring(0, 1),
+        style: base.copyWith(
+            fontSize: reserved, height: 1.0, color: Colors.transparent),
+      ),
+      if (line.length > 1)
+        TextSpan(
+          text: line.substring(1),
+          style: base.copyWith(
+              fontSize: 0.1,
+              height: 1.0,
+              letterSpacing: 0,
+              color: Colors.transparent),
+        ),
+    ];
   }
 
   static final RegExp _summaryLine =

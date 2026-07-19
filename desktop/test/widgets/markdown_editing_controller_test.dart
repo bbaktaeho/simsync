@@ -382,4 +382,23 @@ void main() {
       expect(MarkdownEditingController.detectFenceLanguage(block), isNull);
     });
   });
+
+  group('image line rendering', () {
+    const img = '<img src="assets/a.png" width="300" height="200">';
+
+    testWidgets('invariant: img 줄도 문자 보존', (tester) async {
+      final text = 'before\n$img\nafter';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+
+    testWidgets('img 줄 첫 글자가 이미지 높이만큼 폰트를 갖는다 (높이 예약)',
+        (tester) async {
+      final span = await _build(tester, img);
+      final style = _styleOf(span, '<');
+      // 예약 높이 = (height 200 + 패딩 12) * scale(1.0)
+      expect(style!.fontSize, greaterThan(200));
+      expect(style.color, Colors.transparent);
+    });
+  });
 }
