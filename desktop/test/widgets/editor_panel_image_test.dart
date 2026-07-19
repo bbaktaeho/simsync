@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -127,5 +128,55 @@ void main() {
     expect(find.byType(SnackBar), findsOneWidget);
     final field = tester.widget<TextField>(find.byType(TextField).last);
     expect(field.controller!.text, '');
+  });
+
+  testWidgets('업로드 중 노트가 바뀌면 새 노트에 태그를 삽입하지 않는다',
+      (tester) async {
+    final noteA = note('');
+    final now = DateTime(2026, 7, 19);
+    final noteB = Note(
+      id: 'n2', noteDate: now, title: 'other', content: '',
+      isDefault: false, tags: [], createdAt: now, updatedAt: now,
+    );
+    final completer = Completer<String>();
+    final key = GlobalKey<EditorPanelState>();
+
+    Widget build(Note n) => MaterialApp(
+          theme: buildLightTheme(),
+          home: Scaffold(
+            body: EditorPanel(
+              key: key,
+              note: n,
+              onNoteChanged: (_) {},
+              onLoadImage: (src) async => _png,
+              onAttachImage: (bytes, ext) => completer.future,
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(build(noteA));
+    await tester.pumpAndSettle();
+
+    // 업로드(onAttachImage)가 완료되기 전 상태로 첨부를 시작한다.
+    late Future<void> attach;
+    await tester.runAsync(() async {
+      attach = key.currentState!.attachImageBytes(_png, 'png');
+      // decodeImageFromList가 끝나고 onAttach await에 도달할 시간을 준다.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+
+    // 업로드가 끝나기 전에 다른 노트로 전환한다 (State는 재사용됨).
+    await tester.pumpWidget(build(noteB));
+    await tester.pumpAndSettle();
+
+    // 이제 업로드가 완료된다 — 태그는 어디에도 삽입되면 안 된다.
+    await tester.runAsync(() async {
+      completer.complete('assets/img-late.png');
+      await attach;
+    });
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    expect(field.controller!.text, isNot(contains('<img')));
   });
 }

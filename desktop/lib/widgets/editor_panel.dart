@@ -286,7 +286,9 @@ class EditorPanelState extends State<EditorPanel> {
   /// (테스트에서 직접 호출할 수 있게 public)
   Future<void> attachImageBytes(Uint8List bytes, String extension) async {
     final onAttach = widget.onAttachImage;
-    if (onAttach == null || widget.isReadOnly || widget.note == null) return;
+    final note = widget.note;
+    if (onAttach == null || widget.isReadOnly || note == null) return;
+    final noteId = note.id;
     try {
       final decoded = await decodeImageFromList(bytes);
       final natW = decoded.width;
@@ -296,6 +298,9 @@ class EditorPanelState extends State<EditorPanel> {
       final w = math.min(natW, _defaultImageWidth);
       final h = (natH * w / natW).round();
       if (!mounted) return;
+      // 업로드 중 노트가 바뀌었으면 삽입하지 않는다 (_save의 stale 타이머 가드와
+      // 같은 패턴). 파일은 원래 노트의 assets/에 저장돼 있으므로 유실은 없다.
+      if (widget.note?.id != noteId || _loadedNoteId != noteId) return;
       _insertBlock(serializeImageTag(src, w, h));
     } catch (_) {
       if (!mounted) return;
