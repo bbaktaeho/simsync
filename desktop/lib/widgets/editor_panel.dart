@@ -83,10 +83,11 @@ class EditorPanelState extends State<EditorPanel> {
   /// TextPainter 대신 실제 RenderEditable을 직접 조회하는 데 쓴다.
   final GlobalKey _fieldKey = GlobalKey();
 
-  /// 접기 거터 폭: 텍스트 전체가 이만큼 오른쪽에서 시작하고, details 접기
-  /// 버튼과 열림 범위 가이드 라인이 이 안에 그려진다. 본문 텍스트와 접기
-  /// UI가 겹치지 않는다.
-  static const double _foldGutterWidth = 28.0;
+  /// 접기 거터 폭: 에디터의 기존 왼쪽 여백(spacingLg)을 스택 안으로 옮겨
+  /// 거터로 쓴다 — 일반 텍스트 시작 위치는 예전과 동일하고, details 접기
+  /// 버튼과 열림 범위 가이드 라인만 이 여백 안에 그려져 본문과 겹치지
+  /// 않는다. (노트 전체가 밀리지 않는다.)
+  static const double _foldGutterWidth = AppDimensions.spacingLg;
 
   /// 콘텐츠 TextField 내부의 [RenderEditable]. 아직 붙지 않았으면 null.
   RenderEditable? _renderEditable() {
@@ -913,10 +914,9 @@ class EditorPanelState extends State<EditorPanel> {
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
-        // 왼쪽은 접기 거터(_foldGutterWidth)가 스택 안에서 여백 역할을
-        // 겸하므로 바깥 패딩을 줄인다.
+        // 왼쪽 여백은 접기 거터(_foldGutterWidth)가 스택 안에서 대신한다.
         padding: const EdgeInsets.fromLTRB(
-          AppDimensions.spacingSm,
+          0,
           AppDimensions.spacingLg,
           AppDimensions.spacingLg,
           AppDimensions.spacingLg,
@@ -1375,13 +1375,10 @@ class _DetailsToggleButton extends StatelessWidget {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2),
-          child: Icon(
-            open ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
-            size: 24,
-            color: c.textSecondary,
-          ),
+        child: Icon(
+          open ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
+          size: 16,
+          color: c.textSecondary,
         ),
       ),
     );
