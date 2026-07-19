@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -34,6 +36,14 @@ class _MemStorage implements NoteStorage {
   Future<String?> readTextFile(String relativePath) async => null;
   @override
   Future<void> writeTextFile(String relativePath, String content) async {}
+
+  @override
+  String noteDirPath(DateTime noteDate) =>
+      '${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}-${noteDate.day.toString().padLeft(2, '0')}';
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async => null;
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {}
 }
 
 Note _note({
