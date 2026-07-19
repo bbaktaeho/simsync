@@ -546,3 +546,100 @@ List<TableRegion> findTableRegions(String text) {
   }
   return result;
 }
+
+// ── <details> 접기 블록 ─────────────────────────────────────────────────────
+
+final RegExp _detailsOpenRe = RegExp(r'^\s*<details( open)?>\s*$');
+final RegExp _summaryLineRe = RegExp(r'^\s*<summary>.*</summary>\s*$');
+final RegExp _detailsCloseRe = RegExp(r'^\s*</details>\s*$');
+
+/// 에디터 텍스트에서 찾은 `<details>` 블록 하나. 형식(각 요소는 자기 줄):
+///   `<details>` | `<details open>`
+///   `<summary>제목</summary>`
+///   ...본문...
+///   `</details>`
+/// 중첩은 지원하지 않고, 본문에 코드 fence가 있으면 블록을 무시한다.
+class DetailsRegion {
+  const DetailsRegion({
+    required this.start,
+    required this.end,
+    required this.open,
+    required this.detailsLineRange,
+    required this.summaryLineRange,
+    required this.bodyLineRanges,
+    required this.closeLineRange,
+  });
+
+  /// `<details>` 줄 시작 오프셋 (inclusive).
+  final int start;
+
+  /// `</details>` 줄 끝 오프셋 (exclusive).
+  final int end;
+
+  /// `<details open>` 여부. 파일에 저장되는 펼침 상태다.
+  final bool open;
+
+  final ({int start, int end}) detailsLineRange;
+  final ({int start, int end}) summaryLineRange;
+  final List<({int start, int end})> bodyLineRanges;
+  final ({int start, int end}) closeLineRange;
+}
+
+/// 모든 `<details>` 블록을 찾는다. fence 내부와 형식이 안 맞는 블록은 무시.
+List<DetailsRegion> findDetailsRegions(String text) {
+  if (text.isEmpty) return const [];
+  final lines = text.split('\n');
+  final starts = <int>[];
+  var acc = 0;
+  for (final l in lines) {
+    starts.add(acc);
+    acc += l.length + 1;
+  }
+  ({int start, int end}) rangeOf(int i) =>
+      (start: starts[i], end: starts[i] + lines[i].length);
+
+  final result = <DetailsRegion>[];
+  var inFence = false;
+  var i = 0;
+  while (i < lines.length) {
+    if (_fenceRe.hasMatch(lines[i])) {
+      inFence = !inFence;
+      i++;
+      continue;
+    }
+    if (inFence) {
+      i++;
+      continue;
+    }
+    final openMatch = _detailsOpenRe.firstMatch(lines[i]);
+    if (openMatch == null ||
+        i + 1 >= lines.length ||
+        !_summaryLineRe.hasMatch(lines[i + 1])) {
+      i++;
+      continue;
+    }
+    var close = -1;
+    for (var j = i + 2; j < lines.length; j++) {
+      if (_fenceRe.hasMatch(lines[j])) break; // 본문 fence → 블록 무효
+      if (_detailsCloseRe.hasMatch(lines[j])) {
+        close = j;
+        break;
+      }
+    }
+    if (close == -1) {
+      i++;
+      continue;
+    }
+    result.add(DetailsRegion(
+      start: starts[i],
+      end: starts[close] + lines[close].length,
+      open: openMatch.group(1) != null,
+      detailsLineRange: rangeOf(i),
+      summaryLineRange: rangeOf(i + 1),
+      bodyLineRanges: [for (var j = i + 2; j < close; j++) rangeOf(j)],
+      closeLineRange: rangeOf(close),
+    ));
+    i = close + 1;
+  }
+  return result;
+}

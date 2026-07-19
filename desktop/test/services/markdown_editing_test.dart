@@ -267,4 +267,45 @@ void main() {
       expect(result.text, 'hello\n\n');
     });
   });
+
+  group('findDetailsRegions', () {
+    test('닫힌 블록을 파싱한다', () {
+      const text = '<details>\n<summary>제목</summary>\n\n내용\n</details>';
+      final regions = findDetailsRegions(text);
+      expect(regions, hasLength(1));
+      final d = regions.first;
+      expect(d.open, isFalse);
+      expect(d.start, 0);
+      expect(d.end, text.length);
+      expect(text.substring(d.summaryLineRange.start, d.summaryLineRange.end),
+          '<summary>제목</summary>');
+      expect(d.bodyLineRanges, hasLength(2)); // 빈 줄 + '내용'
+    });
+
+    test('open 속성을 읽는다', () {
+      const text = '<details open>\n<summary>t</summary>\nbody\n</details>';
+      expect(findDetailsRegions(text).single.open, isTrue);
+    });
+
+    test('summary 줄이 없으면 무시한다', () {
+      const text = '<details>\nno summary\n</details>';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('닫는 태그가 없으면 무시한다', () {
+      const text = '<details>\n<summary>t</summary>\nbody';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('코드 fence 안의 details는 무시한다', () {
+      const text = '```\n<details>\n<summary>t</summary>\n</details>\n```';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('본문에 fence가 있으면 그 블록은 무시한다', () {
+      const text =
+          '<details>\n<summary>t</summary>\n```\ncode\n```\n</details>';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+  });
 }
