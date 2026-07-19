@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../models/note.dart';
 import '../settings/shortcut_binding.dart';
@@ -37,6 +40,11 @@ class EditorPanel extends StatefulWidget {
   /// 오버레이 비활성(로드 경로가 없는 컨텍스트).
   final Future<Uint8List?> Function(String src)? onLoadImage;
 
+  /// 이미지 바이트를 스토리지에 저장하고 삽입할 src('assets/…')를 돌려준다.
+  /// null이면 이미지 첨부 비활성 (읽기 전용 등).
+  final Future<String> Function(Uint8List bytes, String extension)?
+      onAttachImage;
+
   const EditorPanel({
     super.key,
     this.note,
@@ -51,6 +59,7 @@ class EditorPanel extends StatefulWidget {
     this.onDecreaseContentScale,
     this.onSetContentScale,
     this.onLoadImage,
+    this.onAttachImage,
   });
 
   @override
@@ -266,6 +275,88 @@ class EditorPanelState extends State<EditorPanel> {
     _contentController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+    _onContentChanged();
+  }
+
+  /// 삽입 시 기본 표시 폭 (px). 원본이 더 작으면 원본 폭.
+  static const int _defaultImageWidth = 480;
+
+  /// 이미지 바이트를 업로드하고 캐럿 위치에 <img> 태그를 삽입한다.
+  /// (테스트에서 직접 호출할 수 있게 public)
+  Future<void> attachImageBytes(Uint8List bytes, String extension) async {
+    final onAttach = widget.onAttachImage;
+    if (onAttach == null || widget.isReadOnly || widget.note == null) return;
+    try {
+      final decoded = await decodeImageFromList(bytes);
+      final natW = decoded.width;
+      final natH = decoded.height;
+      decoded.dispose();
+      final src = await onAttach(bytes, extension);
+      final w = math.min(natW, _defaultImageWidth);
+      final h = (natH * w / natW).round();
+      if (!mounted) return;
+      _insertBlock(serializeImageTag(src, w, h));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미지 첨부에 실패했습니다.')),
+      );
+    }
+  }
+
+  Future<void> _attachImageFromPicker() async {
+    if (widget.isReadOnly ||
+        widget.note == null ||
+        widget.onAttachImage == null) {
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+      withData: true,
+    );
+    final file = result?.files.firstOrNull;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+    await attachImageBytes(bytes, (file.extension ?? 'png').toLowerCase());
+  }
+
+  /// cmd+V 인터셉트: 클립보드에 이미지가 있으면 첨부, 아니면 일반 텍스트
+  /// 붙여넣기를 수동 수행한다(이벤트를 가로챘으므로). 우클릭 메뉴 Paste는
+  /// 이 경로를 타지 않는다 — 텍스트만 붙는 기존 동작 유지 (MVP 한계).
+  KeyEventResult _onEditorKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.keyV) {
+      return KeyEventResult.ignored;
+    }
+    if (!HardwareKeyboard.instance.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    if (widget.isReadOnly || widget.note == null || widget.onAttachImage == null) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(_handlePaste());
+    return KeyEventResult.handled;
+  }
+
+  Future<void> _handlePaste() async {
+    final image = await Pasteboard.image;
+    if (image != null) {
+      await attachImageBytes(image, 'png');
+      return;
+    }
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final t = data?.text;
+    if (t == null || t.isEmpty) return;
+    final value = _contentController.value;
+    final start = (value.selection.isValid ? value.selection.start : value.text.length)
+        .clamp(0, value.text.length);
+    final end = (value.selection.isValid ? value.selection.end : start)
+        .clamp(start, value.text.length);
+    _contentController.value = TextEditingValue(
+      text: value.text.replaceRange(start, end, t),
+      selection: TextSelection.collapsed(offset: start + t.length),
     );
     _onContentChanged();
   }
@@ -579,6 +670,12 @@ class EditorPanelState extends State<EditorPanel> {
             ),
             const SizedBox(width: AppDimensions.spacingXs),
             _ToolbarIconButton(
+              icon: Icons.image_outlined,
+              tooltip: '이미지 첨부',
+              onTap: () => unawaited(_attachImageFromPicker()),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
               icon: Icons.format_list_numbered_rounded,
               tooltip: 'Renumber list',
               onTap: _renumberList,
@@ -700,6 +797,12 @@ class EditorPanelState extends State<EditorPanel> {
       ),
     );
 
+    // cmd+V 이미지 붙여넣기를 TextField 기본 paste보다 먼저 가로챈다.
+    final wrappedField = Focus(
+      onKeyEvent: _onEditorKeyEvent,
+      child: field,
+    );
+
     final Widget body = Stack(
       fit: StackFit.expand,
       children: [
@@ -739,7 +842,7 @@ class EditorPanelState extends State<EditorPanel> {
             ),
           ),
         ),
-        field,
+        wrappedField,
         // Tables render as real, scrollable widgets over their hidden markdown,
         // on top of the field so they can take taps and show the +col/+row
         // controls when the caret is inside them.

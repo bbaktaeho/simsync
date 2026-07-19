@@ -12,6 +12,7 @@ import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/codex_cli_service.dart';
+import '../services/image_asset_service.dart';
 import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
@@ -92,6 +93,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return widget.localStorage!;
     }
     return _storage;
+  }
+
+  /// 스토리지별 이미지 자산 서비스 (메모리/디스크 캐시 보존을 위해 재사용).
+  final Map<NoteStorage, ImageAssetService> _imageServices = {};
+
+  ImageAssetService _imageServiceFor(Note note) {
+    final storage = _storageFor(note);
+    return _imageServices.putIfAbsent(
+      storage,
+      () => ImageAssetService(
+        storage: storage,
+        // 원격(synced) 스토리지만 디스크 캐시를 쓴다. 로컬은 원본이 곧 디스크.
+        useDiskCache: identical(storage, _storage),
+      ),
+    );
   }
 
   /// Storage wrapper for AI review files (synced store + optional local mirror).
@@ -1387,6 +1403,20 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,
       onSetContentScale: _setContentScale,
+      onAttachImage: _selectedNote == null || selectedNoteIsReadOnly
+          ? null
+          : (bytes, ext) {
+              final note = _selectedNote!;
+              return _imageServiceFor(note).saveImage(
+                  noteDate: note.noteDate, bytes: bytes, extension: ext);
+            },
+      onLoadImage: _selectedNote == null
+          ? null
+          : (src) {
+              final note = _selectedNote!;
+              return _imageServiceFor(note)
+                  .loadImage(noteDate: note.noteDate, src: src);
+            },
     );
 
     final openTabs = _openTabNotes;
