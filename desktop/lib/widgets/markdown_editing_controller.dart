@@ -40,6 +40,14 @@ class MarkdownEditingController extends TextEditingController {
   final Map<String, List<Node>?> _highlightCache = {};
   static const int _highlightCacheLimit = 2000;
 
+  /// 언어 미지정 fence 블록의 자동 감지 캐시 (블록 내용 → 감지 언어 또는 null).
+  final Map<String, String?> _autoLangCache = {};
+  static const int _autoLangCacheLimit = 100;
+
+  /// 블록 시작 오프셋 → 직전 감지 언어. 캐럿이 블록 안에 있는 동안(내용이
+  /// 계속 바뀌어 캐시 미스가 나는 동안) 전체 재감지 대신 직전 결과를 유지한다.
+  final Map<int, String?> _stickyAutoLang = {};
+
   static final RegExp _heading = RegExp(r'^(#{1,6})(\s+)(.*)$');
   // 인용문: 새 문법은 `| `, 레거시 `> `도 하위 호환으로 계속 렌더링한다.
   // 테이블 줄은 buildTextSpan에서 먼저 걸러지므로 여기 도달하지 않는다.
@@ -127,6 +135,8 @@ class MarkdownEditingController extends TextEditingController {
     }
 
     final lines = text.split('\n');
+    final autoLangByFence =
+        _computeAutoLangs(lines, selStart, selEnd, hasActive);
     final spans = <InlineSpan>[];
     var inFence = false;
     var fenceLang = 'plaintext';
@@ -149,6 +159,9 @@ class MarkdownEditingController extends TextEditingController {
         } else {
           inFence = true;
           fenceLang = _parseFenceLang(line);
+          if (fenceLang == 'plaintext') {
+            fenceLang = autoLangByFence[lineStart] ?? 'plaintext';
+          }
         }
       } else if (inFence) {
         spans.addAll(_codeSpans(line, fenceLang, theme, codeBase));
@@ -409,6 +422,60 @@ class MarkdownEditingController extends TextEditingController {
     return spans;
   }
 
+  /// 언어 미지정 fence 블록마다 자동 감지 언어를 정한다.
+  /// 반환: fence 여는 줄 시작 오프셋 → 언어.
+  Map<int, String> _computeAutoLangs(
+      List<String> lines, int selStart, int selEnd, bool hasActive) {
+    final result = <int, String>{};
+    var offset = 0;
+    var inFence = false;
+    var fenceStart = -1;
+    var explicitLang = false;
+    final content = StringBuffer();
+
+    for (final line in lines) {
+      final lineStart = offset;
+      final lineEnd = offset + line.length;
+      if (_fence.hasMatch(line)) {
+        if (inFence) {
+          if (!explicitLang && content.isNotEmpty) {
+            // 캐럿이 블록(여는 fence..닫는 fence) 안이면 감지를 미룬다.
+            final caretInside =
+                hasActive && selStart <= lineEnd && selEnd >= fenceStart;
+            final lang =
+                _autoLang(content.toString(), fenceStart, caretInside);
+            if (lang != null) result[fenceStart] = lang;
+          }
+          inFence = false;
+        } else {
+          inFence = true;
+          fenceStart = lineStart;
+          explicitLang = _parseFenceLang(line) != 'plaintext';
+          content.clear();
+        }
+      } else if (inFence && !explicitLang) {
+        if (content.isNotEmpty) content.write('\n');
+        content.write(line);
+      }
+      offset = lineEnd + 1;
+    }
+    return result;
+  }
+
+  String? _autoLang(String blockText, int blockStart, bool caretInside) {
+    if (_autoLangCache.containsKey(blockText)) {
+      final cached = _autoLangCache[blockText];
+      _stickyAutoLang[blockStart] = cached;
+      return cached;
+    }
+    if (caretInside) return _stickyAutoLang[blockStart];
+    final lang = detectFenceLanguage(blockText);
+    if (_autoLangCache.length >= _autoLangCacheLimit) _autoLangCache.clear();
+    _autoLangCache[blockText] = lang;
+    _stickyAutoLang[blockStart] = lang;
+    return lang;
+  }
+
   List<Node>? _parseCached(String line, String lang) {
     final key = '$lang $line';
     final cached = _highlightCache[key];
@@ -428,6 +495,18 @@ class MarkdownEditingController extends TextEditingController {
     final match = _fenceLang.firstMatch(line);
     final lang = match?.group(1)?.trim() ?? '';
     return lang.isEmpty ? 'plaintext' : lang;
+  }
+
+  /// 블록 전체 텍스트로 언어를 자동 감지한다. 신뢰도가 낮으면 null
+  /// (무채색 유지). highlight의 auto-detection은 비싸므로 호출부에서 캐시한다.
+  static String? detectFenceLanguage(String blockText) {
+    try {
+      final result = highlight.parse(blockText, autoDetection: true);
+      if ((result.relevance ?? 0) < 5) return null;
+      return result.language;
+    } catch (_) {
+      return null;
+    }
   }
 
   TextStyle _headingStyle(int level) {

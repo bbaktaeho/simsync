@@ -359,4 +359,27 @@ void main() {
       expect(marker!.color, Colors.transparent);
     });
   });
+
+  group('detectFenceLanguage', () {
+    test('명백한 JSON을 감지한다', () {
+      const block = '{\n  "name": "simsync",\n  "count": 3,\n  "ok": true\n}';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNotNull);
+    });
+
+    test('명백한 Dart/유사 코드를 감지한다', () {
+      const block = '''
+void main() {
+  final list = <int>[1, 2, 3];
+  for (final v in list) {
+    print(v);
+  }
+}''';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNotNull);
+    });
+
+    test('평범한 산문은 감지하지 않는다 (낮은 relevance)', () {
+      const block = '오늘은 날씨가 좋았다 그래서 산책을 했다';
+      expect(MarkdownEditingController.detectFenceLanguage(block), isNull);
+    });
+  });
 }
