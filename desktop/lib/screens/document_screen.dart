@@ -1248,6 +1248,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
           case ShortcutAction.closeTab:
             final activeId = _selectedNote?.id;
             if (activeId != null) _closeTab(activeId);
+          case ShortcutAction.formatBold:
+          case ShortcutAction.formatItalic:
+          case ShortcutAction.formatStrikethrough:
+          case ShortcutAction.formatInlineCode:
+          case ShortcutAction.formatLink:
+          case ShortcutAction.formatCheckbox:
+          case ShortcutAction.formatHighlight:
+            return false;
         }
         return true;
       }
