@@ -12,6 +12,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
+import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
 import 'table_editor_dialog.dart';
@@ -32,6 +33,10 @@ class EditorPanel extends StatefulWidget {
   final Future<void> Function()? onDecreaseContentScale;
   final Future<void> Function(double value)? onSetContentScale;
 
+  /// 노트 기준 상대 src('assets/…')의 이미지 바이트 로더. null이면 이미지
+  /// 오버레이 비활성(로드 경로가 없는 컨텍스트).
+  final Future<Uint8List?> Function(String src)? onLoadImage;
+
   const EditorPanel({
     super.key,
     this.note,
@@ -45,6 +50,7 @@ class EditorPanel extends StatefulWidget {
     this.onIncreaseContentScale,
     this.onDecreaseContentScale,
     this.onSetContentScale,
+    this.onLoadImage,
   });
 
   @override
@@ -744,6 +750,10 @@ class EditorPanelState extends State<EditorPanel> {
         Positioned.fill(
           child: _buildDetailsToggles(c, bodyStyle, strut, textScaler),
         ),
+        // 인라인 이미지 — 숨겨진 <img> 줄의 예약 밴드 위에 그린다.
+        Positioned.fill(
+          child: _buildImageOverlays(c, bodyStyle, strut, textScaler),
+        ),
       ],
     );
 
@@ -862,6 +872,102 @@ class EditorPanelState extends State<EditorPanel> {
         );
       },
     );
+  }
+
+  Widget _buildImageOverlays(
+    AppColorsExtension c,
+    TextStyle bodyStyle,
+    StrutStyle strut,
+    TextScaler textScaler,
+  ) {
+    final onLoad = widget.onLoadImage;
+    if (onLoad == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable:
+          Listenable.merge([_contentController, _contentScrollController]),
+      builder: (context, _) {
+        final images = findImageRegions(_contentController.text);
+        if (images.isEmpty) return const SizedBox.shrink();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final span = _contentController.buildTextSpan(
+                context: context, style: bodyStyle, withComposing: false);
+            final measured = measureRanges(
+                span,
+                [for (final r in images) (start: r.start, end: r.end)],
+                strut,
+                textScaler,
+                constraints.maxWidth);
+            final scrollY = _contentScrollController.hasClients
+                ? _contentScrollController.offset
+                : 0.0;
+            final sel = _contentController.selection;
+            final caret = sel.isValid ? sel.baseOffset : -1;
+            final scale = widget.contentScale;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final m in measured)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: m.top -
+                        scrollY +
+                        MarkdownEditingController.imagePadding * scale,
+                    height: images[m.index].height * scale.toDouble(),
+                    child: InlineImageView(
+                      key: ValueKey(
+                          '${images[m.index].start}:${images[m.index].src}'),
+                      src: images[m.index].src,
+                      width: images[m.index].width,
+                      height: images[m.index].height,
+                      scale: scale,
+                      active: !widget.isReadOnly &&
+                          caret >= images[m.index].start &&
+                          caret <= images[m.index].end,
+                      readOnly: widget.isReadOnly,
+                      loadImage: onLoad,
+                      onActivate: () => _activateImage(images[m.index]),
+                      onResized: (w, h) =>
+                          _resizeImage(images[m.index], w, h),
+                      onRemove: () => _removeImage(images[m.index]),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 이미지를 클릭하면 캐럿을 (숨겨진) 태그 줄로 옮겨 활성화한다.
+  void _activateImage(ImageRegion r) {
+    if (widget.isReadOnly) return;
+    _contentFocusNode.requestFocus();
+    _contentController.selection = TextSelection.collapsed(
+        offset: r.start.clamp(0, _contentController.text.length));
+  }
+
+  // 리사이즈 결과를 태그의 width/height 속성으로 재기록한다.
+  void _resizeImage(ImageRegion r, int w, int h) {
+    if (widget.isReadOnly || widget.note == null) return;
+    _replaceRange(r.start, r.end, serializeImageTag(r.src, w, h));
+  }
+
+  // 태그 줄 전체(뒤따르는 개행 포함)를 삭제한다. 파일 정리는 하지 않는다
+  // (orphan 허용 — 설계 문서 범위 외 참고).
+  void _removeImage(ImageRegion r) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = r.start.clamp(0, text.length);
+    var e = r.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
   }
 
   /// `<details>` ↔ `<details open>` 토글. 펼침 상태가 파일에 저장되어 GitHub
