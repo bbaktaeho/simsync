@@ -1,6 +1,6 @@
 ---
 title: 인용문 | + details 접기 구현 (Task 3-7)
-description: StrutStyle.disabled 전환, | 인용문, details 파싱/렌더링/토글/입력 트리거
+description: 극소 스트럿 전환, | 인용문, details 파싱/렌더링/토글/입력 트리거
 type: plan
 created: 2026-07-19
 ---
@@ -11,15 +11,17 @@ created: 2026-07-19
 
 에디터의 TextField는 `StrutStyle.fromTextStyle(bodyStyle)`을 쓰고 있어(`editor_panel.dart:616`) 모든 줄에 본문 높이의 최소값(floor)이 걸린다. 극소 폰트(0.1)로 줄여도 줄 높이는 그대로다 — 테이블 구분선 줄이 여전히 한 줄 높이를 차지하고 InlineTableView가 "남는 공간을 나눠 흡수"하는 이유가 이것이다(`markdown_editing_controller.dart:101-105` 주석).
 
-details 본문을 실제로 접으려면(높이 0), 그리고 이미지 줄 높이를 자유롭게 예약하려면(04 문서) 이 floor를 없애야 한다. **Task 3에서 field + painter + 측정 함수 전부를 `StrutStyle.disabled`로 통일한다.** 양쪽이 같은 값을 쓰는 한 정렬(파서/오버레이 좌표)은 유지된다.
+details 본문을 실제로 접으려면(높이 0), 그리고 이미지 줄 높이를 자유롭게 예약하려면(04 문서) 이 floor를 없애야 한다. **Task 3에서 field + painter + 측정 함수 전부를 극소 명시 스트럿 `StrutStyle(fontSize: 0.1, height: 1, leading: 0)`으로 통일한다.** 양쪽이 같은 값을 쓰는 한 정렬(파서/오버레이 좌표)은 유지된다.
+
+> **왜 `StrutStyle.disabled`가 아닌가 (2026-07-19 스파이크 실측):** EditableText는 전달받은 strut에 `inheritFromTextStyle(widget.style)`을 적용해 null인 fontSize를 본문 폰트(16)로 채운다. `StrutStyle.disabled`(fontSize null, height 0)는 이 경로에서 fontSize 16 + height 0이 되고, 엔진은 height 0을 "폰트 자연 높이 사용"으로 해석해 줄당 16px floor가 남는다 (TextField 실측: 숨김 줄당 16px). 반면 fontSize를 0.1로 명시한 스트럿은 상속으로 덮이지 않아 floor가 ~0.1px이 된다 (실측: 숨김 2줄 추가 시 +0px, 일반/빈 줄 높이 불변). 순수 TextPainter에서는 disabled도 동작하지만 field와 painter가 서로 다른 유효 스트럿을 가지면 정렬이 깨지므로, 양쪽 다 극소 명시 스트럿을 쓴다.
 
 - 기대 효과: 극소 폰트 줄이 ~0 높이로 접힘. 일반 줄은 자기 폰트 크기로 높이가 정해지므로 변화 없음. 빈 줄은 그 줄을 끝내는 `\n` 문자가 base 스타일이므로 변화 없음. 테이블 구분선 줄이 실제로 접혀 테이블 밴드가 오히려 정확해짐.
-- 위험: 캐럿 높이/줄 정렬 회귀 가능성. Task 3에 높이 검증 테스트를 두고, Task 15 수동 검증에 빈 노트 캐럿/테이블/코드 박스 확인 항목이 있다.
+- 위험: 캐럿 높이/줄 정렬 회귀 가능성. Task 3에 TextField 실측 테스트를 두고, Task 15 수동 검증에 빈 노트 캐럿/테이블/코드 박스 확인 항목이 있다.
 - **폴백**: 만약 실기기에서 캐럿/정렬 회귀가 발견되면 스트럿을 되돌리고, details 접기를 "본문 투명 처리(높이는 유지)"로 낮춘 뒤 소유자와 협의한다. 이 결정은 계획 변경이므로 반드시 보고한다.
 
 ---
 
-## Task 3: StrutStyle.disabled 전환
+## Task 3: 극소 스트럿 전환
 
 **Files:**
 - Modify: `desktop/lib/widgets/editor_panel.dart:616`
@@ -28,7 +30,7 @@ details 본문을 실제로 접으려면(높이 0), 그리고 이미지 줄 높�
 **Interfaces:**
 - Produces: 에디터 전역에서 극소 폰트 줄의 높이가 실제로 접히는 성질. Task 6(접기), Task 12(이미지 높이 예약)가 의존
 
-- [ ] **Step 1: 실패하는 테스트 작성**
+- [ ] **Step 1: 검증 테스트 작성 (TextField 실측)**
 
 `desktop/test/widgets/editor_strut_test.dart`:
 
@@ -36,53 +38,98 @@ details 본문을 실제로 접으려면(높이 0), 그리고 이미지 줄 높�
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// 스트럿 정책 검증: StrutStyle.disabled에서는 극소 폰트 줄이 실제로 접히고,
-// 일반 줄 높이는 폰트 크기를 따른다. 에디터 접기(details)와 이미지 높이
-// 예약의 전제 조건이다.
+/// 극소 명시 스트럿(fontSize 0.1) 정책 검증 — 에디터 접기(details)와 이미지
+/// 높이 예약의 전제 조건이다. 실제 TextField(EditableText)로 측정한다:
+/// EditableText는 strut에 inheritFromTextStyle을 적용하므로 순수 TextPainter
+/// 측정만으로는 부족하다 (StrutStyle.disabled는 fontSize가 16으로 채워져
+/// 줄당 16px floor가 남는 것이 실측으로 확인됨).
+class _TinyLineController extends TextEditingController {
+  _TinyLineController(String text) : super(text: text);
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final base = style ?? const TextStyle(fontSize: 16, height: 1.5);
+    final lines = text.split('\n');
+    final spans = <TextSpan>[];
+    for (var i = 0; i < lines.length; i++) {
+      final tiny = lines[i].startsWith('HIDE');
+      final lineStyle = tiny
+          ? base.copyWith(fontSize: 0.1, height: 1.0, color: Colors.transparent)
+          : base;
+      spans.add(TextSpan(text: lines[i], style: lineStyle));
+      if (i < lines.length - 1) {
+        spans.add(TextSpan(text: '\n', style: lineStyle));
+      }
+    }
+    return TextSpan(style: base, children: spans);
+  }
+}
+
+/// 에디터가 쓰는 극소 스트럿과 같은 값 (editor_panel.dart와 일치해야 한다).
+const _tinyStrut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
+
+Future<double> _fieldHeight(WidgetTester tester, String text) async {
+  const style = TextStyle(fontSize: 16, height: 1.5);
+  await tester.pumpWidget(MaterialApp(
+    home: Scaffold(
+      body: Align(
+        alignment: Alignment.topLeft,
+        child: SizedBox(
+          width: 400,
+          child: TextField(
+            controller: _TinyLineController(text),
+            maxLines: null,
+            style: style,
+            strutStyle: _tinyStrut,
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+          ),
+        ),
+      ),
+    ),
+  ));
+  return tester.getSize(find.byType(EditableText)).height;
+}
+
 void main() {
-  double lineTop(TextPainter p, int offset) =>
-      p.getBoxesForSelection(TextSelection(baseOffset: offset, extentOffset: offset + 1))
-          .first
-          .top;
-
-  test('disabled 스트럿에서 fontSize 0.1 줄은 ~0 높이로 접힌다', () {
-    const base = TextStyle(fontSize: 16, height: 1.5);
-    final span = TextSpan(children: [
-      const TextSpan(text: 'normal\n', style: base),
-      TextSpan(text: 'hidden\n', style: base.copyWith(fontSize: 0.1, height: 1.0)),
-      const TextSpan(text: 'after', style: base),
-    ]);
-    final painter = TextPainter(
-      text: span,
-      textDirection: TextDirection.ltr,
-      strutStyle: StrutStyle.disabled,
-    )..layout(maxWidth: 500);
-
-    final normalTop = lineTop(painter, 0);
-    final hiddenTop = lineTop(painter, 7); // 'hidden' 시작
-    final afterTop = lineTop(painter, 14); // 'after' 시작
-    final normalHeight = hiddenTop - normalTop;
-    final hiddenHeight = afterTop - hiddenTop;
-    expect(normalHeight, greaterThan(20)); // 16 * 1.5 = 24
-    expect(hiddenHeight, lessThan(1.5), reason: '접힌 줄은 1px 미만');
-    painter.dispose();
+  testWidgets('극소 폰트 줄은 TextField에서 ~0 높이로 접힌다', (tester) async {
+    final plain = await _fieldHeight(tester, 'one\ntwo');
+    final withHidden = await _fieldHeight(tester, 'one\nHIDE a\nHIDE b\ntwo');
+    expect(withHidden - plain, lessThan(1.5), reason: '숨김 줄 2개가 1px 미만');
   });
 
-  test('큰 첫 글자는 그 줄 높이를 키운다 (이미지 높이 예약의 원리)', () {
+  testWidgets('일반 줄과 빈 줄 높이는 불변이다', (tester) async {
+    final plain = await _fieldHeight(tester, 'one\ntwo');
+    final withEmpty = await _fieldHeight(tester, 'one\n\ntwo');
+    expect(plain, 48.0); // 16 * 1.5 * 2줄
+    expect(withEmpty - plain, closeTo(24.0, 0.5), reason: '빈 줄은 정상 높이 유지');
+  });
+
+  testWidgets('큰 첫 글자는 그 줄 높이를 예약한다 (이미지 높이 예약의 원리)',
+      (tester) async {
+    // TextPainter 검증으로 충분 (스트럿은 min만 제공, 큰 글자는 위로 키운다).
     const base = TextStyle(fontSize: 16, height: 1.5);
-    final span = TextSpan(children: [
+    final span = TextSpan(style: base, children: [
       TextSpan(text: '<', style: base.copyWith(fontSize: 200, height: 1.0)),
-      TextSpan(text: 'img ...>\n', style: base.copyWith(fontSize: 0.1, height: 1.0)),
+      TextSpan(
+          text: 'img>\n',
+          style: base.copyWith(fontSize: 0.1, height: 1.0)),
       const TextSpan(text: 'after', style: base),
     ]);
     final painter = TextPainter(
       text: span,
       textDirection: TextDirection.ltr,
-      strutStyle: StrutStyle.disabled,
+      strutStyle: _tinyStrut,
     )..layout(maxWidth: 500);
-    final afterTop = lineTop(painter, 10);
-    expect(afterTop, greaterThan(190));
-    expect(afterTop, lessThan(230));
+    final metrics = painter.computeLineMetrics();
+    expect(metrics.first.height, closeTo(200, 1));
     painter.dispose();
   });
 }
@@ -91,7 +138,7 @@ void main() {
 - [ ] **Step 2: 테스트 실행 (성질 확인)**
 
 Run: `cd desktop && flutter test test/widgets/editor_strut_test.dart`
-Expected: PASS — 이 테스트는 Flutter 자체 성질 검증이므로 바로 통과해야 정상. **FAIL이면 StrutStyle.disabled 접근이 성립하지 않는 것이므로 즉시 멈추고 위의 폴백을 보고한다.**
+Expected: PASS — Flutter 성질 검증이므로 바로 통과해야 정상 (2026-07-19 스파이크로 사전 확인됨). **FAIL이면 즉시 멈추고 BLOCKED 보고.**
 
 - [ ] **Step 3: 에디터 스트럿 교체**
 
@@ -109,10 +156,12 @@ Expected: PASS — 이 테스트는 Flutter 자체 성질 검증이므로 바로
 ```dart
     // The decoration painter lays out an identical TextPainter, so the field and
     // the painter must share strut + text scaler + width for the boxes to align.
-    // Strut is DISABLED (no per-line minimum height): collapsed lines (details
-    // body, table separator) shrink to ~0 and image lines can reserve their own
-    // height via a tall first glyph. Normal lines still size from their font.
-    const strut = StrutStyle.disabled;
+    // The strut is a near-zero explicit minimum (NOT StrutStyle.disabled:
+    // EditableText inherits a null strut fontSize from the body style, which
+    // resurrects a per-line floor). With no meaningful floor, collapsed lines
+    // (details body, table separator) shrink to ~0 and image lines can reserve
+    // their own height via a tall first glyph. Normal lines size from their font.
+    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
 ```
 
 `strut`은 이후 코드에서 field/painter/measure에 그대로 전달되고 있으므로 다른 수정은 없다.
@@ -126,7 +175,7 @@ Expected: 전체 PASS. 특히 `editor_panel_inline_test.dart`, `editor_block_dec
 
 ```bash
 git add desktop/lib/widgets/editor_panel.dart desktop/test/widgets/editor_strut_test.dart
-git commit -m "refactor: 에디터 스트럿 비활성화 — 줄 단위 높이 접기/예약 기반"
+git commit -m "refactor: 에디터 스트럿을 극소 명시 스트럿으로 전환 — 줄 높이 접기/예약 기반"
 ```
 
 ---

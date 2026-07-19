@@ -35,7 +35,7 @@ related:
 |------|------|------|
 | 1 | ShortcutAction enum 확장 + 기본 바인딩 | [01-shortcuts.md](01-shortcuts.md) |
 | 2 | EditorPanelState 공개 + applyFormat + 전역 디스패치 | [01-shortcuts.md](01-shortcuts.md) |
-| 3 | StrutStyle.disabled 전환 (접기/이미지 높이 기반 작업) | [02-quote-details.md](02-quote-details.md) |
+| 3 | 극소 스트럿 전환 (접기/이미지 높이 기반 작업) | [02-quote-details.md](02-quote-details.md) |
 | 4 | `\|` 인용문 (렌더링/데코/토글 + 테이블 구분) | [02-quote-details.md](02-quote-details.md) |
 | 5 | findDetailsRegions 파싱 | [02-quote-details.md](02-quote-details.md) |
 | 6 | details 렌더링 (접힘/펼침, 충돌 필터) | [02-quote-details.md](02-quote-details.md) |
