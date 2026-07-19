@@ -34,4 +34,28 @@ void main() {
     expect(saved, isNotNull);
     expect(saved!.content, contains('<details open>'));
   });
+
+  testWidgets('chevron 토글 시 태그 줄 뒤 캐럿이 delta만큼 보정된다', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: EditorPanel(
+          note: note('<details>\n<summary>t</summary>\nbody\n</details>'),
+          onNoteChanged: (_) {},
+        ),
+      ),
+    ));
+    await tester.pump();
+    final controller =
+        tester.widget<TextField>(find.byType(TextField).last).controller!;
+    // "<details>\n<summary>t</summary>\nbody\n</details>" 에서 body 줄의
+    // "bo|dy" 위치(오프셋 33) — 태그 줄(`<details>`, 0..9) 뒤에 있으므로
+    // 토글 시 ' open' 5글자만큼 밀려야 같은 글자를 계속 가리킨다.
+    controller.selection = const TextSelection.collapsed(offset: 33);
+    final chevron = find.byIcon(Icons.chevron_right_rounded);
+    expect(chevron, findsOneWidget);
+    await tester.tap(chevron);
+    await tester.pump();
+    expect(controller.selection, const TextSelection.collapsed(offset: 38));
+  });
 }

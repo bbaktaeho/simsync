@@ -346,7 +346,14 @@ class EditorPanelState extends State<EditorPanel> {
   }
 
   Future<void> _handlePaste() async {
-    final image = await Pasteboard.image;
+    Uint8List? image;
+    try {
+      image = await Pasteboard.image;
+    } catch (_) {
+      // 클립보드 이미지 조회 실패는 무시하고 일반 텍스트 붙여넣기로 진행한다.
+      // (이벤트를 이미 소비했으므로 여기서 끝나면 붙여넣기가 통째로 사라진다.)
+      image = null;
+    }
     if (image != null) {
       await attachImageBytes(image, 'png');
       return;
@@ -1089,14 +1096,19 @@ class EditorPanelState extends State<EditorPanel> {
         ? line.replaceFirst('<details open>', '<details>')
         : line.replaceFirst('<details>', '<details open>');
     if (newLine == line) return;
+    final delta = newLine.length - line.length;
     final selection = _contentController.selection;
+    final caret = selection.isValid ? selection.baseOffset : d.start;
+    // 태그 줄(<details>) 뒤에 캐럿이 있으면 줄 길이 변화(±' open')만큼 같이
+    // 밀어줘야 캐럿이 같은 글자를 계속 가리킨다. 태그 줄 안/이전이면 그대로 둔다.
+    final adjustedCaret =
+        caret > d.detailsLineRange.end ? caret + delta : caret;
     final newText = text.replaceRange(
         d.detailsLineRange.start, d.detailsLineRange.end, newLine);
     _contentController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(
-        offset: (selection.isValid ? selection.baseOffset : d.start)
-            .clamp(0, newText.length),
+        offset: adjustedCaret.clamp(0, newText.length),
       ),
     );
     _onContentChanged();
