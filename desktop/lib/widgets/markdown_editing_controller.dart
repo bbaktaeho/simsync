@@ -114,6 +114,18 @@ class MarkdownEditingController extends TextEditingController {
       tableSepStarts.add(t.separatorRange.start);
     }
 
+    // <details> 블록: 태그 줄은 구조 노이즈로 숨기고(높이 유지), summary는
+    // 제목으로 강조한다. 본문은 항상 표시한다 — 접힘 상태(open 속성)는 파일
+    // 포맷/GitHub 웹 렌더링용이고 에디터 내 높이 접기는 하지 않는다
+    // (스트럿 floor 제거가 미러 페인터 정렬을 깨는 것이 실측으로 확인됨).
+    final detailsTagStarts = <int>{};
+    final detailsSummaryStarts = <int>{};
+    for (final d in findDetailsRegions(text)) {
+      detailsTagStarts.add(d.detailsLineRange.start);
+      detailsTagStarts.add(d.closeLineRange.start);
+      detailsSummaryStarts.add(d.summaryLineRange.start);
+    }
+
     final lines = text.split('\n');
     final spans = <InlineSpan>[];
     var inFence = false;
@@ -146,6 +158,10 @@ class MarkdownEditingController extends TextEditingController {
             style: base.copyWith(fontSize: 0.1, color: Colors.transparent)));
       } else if (tableRowStarts.contains(lineStart)) {
         spans.add(TextSpan(text: line, style: base.copyWith(color: Colors.transparent)));
+      } else if (detailsTagStarts.contains(lineStart)) {
+        spans.add(TextSpan(text: line, style: _hideKeepHeight(base, c, active)));
+      } else if (detailsSummaryStarts.contains(lineStart)) {
+        spans.addAll(_summarySpans(line, base, c, active));
       } else {
         spans.addAll(_styleLine(line, base, c, active));
       }
@@ -176,6 +192,22 @@ class MarkdownEditingController extends TextEditingController {
     return active
         ? lineStyle.copyWith(color: c.textMuted)
         : lineStyle.copyWith(color: Colors.transparent);
+  }
+
+  static final RegExp _summaryLine =
+      RegExp(r'^(\s*<summary>)(.*)(</summary>\s*)$');
+
+  /// `<summary>제목</summary>` 줄: 태그는 마커로 접고 제목은 강조한다.
+  List<InlineSpan> _summarySpans(
+      String line, TextStyle base, AppColorsExtension c, bool active) {
+    final m = _summaryLine.firstMatch(line);
+    if (m == null) return _styleLine(line, base, c, active);
+    final titleStyle = base.copyWith(fontWeight: FontWeight.w600);
+    return [
+      TextSpan(text: m.group(1)!, style: _marker(base, c, active)),
+      ..._styleInline(m.group(2)!, titleStyle, c, active),
+      TextSpan(text: m.group(3)!, style: _marker(base, c, active)),
+    ];
   }
 
   List<InlineSpan> _styleLine(

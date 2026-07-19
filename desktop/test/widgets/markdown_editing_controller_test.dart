@@ -19,6 +19,14 @@ List<(String, TextStyle?)> _flatten(InlineSpan root) {
   return out;
 }
 
+/// [fragment]를 포함하는 첫 스팬의 스타일 (Task 6/12 렌더링 검증용).
+TextStyle? _styleOf(TextSpan root, String fragment) {
+  for (final (text, style) in _flatten(root)) {
+    if (text.contains(fragment)) return style;
+  }
+  return null;
+}
+
 Future<TextSpan> _build(
   WidgetTester tester,
   String text, {
@@ -307,6 +315,48 @@ void main() {
       const text = '> old quote';
       final span = await _build(tester, text);
       expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+  });
+
+  group('details rendering', () {
+    const closed = '<details>\n<summary>제목</summary>\nbody line\n</details>';
+    const opened = '<details open>\n<summary>제목</summary>\nbody line\n</details>';
+
+    String joined(TextSpan span) => _flatten(span).map((e) => e.$1).join();
+
+    testWidgets('invariant: 닫힘/펼침/활성 모두 문자 보존', (tester) async {
+      expect(joined(await _build(tester, closed)), closed);
+      expect(joined(await _build(tester, opened)), opened);
+      expect(
+        joined(await _build(tester, closed,
+            focused: true,
+            selection: const TextSelection.collapsed(offset: 12))),
+        closed,
+      ); // summary 줄 활성
+    });
+
+    testWidgets('태그 줄은 inactive에서 투명 처리된다 (높이 유지)', (tester) async {
+      final span = await _build(tester, closed);
+      final style = _styleOf(span, '<details>');
+      expect(style!.color, Colors.transparent);
+      // 폰트 크기는 유지 — 높이 접기가 아니라 fence 줄과 같은 숨김이다.
+      expect(style.fontSize ?? 100, greaterThan(1));
+    });
+
+    testWidgets('본문 줄은 열림/닫힘 무관하게 일반 렌더링된다', (tester) async {
+      for (final text in [closed, opened]) {
+        final span = await _build(tester, text);
+        final style = _styleOf(span, 'body line');
+        expect(style?.color, isNot(Colors.transparent));
+      }
+    });
+
+    testWidgets('summary 제목은 semibold, 태그는 마커 처리된다', (tester) async {
+      final span = await _build(tester, closed);
+      expect(_styleOf(span, '제목')!.fontWeight, FontWeight.w600);
+      // inactive에서 <summary> 마커는 폭 접힘(극소 폰트 + 투명)
+      final marker = _styleOf(span, '<summary>');
+      expect(marker!.color, Colors.transparent);
     });
   });
 }
