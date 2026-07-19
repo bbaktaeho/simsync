@@ -60,7 +60,10 @@ void main() {
     Note? saved;
     await pump(tester, note('$img\ntext'), onChanged: (n) => saved = n);
     await tester.pumpAndSettle();
-    await tester.tap(find.byType(InlineImageView)); // 활성화
+    // 위젯의 외곽 Align은 밴드 전체 폭을 차지하므로 중앙 탭은 이미지를
+    // 빗나간다 — 좌상단(이미지 박스 내부)을 정확히 탭해 onActivate를 태운다.
+    final imageTopLeft = tester.getTopLeft(find.byType(InlineImageView));
+    await tester.tapAt(imageTopLeft + const Offset(10, 10)); // 활성화
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pump(const Duration(seconds: 2)); // 자동 저장 디바운스

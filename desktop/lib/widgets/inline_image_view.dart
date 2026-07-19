@@ -8,6 +8,11 @@ import '../theme/app_colors.dart';
 /// InlineTableView와 같은 오버레이 패턴. 활성(클릭/캐럿) 상태에서 우상단
 /// 삭제 버튼과 우하단 리사이즈 핸들을 보여준다. 리사이즈는 비율 고정이며
 /// 드롭 시 [onResized]로 width/height를 마크다운에 재기록한다.
+///
+/// 표시 크기는 태그의 width/height 속성 그대로를 따른다 — 컨트롤러의 줄 높이
+/// 예약과 오버레이 밴드가 같은 원본 속성을 쓰므로 여기서 클램프하면 어긋난다.
+/// [minWidth]..[maxWidth] 클램프는 리사이즈 결과(드래그 미리보기와 드롭 시
+/// 재기록 값)에만 적용된다.
 class InlineImageView extends StatefulWidget {
   const InlineImageView({
     super.key,
@@ -82,9 +87,10 @@ class _InlineImageViewState extends State<InlineImageView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final attrW = (_dragWidth ?? widget.width.toDouble()).clamp(
-        InlineImageView.minWidth.toDouble(),
-        InlineImageView.maxWidth.toDouble());
+    // 정적 표시는 속성 원본 그대로, 드래그 미리보기만 리사이즈 한계로 클램프.
+    final attrW = _dragWidth?.clamp(InlineImageView.minWidth.toDouble(),
+            InlineImageView.maxWidth.toDouble()) ??
+        widget.width.toDouble();
     final displayW = attrW * widget.scale;
     final displayH = attrW / _aspect * widget.scale;
 
