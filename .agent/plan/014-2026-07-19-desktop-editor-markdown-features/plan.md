@@ -35,7 +35,7 @@ related:
 |------|------|------|
 | 1 | ShortcutAction enum 확장 + 기본 바인딩 | [01-shortcuts.md](01-shortcuts.md) |
 | 2 | EditorPanelState 공개 + applyFormat + 전역 디스패치 | [01-shortcuts.md](01-shortcuts.md) |
-| 3 | 극소 스트럿 전환 (접기/이미지 높이 기반 작업) | [02-quote-details.md](02-quote-details.md) |
+| 3 | 취소됨 — 스트럿 전환 (02 문서 결정 기록 참조) | [02-quote-details.md](02-quote-details.md) |
 | 4 | `\|` 인용문 (렌더링/데코/토글 + 테이블 구분) | [02-quote-details.md](02-quote-details.md) |
 | 5 | findDetailsRegions 파싱 | [02-quote-details.md](02-quote-details.md) |
 | 6 | details 렌더링 (접힘/펼침, 충돌 필터) | [02-quote-details.md](02-quote-details.md) |
@@ -49,7 +49,7 @@ related:
 | 14 | 붙여넣기 인터셉트 + 툴바 첨부 + 와이어링 | [04-images.md](04-images.md) |
 | 15 | 통합 검증 + PR | 아래 |
 
-의존 관계: Task 3은 Task 6, 12의 선행 조건. Task 9 → 10 → 11 → 14 순서. Task 1 → 2. 나머지는 독립.
+의존 관계: Task 9 → 10 → 11 → 14 순서. Task 1 → 2. 나머지는 독립. (Task 3은 취소 — 이미지 높이 예약은 body 스트럿과 무관하게 동작)
 
 ## Task 15: 통합 검증 + PR
 
@@ -65,7 +65,7 @@ Expected: analyze 0 issues, 전체 테스트 PASS
 체크리스트:
 1. cmd+B/I/E/K, cmd+shift+X/C/H 단축키 동작. cmd+X 잘라내기 정상 동작 유지
 2. `| ` 인용문 렌더링(왼쪽 바), 기존 `> ` 노트 인용문 하위 호환
-3. 줄 시작 `> ` 입력 → details 스켈레톤 생성, 우측 chevron으로 접기/펼치기, 접힘 시 본문 높이 접힘
+3. 줄 시작 `> ` 입력 → details 스켈레톤 생성, 우측 chevron 토글이 `<details open>` 속성을 파일에 기록 (에디터 본문은 항상 표시)
 4. 언어 미지정 ``` 블록에 dart/json 코드 입력 후 캐럿을 밖으로 → 자동 컬러링
 5. 스크린샷 복사(cmd+ctrl+shift+4) 후 cmd+V → 이미지 표시, 텍스트 붙여넣기 정상, 우하단 핸들 리사이즈, X 삭제
 6. 툴바 이미지 버튼 → 파일 첨부
@@ -86,5 +86,5 @@ Expected: PR 생성 완료. 병합은 소유자 확인 후.
 ## Self-Review 결과
 
 - 스펙 커버리지: design.md의 6개 확정 요구사항 모두 task에 매핑됨 (이미지 1,9-14 / 크기 13 / details 5-7 / 인용문 4 / 자동감지 8 / 단축키 1-2)
-- 스펙과 차이: 접힘 상태의 "본문 높이 접힘"은 StrutStyle.disabled 전환(Task 3)이 전제. 회귀 위험과 폴백은 02 문서에 명시
+- 스펙과 차이: 에디터 내 "본문 높이 접힘"은 실측 결과 제외됨 — 접힘 상태는 open 속성으로 파일/GitHub 웹에만 반영. 근거는 02 문서 결정 기록
 - 타입 일관성: 인터페이스 시그니처는 각 문서 Interfaces 블록에 통일 기재

@@ -7,178 +7,21 @@ created: 2026-07-19
 
 # 인용문 `|` + details 접기 (Task 3-7)
 
-## 핵심 제약: 줄 높이 접기와 스트럿
+## 결정 기록: 에디터 내 높이 접기는 이번 범위에서 제외 (2026-07-19)
 
-에디터의 TextField는 `StrutStyle.fromTextStyle(bodyStyle)`을 쓰고 있어(`editor_panel.dart:616`) 모든 줄에 본문 높이의 최소값(floor)이 걸린다. 극소 폰트(0.1)로 줄여도 줄 높이는 그대로다 — 테이블 구분선 줄이 여전히 한 줄 높이를 차지하고 InlineTableView가 "남는 공간을 나눠 흡수"하는 이유가 이것이다(`markdown_editing_controller.dart:101-105` 주석).
+에디터의 TextField는 `StrutStyle.fromTextStyle(bodyStyle)`을 쓰고(`editor_panel.dart:616`) 모든 줄에 본문 높이 floor가 걸린다. details 본문을 실제 높이 0으로 접으려면 이 floor를 없애야 하는데, 스파이크 실측 결과 **폐기했다**:
 
-details 본문을 실제로 접으려면(높이 0), 그리고 이미지 줄 높이를 자유롭게 예약하려면(04 문서) 이 floor를 없애야 한다. **Task 3에서 field + painter + 측정 함수 전부를 극소 명시 스트럿 `StrutStyle(fontSize: 0.1, height: 1, leading: 0)`으로 통일한다.** 양쪽이 같은 값을 쓰는 한 정렬(파서/오버레이 좌표)은 유지된다.
+1. `StrutStyle.disabled`: EditableText가 strut에 `inheritFromTextStyle(widget.style)`을 적용해 fontSize가 본문 폰트로 채워지고, height 0은 "폰트 자연 높이"로 해석돼 줄당 16px floor가 남는다.
+2. 극소 명시 스트럿(`fontSize: 0.1`): TextField 단독 실측으로는 완전 접힘(+0px)이지만, **미러 TextPainter(데코 페인터/오버레이 측정)가 실제 RenderEditable 배치와 ~2.3px 발산**한다. 동일 span/strut/scaler/폭으로도 재현 불가 — 원인이 RenderEditable 내부에 있고, 균일 body 스트럿이 지금까지 0.5px 정렬을 보장해 온 장치였다. 긴 문서에서의 증폭을 보장할 수 없어 오버레이 아키텍처 전체를 걸 수 없다. (커밋 8f6ba90 → 2ca5b9a revert)
 
-> **왜 `StrutStyle.disabled`가 아닌가 (2026-07-19 스파이크 실측):** EditableText는 전달받은 strut에 `inheritFromTextStyle(widget.style)`을 적용해 null인 fontSize를 본문 폰트(16)로 채운다. `StrutStyle.disabled`(fontSize null, height 0)는 이 경로에서 fontSize 16 + height 0이 되고, 엔진은 height 0을 "폰트 자연 높이 사용"으로 해석해 줄당 16px floor가 남는다 (TextField 실측: 숨김 줄당 16px). 반면 fontSize를 0.1로 명시한 스트럿은 상속으로 덮이지 않아 floor가 ~0.1px이 된다 (실측: 숨김 2줄 추가 시 +0px, 일반/빈 줄 높이 불변). 순수 TextPainter에서는 disabled도 동작하지만 field와 painter가 서로 다른 유효 스트럿을 가지면 정렬이 깨지므로, 양쪽 다 극소 명시 스트럿을 쓴다.
+**재조정된 범위**: 접힘 상태는 `<details open>` 속성으로 파일에 유지되어 GitHub 웹/다른 디바이스에서 접힌다. 에디터에서는 chevron이 속성만 토글하고 본문은 항상 표시한다. 에디터 내 시각 접힘은 후속 과제 — 측정을 RenderEditable 직접 조회로 바꾸는 아키텍처 변경이 선행되어야 한다.
 
-- 기대 효과: 극소 폰트 줄이 ~0 높이로 접힘. 일반 줄은 자기 폰트 크기로 높이가 정해지므로 변화 없음. 빈 줄은 그 줄을 끝내는 `\n` 문자가 base 스타일이므로 변화 없음. 테이블 구분선 줄이 실제로 접혀 테이블 밴드가 오히려 정확해짐.
-- 위험: 캐럿 높이/줄 정렬 회귀 가능성. Task 3에 TextField 실측 테스트를 두고, Task 15 수동 검증에 빈 노트 캐럿/테이블/코드 박스 확인 항목이 있다.
-- **폴백**: 만약 실기기에서 캐럿/정렬 회귀가 발견되면 스트럿을 되돌리고, details 접기를 "본문 투명 처리(높이는 유지)"로 낮춘 뒤 소유자와 협의한다. 이 결정은 계획 변경이므로 반드시 보고한다.
+이미지 높이 예약(04 문서)은 스트럿과 무관하다: 스트럿은 최소값(floor)일 뿐이고, 큰 첫 글자는 줄을 그 이상으로 키운다. body 스트럿 그대로 동작한다.
 
----
+## Task 3: 취소됨 (극소 스트럿 전환)
 
-## Task 3: 극소 스트럿 전환
+위 결정 기록 참조. 구현 시도(8f6ba90)는 2ca5b9a로 revert됨. 아래 Task 4부터 진행한다.
 
-**Files:**
-- Modify: `desktop/lib/widgets/editor_panel.dart:616`
-- Test: `desktop/test/widgets/editor_strut_test.dart` (신규)
-
-**Interfaces:**
-- Produces: 에디터 전역에서 극소 폰트 줄의 높이가 실제로 접히는 성질. Task 6(접기), Task 12(이미지 높이 예약)가 의존
-
-- [ ] **Step 1: 검증 테스트 작성 (TextField 실측)**
-
-`desktop/test/widgets/editor_strut_test.dart`:
-
-```dart
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-
-/// 극소 명시 스트럿(fontSize 0.1) 정책 검증 — 에디터 접기(details)와 이미지
-/// 높이 예약의 전제 조건이다. 실제 TextField(EditableText)로 측정한다:
-/// EditableText는 strut에 inheritFromTextStyle을 적용하므로 순수 TextPainter
-/// 측정만으로는 부족하다 (StrutStyle.disabled는 fontSize가 16으로 채워져
-/// 줄당 16px floor가 남는 것이 실측으로 확인됨).
-class _TinyLineController extends TextEditingController {
-  _TinyLineController(String text) : super(text: text);
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    final base = style ?? const TextStyle(fontSize: 16, height: 1.5);
-    final lines = text.split('\n');
-    final spans = <TextSpan>[];
-    for (var i = 0; i < lines.length; i++) {
-      final tiny = lines[i].startsWith('HIDE');
-      final lineStyle = tiny
-          ? base.copyWith(fontSize: 0.1, height: 1.0, color: Colors.transparent)
-          : base;
-      spans.add(TextSpan(text: lines[i], style: lineStyle));
-      if (i < lines.length - 1) {
-        spans.add(TextSpan(text: '\n', style: lineStyle));
-      }
-    }
-    return TextSpan(style: base, children: spans);
-  }
-}
-
-/// 에디터가 쓰는 극소 스트럿과 같은 값 (editor_panel.dart와 일치해야 한다).
-const _tinyStrut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
-
-Future<double> _fieldHeight(WidgetTester tester, String text) async {
-  const style = TextStyle(fontSize: 16, height: 1.5);
-  await tester.pumpWidget(MaterialApp(
-    home: Scaffold(
-      body: Align(
-        alignment: Alignment.topLeft,
-        child: SizedBox(
-          width: 400,
-          child: TextField(
-            controller: _TinyLineController(text),
-            maxLines: null,
-            style: style,
-            strutStyle: _tinyStrut,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-              isDense: true,
-            ),
-          ),
-        ),
-      ),
-    ),
-  ));
-  return tester.getSize(find.byType(EditableText)).height;
-}
-
-void main() {
-  testWidgets('극소 폰트 줄은 TextField에서 ~0 높이로 접힌다', (tester) async {
-    final plain = await _fieldHeight(tester, 'one\ntwo');
-    final withHidden = await _fieldHeight(tester, 'one\nHIDE a\nHIDE b\ntwo');
-    expect(withHidden - plain, lessThan(1.5), reason: '숨김 줄 2개가 1px 미만');
-  });
-
-  testWidgets('일반 줄과 빈 줄 높이는 불변이다', (tester) async {
-    final plain = await _fieldHeight(tester, 'one\ntwo');
-    final withEmpty = await _fieldHeight(tester, 'one\n\ntwo');
-    expect(plain, 48.0); // 16 * 1.5 * 2줄
-    expect(withEmpty - plain, closeTo(24.0, 0.5), reason: '빈 줄은 정상 높이 유지');
-  });
-
-  testWidgets('큰 첫 글자는 그 줄 높이를 예약한다 (이미지 높이 예약의 원리)',
-      (tester) async {
-    // TextPainter 검증으로 충분 (스트럿은 min만 제공, 큰 글자는 위로 키운다).
-    const base = TextStyle(fontSize: 16, height: 1.5);
-    final span = TextSpan(style: base, children: [
-      TextSpan(text: '<', style: base.copyWith(fontSize: 200, height: 1.0)),
-      TextSpan(
-          text: 'img>\n',
-          style: base.copyWith(fontSize: 0.1, height: 1.0)),
-      const TextSpan(text: 'after', style: base),
-    ]);
-    final painter = TextPainter(
-      text: span,
-      textDirection: TextDirection.ltr,
-      strutStyle: _tinyStrut,
-    )..layout(maxWidth: 500);
-    final metrics = painter.computeLineMetrics();
-    expect(metrics.first.height, closeTo(200, 1));
-    painter.dispose();
-  });
-}
-```
-
-- [ ] **Step 2: 테스트 실행 (성질 확인)**
-
-Run: `cd desktop && flutter test test/widgets/editor_strut_test.dart`
-Expected: PASS — Flutter 성질 검증이므로 바로 통과해야 정상 (2026-07-19 스파이크로 사전 확인됨). **FAIL이면 즉시 멈추고 BLOCKED 보고.**
-
-- [ ] **Step 3: 에디터 스트럿 교체**
-
-`editor_panel.dart` `_buildEditor`에서:
-
-```dart
-    // The decoration painter lays out an identical TextPainter, so the field and
-    // the painter must share strut + text scaler + width for the boxes to align.
-    // The strut mirrors the body style so the caret lines up with the text.
-    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
-```
-
-를 다음으로 교체:
-
-```dart
-    // The decoration painter lays out an identical TextPainter, so the field and
-    // the painter must share strut + text scaler + width for the boxes to align.
-    // The strut is a near-zero explicit minimum (NOT StrutStyle.disabled:
-    // EditableText inherits a null strut fontSize from the body style, which
-    // resurrects a per-line floor). With no meaningful floor, collapsed lines
-    // (details body, table separator) shrink to ~0 and image lines can reserve
-    // their own height via a tall first glyph. Normal lines size from their font.
-    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
-```
-
-`strut`은 이후 코드에서 field/painter/measure에 그대로 전달되고 있으므로 다른 수정은 없다.
-
-- [ ] **Step 4: 회귀 확인**
-
-Run: `flutter test test/widgets/`
-Expected: 전체 PASS. 특히 `editor_panel_inline_test.dart`, `editor_block_decorations_test.dart`, `markdown_editing_controller_test.dart`
-
-- [ ] **Step 5: 커밋**
-
-```bash
-git add desktop/lib/widgets/editor_panel.dart desktop/test/widgets/editor_strut_test.dart
-git commit -m "refactor: 에디터 스트럿을 극소 명시 스트럿으로 전환 — 줄 높이 접기/예약 기반"
-```
-
----
 
 ## Task 4: `|` 인용문
 
@@ -509,23 +352,21 @@ git commit -m "feat: details 블록 파서 추가"
 
 ---
 
-## Task 6: details 렌더링 (접힘/펼침)
+## Task 6: details 렌더링
+
+> 재조정됨 (상단 결정 기록 참조): 에디터 내 높이 접기는 하지 않는다. 본문은 열림/닫힘과 무관하게 항상 표시하고, 태그 줄만 구조 마커로 숨긴다. `filterEditorRegions`는 Task 4의 2-인자 그대로 유지한다.
 
 **Files:**
 - Modify: `desktop/lib/widgets/markdown_editing_controller.dart` (`buildTextSpan` 분기 + 헬퍼)
-- Modify: `desktop/lib/widgets/editor_block_decorations.dart` (`filterEditorRegions` 3-인자 확장)
-- Modify: `desktop/lib/widgets/editor_panel.dart` (필터 호출부, 접힌 블록 안 테이블 오버레이 제외)
 - Test: `desktop/test/widgets/markdown_editing_controller_test.dart` (추가)
 
 **Interfaces:**
-- Consumes: Task 5 `findDetailsRegions`, Task 3 스트럿 성질
-- Produces: `filterEditorRegions(regions, tables, details)` 3-인자 시그니처 (Task 4의 2-인자를 대체)
+- Consumes: Task 5 `findDetailsRegions`
 
 렌더링 규칙:
-- `<details>` / `</details>` 태그 줄: 캐럿이 그 줄에 있으면 dim 노출(편집/삭제 가능), 아니면 높이까지 접기
-- `<summary>제목</summary>` 줄: 마커는 `_marker`(inactive 시 접힘), 제목은 semibold + 인라인 스타일
-- 닫힌 블록의 본문 줄: 항상 높이까지 접기 (`fontSize 0.1` + 투명 — Task 3 덕에 실제 접힘). 해당 줄을 끝내는 `\n`도 같이 접는다
-- 열린 블록의 본문 줄: 일반 파이프라인(`_styleLine` 등)으로 렌더링
+- `<details>` / `<details open>` / `</details>` 태그 줄: 캐럿이 그 줄에 있으면 dim 노출(편집/삭제 가능), 아니면 `_hideKeepHeight`(투명, 높이 유지 — fence 줄과 동일한 처리)
+- `<summary>제목</summary>` 줄: 태그는 `_marker`(inactive 시 폭 접힘), 제목은 semibold + 인라인 스타일
+- 본문 줄: 일반 파이프라인(`_styleLine` 등)으로 렌더링 — 열림/닫힘 무관
 
 - [ ] **Step 1: 실패하는 테스트 작성**
 
@@ -559,22 +400,28 @@ TextStyle? _styleOf(TextSpan root, String fragment) {
       ); // summary 줄 활성
     });
 
-    testWidgets('닫힌 본문 줄은 극소 폰트로 접힌다', (tester) async {
+    testWidgets('태그 줄은 inactive에서 투명 처리된다 (높이 유지)', (tester) async {
       final span = await _build(tester, closed);
-      final style = _styleOf(span, 'body line');
-      expect(style!.fontSize, lessThan(1));
-      expect(style.color, Colors.transparent);
+      final style = _styleOf(span, '<details>');
+      expect(style!.color, Colors.transparent);
+      // 폰트 크기는 유지 — 높이 접기가 아니라 fence 줄과 같은 숨김이다.
+      expect(style.fontSize ?? 100, greaterThan(1));
     });
 
-    testWidgets('열린 본문 줄은 접히지 않는다', (tester) async {
-      final span = await _build(tester, opened);
-      final style = _styleOf(span, 'body line');
-      expect(style?.fontSize ?? 100, isNot(lessThan(1)));
+    testWidgets('본문 줄은 열림/닫힘 무관하게 일반 렌더링된다', (tester) async {
+      for (final text in [closed, opened]) {
+        final span = await _build(tester, text);
+        final style = _styleOf(span, 'body line');
+        expect(style?.color, isNot(Colors.transparent));
+      }
     });
 
-    testWidgets('summary 제목은 semibold로 렌더링된다', (tester) async {
+    testWidgets('summary 제목은 semibold, 태그는 마커 처리된다', (tester) async {
       final span = await _build(tester, closed);
       expect(_styleOf(span, '제목')!.fontWeight, FontWeight.w600);
+      // inactive에서 <summary> 마커는 폭 접힘(극소 폰트 + 투명)
+      final marker = _styleOf(span, '<summary>');
+      expect(marker!.color, Colors.transparent);
     });
   });
 ```
@@ -588,66 +435,32 @@ TextStyle? _styleOf(TextSpan root, String fragment) {
 1. `buildTextSpan`의 테이블 precompute(`:106-113`) 아래에 추가:
 
 ```dart
-    // <details> 블록: 태그 줄은 구조 노이즈로 접고, 닫힌 블록의 본문 줄은
-    // 높이까지 접는다(스트럿 비활성이라 극소 폰트가 실제로 접힌다).
+    // <details> 블록: 태그 줄은 구조 노이즈로 숨기고(높이 유지), summary는
+    // 제목으로 강조한다. 본문은 항상 표시한다 — 접힘 상태(open 속성)는 파일
+    // 포맷/GitHub 웹 렌더링용이고 에디터 내 높이 접기는 하지 않는다
+    // (스트럿 floor 제거가 미러 페인터 정렬을 깨는 것이 실측으로 확인됨).
     final detailsTagStarts = <int>{};
-    final detailsCollapsedStarts = <int>{};
     final detailsSummaryStarts = <int>{};
     for (final d in findDetailsRegions(text)) {
       detailsTagStarts.add(d.detailsLineRange.start);
       detailsTagStarts.add(d.closeLineRange.start);
       detailsSummaryStarts.add(d.summaryLineRange.start);
-      if (!d.open) {
-        for (final r in d.bodyLineRanges) {
-          detailsCollapsedStarts.add(r.start);
-        }
-      }
     }
 ```
 
-2. 메인 루프 분기(`:127-149`)를 다음 순서로 재구성 (fence 상태 추적은 그대로 유지; 본문에 fence가 있는 블록은 파서가 이미 무시하므로 collapsed 줄과 fence 줄은 겹치지 않는다):
+2. 메인 루프 분기(`:127-149`)의 `_styleLine` 폴백 앞에 두 분기 추가 (테이블 분기 다음):
 
 ```dart
-      if (_fence.hasMatch(line)) {
-        // (기존 그대로)
-      } else if (inFence) {
-        // (기존 그대로)
-      } else if (detailsCollapsedStarts.contains(lineStart)) {
-        spans.add(TextSpan(text: line, style: _collapsed(base)));
-      } else if (tableSepStarts.contains(lineStart)) {
-        // (기존 그대로)
-      } else if (tableRowStarts.contains(lineStart)) {
-        // (기존 그대로)
       } else if (detailsTagStarts.contains(lineStart)) {
-        spans.add(TextSpan(
-            text: line,
-            style: active ? base.copyWith(color: c.textMuted) : _collapsed(base)));
+        spans.add(TextSpan(text: line, style: _hideKeepHeight(base, c, active)));
       } else if (detailsSummaryStarts.contains(lineStart)) {
         spans.addAll(_summarySpans(line, base, c, active));
       } else {
-        spans.addAll(_styleLine(line, base, c, active));
-      }
 ```
 
-3. 줄바꿈 스팬(`:151-153`)을 접힘 인지형으로 교체:
+3. 헬퍼 추가 (`_hideKeepHeight` 아래):
 
 ```dart
-      if (i < lines.length - 1) {
-        final collapseNewline = detailsCollapsedStarts.contains(lineStart) ||
-            (detailsTagStarts.contains(lineStart) && !active);
-        spans.add(
-            TextSpan(text: '\n', style: collapseNewline ? _collapsed(base) : base));
-      }
-```
-
-4. 헬퍼 추가 (`_hideKeepHeight` 아래):
-
-```dart
-  /// 줄을 높이까지 접는다(투명 + 극소 폰트). 스트럿이 비활성이라 라인 박스가
-  /// 실제로 ~0 높이로 줄어든다. 문자는 남으므로 invariant는 유지된다.
-  TextStyle _collapsed(TextStyle base) => base.copyWith(
-      fontSize: 0.1, height: 1.0, letterSpacing: 0, color: Colors.transparent);
-
   static final RegExp _summaryLine =
       RegExp(r'^(\s*<summary>)(.*)(</summary>\s*)$');
 
@@ -665,71 +478,15 @@ TextStyle? _styleOf(TextSpan root, String fragment) {
   }
 ```
 
-- [ ] **Step 4: 데코/오버레이 충돌 필터**
+`import '../services/markdown_editing.dart'`는 이미 있다 (`findDetailsRegions` 사용 가능).
 
-`editor_block_decorations.dart`의 `filterEditorRegions`를 3-인자로 확장 (Task 4 버전 대체). **Task 4에서 작성한 2-인자 호출 테스트들도 세 번째 인자로 `findDetailsRegions(text)` 혹은 `const []`를 넘기도록 함께 갱신한다.**
+- [ ] **Step 4: 통과 확인** → `flutter test test/widgets/ test/services/` 전체 PASS
 
-```dart
-import '../services/markdown_editing.dart'; // 이미 있음 (TableRegion)
-
-/// 데코레이션 영역 후처리: 테이블과 겹치는 quote 바, 테이블 구분선의 rule 선,
-/// 닫힌 details 본문에 들어간 rule/quote 장식을 제거한다.
-List<EditorBlockRegion> filterEditorRegions(
-  List<EditorBlockRegion> regions,
-  List<TableRegion> tables,
-  List<DetailsRegion> details,
-) {
-  if (regions.isEmpty) return regions;
-  final sepStarts = {for (final t in tables) t.separatorRange.start};
-  bool inClosedDetails(EditorBlockRegion r) => details.any(
-      (d) => !d.open && r.start >= d.start && r.end <= d.end);
-  return regions.where((r) {
-    if (r.kind == EditorBlockKind.rule && sepStarts.contains(r.start)) {
-      return false;
-    }
-    if (r.kind == EditorBlockKind.quote &&
-        tables.any((t) => r.start <= t.end && r.end >= t.start)) {
-      return false;
-    }
-    if ((r.kind == EditorBlockKind.rule || r.kind == EditorBlockKind.quote) &&
-        inClosedDetails(r)) {
-      return false;
-    }
-    return true;
-  }).toList();
-}
-```
-
-`editor_panel.dart` 데코 빌더 호출부 갱신:
-
-```dart
-                final allRegions =
-                    parseEditorBlockRegions(_contentController.text);
-                final tables = findTableRegions(_contentController.text);
-                final details = findDetailsRegions(_contentController.text);
-                final regions = filterEditorRegions(allRegions, tables, details);
-```
-
-`_buildTableOverlays`(`editor_panel.dart:713`)에서 닫힌 details 안의 테이블은 오버레이를 만들지 않도록 필터 추가 (`final tables = findTableRegions(...)` 직후):
-
-```dart
-        final details = findDetailsRegions(_contentController.text);
-        final visibleTables = tables
-            .where((t) => !details.any(
-                (d) => !d.open && t.start >= d.start && t.end <= d.end))
-            .toList();
-        if (visibleTables.isEmpty) return const SizedBox.shrink();
-```
-
-이후 루프는 `visibleTables` 사용. 단, 컨트롤러의 `tableRowStarts` 투명 처리보다 `detailsCollapsedStarts` 접기가 먼저 오도록 위 분기 순서가 이미 보장한다 (닫힌 본문 안 테이블 줄은 접힌다).
-
-- [ ] **Step 5: 통과 확인** → `flutter test test/widgets/ test/services/` 전체 PASS
-
-- [ ] **Step 6: 커밋**
+- [ ] **Step 5: 커밋**
 
 ```bash
 git add desktop/lib/widgets/ desktop/test/widgets/
-git commit -m "feat: details 블록 인라인 렌더링 (접힘/펼침, 충돌 필터)"
+git commit -m "feat: details 블록 인라인 렌더링 (태그 숨김 + summary 강조)"
 ```
 
 ---
