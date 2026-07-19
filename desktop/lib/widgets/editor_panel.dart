@@ -83,6 +83,11 @@ class EditorPanelState extends State<EditorPanel> {
   /// TextPainter 대신 실제 RenderEditable을 직접 조회하는 데 쓴다.
   final GlobalKey _fieldKey = GlobalKey();
 
+  /// 접기 거터 폭: 텍스트 전체가 이만큼 오른쪽에서 시작하고, details 접기
+  /// 버튼과 열림 범위 가이드 라인이 이 안에 그려진다. 본문 텍스트와 접기
+  /// UI가 겹치지 않는다.
+  static const double _foldGutterWidth = 28.0;
+
   /// 콘텐츠 TextField 내부의 [RenderEditable]. 아직 붙지 않았으면 null.
   RenderEditable? _renderEditable() {
     RenderEditable? found;
@@ -832,9 +837,15 @@ class EditorPanelState extends State<EditorPanel> {
     );
 
     // cmd+V 이미지 붙여넣기를 TextField 기본 paste보다 먼저 가로챈다.
-    final wrappedField = Focus(
-      onKeyEvent: _onEditorKeyEvent,
-      child: field,
+    // 필드는 접기 거터만큼 오른쪽으로 배치 — 거터에는 details 접기 버튼과
+    // 가이드 라인이 놓인다. (세로 좌표는 그대로라 RenderEditable 밴드 측정에
+    // 영향이 없고, 가로는 leftInset으로 보정한다.)
+    final wrappedField = Padding(
+      padding: const EdgeInsets.only(left: _foldGutterWidth),
+      child: Focus(
+        onKeyEvent: _onEditorKeyEvent,
+        child: field,
+      ),
     );
 
     // 오버레이(테이블/이미지/chevron)는 CustomMultiChildLayout으로 배치한다.
@@ -874,6 +885,7 @@ class EditorPanelState extends State<EditorPanel> {
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
                     detailsGuide: c.textMuted.withValues(alpha: 0.35),
+                    leftInset: _foldGutterWidth,
                   ),
                 );
               },
@@ -901,7 +913,14 @@ class EditorPanelState extends State<EditorPanel> {
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
+        // 왼쪽은 접기 거터(_foldGutterWidth)가 스택 안에서 여백 역할을
+        // 겸하므로 바깥 패딩을 줄인다.
+        padding: const EdgeInsets.fromLTRB(
+          AppDimensions.spacingSm,
+          AppDimensions.spacingLg,
+          AppDimensions.spacingLg,
+          AppDimensions.spacingLg,
+        ),
         child: body,
       ),
     );
@@ -926,6 +945,7 @@ class EditorPanelState extends State<EditorPanel> {
           delegate: EditorOverlayLayoutDelegate(
             editable: _renderEditable,
             relayout: _overlayRelayout,
+            leftInset: _foldGutterWidth,
             items: [
               for (final t in tables)
                 EditorOverlayItem(
@@ -1017,6 +1037,7 @@ class EditorPanelState extends State<EditorPanel> {
           delegate: EditorOverlayLayoutDelegate(
             editable: _renderEditable,
             relayout: _overlayRelayout,
+            leftInset: _foldGutterWidth,
             items: [
               for (final r in images)
                 EditorOverlayItem(

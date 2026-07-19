@@ -371,16 +371,14 @@ void main() {
       expect(style.fontSize ?? 100, greaterThan(1));
     });
 
-    testWidgets('summary 제목은 semibold, 여는 태그는 chevron 인덴트가 된다',
-        (tester) async {
+    testWidgets('summary 제목은 semibold, 태그는 마커로 접힌다', (tester) async {
       final span = await _build(tester, closed);
       expect(_styleOf(span, '제목')!.fontWeight, FontWeight.w600);
-      // inactive에서 <summary>는 왼쪽 접기 버튼 자리를 남기는 투명 인덴트
-      // (극소 마커보다 넓고, 본문 폰트보다 작다).
+      // 접기 버튼은 텍스트 왼쪽 거터에 있으므로 <summary> 태그는 다른 인라인
+      // 마커처럼 폭을 극소로 접는다.
       final marker = _styleOf(span, '<summary>');
       expect(marker!.color, Colors.transparent);
-      expect(marker.fontSize!, greaterThan(1));
-      expect(marker.fontSize!, lessThan(10));
+      expect(marker.fontSize, lessThan(1));
     });
   });
 

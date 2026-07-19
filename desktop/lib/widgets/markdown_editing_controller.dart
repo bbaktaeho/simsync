@@ -270,24 +270,15 @@ class MarkdownEditingController extends TextEditingController {
   static final RegExp _summaryLine =
       RegExp(r'^(\s*<summary>)(.*)(</summary>\s*)$');
 
-  /// `<summary>제목</summary>` 줄: 여는 태그는 접기 chevron 자리를 남기는
-  /// 투명 인덴트로 줄이고(왼쪽 버튼과 제목이 겹치지 않게), 닫는 태그는
-  /// 마커로 접는다. 제목은 강조한다.
+  /// `<summary>제목</summary>` 줄: 태그는 마커로 접고 제목은 강조한다.
+  /// 접기 버튼은 텍스트 왼쪽의 거터에 있으므로 제목과 겹치지 않는다.
   List<InlineSpan> _summarySpans(
       String line, TextStyle base, AppColorsExtension c, bool active) {
     final m = _summaryLine.firstMatch(line);
     if (m == null) return _styleLine(line, base, c, active);
     final titleStyle = base.copyWith(fontWeight: FontWeight.w600);
-    // '<summary>' 9글자를 아이콘 폭(~24px)보다 넓은 인덴트로 축소한다.
-    // 폰트 크기에 비례하므로 콘텐츠 줌과 함께 커진다.
-    final indentStyle = active
-        ? base.copyWith(color: c.textMuted)
-        : base.copyWith(
-            color: Colors.transparent,
-            fontSize: (base.fontSize ?? 14) * 0.52,
-            letterSpacing: 0);
     return [
-      TextSpan(text: m.group(1)!, style: indentStyle),
+      TextSpan(text: m.group(1)!, style: _marker(base, c, active)),
       ..._styleInline(m.group(2)!, titleStyle, c, active),
       TextSpan(text: m.group(3)!, style: _marker(base, c, active)),
     ];

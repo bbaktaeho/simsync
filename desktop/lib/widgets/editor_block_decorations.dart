@@ -128,6 +128,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
     required this.ruleColor,
     required this.quoteBar,
     required this.detailsGuide,
+    this.leftInset = 0,
   }) : super(repaint: repaint);
 
   /// 필드의 RenderEditable 조회. 아직 붙지 않았으면 null (첫 프레임 등).
@@ -141,6 +142,11 @@ class EditorBlockDecorationPainter extends CustomPainter {
 
   /// 열린 details 본문 왼쪽의 접기 범위 가이드 라인 색 (흐릿하게).
   final Color detailsGuide;
+
+  /// 텍스트 필드가 접기 거터만큼 오른쪽으로 밀려 있을 때의 x 오프셋.
+  /// 텍스트 기준 장식(코드 박스, rule, quote 바)은 이만큼 들여 그리고,
+  /// details 가이드 라인은 거터 안(접기 버튼 화살표 아래)에 그린다.
+  final double leftInset;
 
   /// 이 높이 이하의 영역은 접힌 것으로 보고 그리지 않는다 (닫힌 details 본문).
   static const double _collapsedBandThreshold = 1.0;
@@ -172,23 +178,26 @@ class EditorBlockDecorationPainter extends CustomPainter {
       if (bottom < 0 || top > size.height) continue;
       switch (region.kind) {
         case EditorBlockKind.code:
-          final rect = Rect.fromLTRB(0, top - 4, size.width, bottom + 4);
+          final rect =
+              Rect.fromLTRB(leftInset, top - 4, size.width, bottom + 4);
           final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
           canvas.drawRRect(rrect, fill);
           canvas.drawRRect(rrect, stroke);
         case EditorBlockKind.rule:
           final y = (top + bottom) / 2;
-          canvas.drawLine(Offset(0, y), Offset(size.width, y), rule);
+          canvas.drawLine(Offset(leftInset, y), Offset(size.width, y), rule);
         case EditorBlockKind.quote:
-          final rect = Rect.fromLTRB(2, top + 1, 5, bottom - 1);
+          final rect = Rect.fromLTRB(
+              leftInset + 2, top + 1, leftInset + 5, bottom - 1);
           canvas.drawRRect(
             RRect.fromRectAndRadius(rect, const Radius.circular(1.5)),
             bar,
           );
         case EditorBlockKind.detailsGuide:
-          // 접기 버튼(chevron) 열 아래로 이어지는 흐릿한 세로선 — 열린 블록이
-          // 어디까지인지 보여준다.
-          final rect = Rect.fromLTRB(8, top + 1, 10, bottom - 1);
+          // 접기 버튼 화살표 아래로 이어지는 흐릿한 세로선 — 열린 블록이
+          // 어디까지인지 보여준다. 거터 안에 있어 본문과 겹치지 않는다.
+          final x = math.max(0.0, leftInset - 16);
+          final rect = Rect.fromLTRB(x, top + 1, x + 2, bottom - 1);
           canvas.drawRRect(
             RRect.fromRectAndRadius(rect, const Radius.circular(1)),
             guide,

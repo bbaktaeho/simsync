@@ -72,12 +72,17 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
     required this.editable,
     required this.items,
     required Listenable relayout,
+    this.leftInset = 0,
   }) : super(relayout: relayout);
 
   /// 필드의 RenderEditable 조회. 아직 붙지 않았으면 null.
   final RenderEditable? Function() editable;
 
   final List<EditorOverlayItem> items;
+
+  /// 텍스트 필드가 접기 거터만큼 오른쪽으로 밀려 있을 때의 x 오프셋.
+  /// band/imageBand 자식은 이만큼 들여 배치한다 (chevron은 거터 안 = x 0).
+  final double leftInset;
 
   /// 접힌(높이 ~0) 범위나 측정 불가 항목을 치워 두는 위치.
   static const Offset _offscreen = Offset(-1e5, -1e5);
@@ -112,17 +117,18 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
         continue;
       }
 
+      final contentWidth = math.max(0.0, size.width - leftInset);
       switch (item.anchor) {
         case EditorOverlayAnchor.band:
           layoutChild(
-              item.id, BoxConstraints.tight(Size(size.width, band.height)));
-          positionChild(item.id, Offset(0, band.top));
+              item.id, BoxConstraints.tight(Size(contentWidth, band.height)));
+          positionChild(item.id, Offset(leftInset, band.top));
         case EditorOverlayAnchor.imageBand:
           layoutChild(
               item.id,
               BoxConstraints.tight(
-                  Size(size.width, math.max(0, item.childHeight))));
-          positionChild(item.id, Offset(0, band.top + item.topInset));
+                  Size(contentWidth, math.max(0, item.childHeight))));
+          positionChild(item.id, Offset(leftInset, band.top + item.topInset));
         case EditorOverlayAnchor.leadingChevron:
           final childSize = layoutChild(item.id, BoxConstraints.loose(size));
           positionChild(
