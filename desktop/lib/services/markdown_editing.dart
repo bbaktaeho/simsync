@@ -643,3 +643,33 @@ List<DetailsRegion> findDetailsRegions(String text) {
   }
   return result;
 }
+
+/// 줄 시작에서 `> `를 입력하면 `<details>` 스켈레톤으로 바꾼다. 인용문의 새
+/// 문법은 `| `이므로 `>`는 details 생성 트리거로만 쓰인다. 이미 저장된
+/// `> ` 줄(레거시 인용문)은 건드리지 않는다 — 새로 타이핑되는 경우만 반응.
+class DetailsBlockInputFormatter extends TextInputFormatter {
+  static const skeleton = '<details>\n<summary></summary>\n\n</details>';
+  static final int _caretOffset = '<details>\n<summary>'.length;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final sel = newValue.selection;
+    if (!sel.isValid || !sel.isCollapsed) return newValue;
+    // 한 글자 삽입만 반응 (붙여넣기/IME 조합 제외).
+    if (newValue.text.length != oldValue.text.length + 1) return newValue;
+    final cursor = sel.baseOffset;
+    final lineStart = _lineStartOf(newValue.text, cursor);
+    final lineEnd = _lineEndOf(newValue.text, cursor);
+    if (cursor != lineEnd) return newValue;
+    if (newValue.text.substring(lineStart, lineEnd) != '> ') return newValue;
+
+    final text = newValue.text.replaceRange(lineStart, lineEnd, skeleton);
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: lineStart + _caretOffset),
+    );
+  }
+}

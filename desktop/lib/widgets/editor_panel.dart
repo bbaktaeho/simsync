@@ -674,8 +674,9 @@ class EditorPanelState extends State<EditorPanel> {
       scrollController: _contentScrollController,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
       readOnly: widget.isReadOnly,
-      inputFormatters:
-          widget.isReadOnly ? null : [MarkdownListInputFormatter()],
+      inputFormatters: widget.isReadOnly
+          ? null
+          : [MarkdownListInputFormatter(), DetailsBlockInputFormatter()],
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
@@ -738,6 +739,10 @@ class EditorPanelState extends State<EditorPanel> {
         // controls when the caret is inside them.
         Positioned.fill(
           child: _buildTableOverlays(c, bodyStyle, strut, textScaler),
+        ),
+        // details 접기/펼치기 chevron — summary 줄 오른쪽 끝에 겹친다.
+        Positioned.fill(
+          child: _buildDetailsToggles(c, bodyStyle, strut, textScaler),
         ),
       ],
     );
@@ -809,6 +814,78 @@ class EditorPanelState extends State<EditorPanel> {
         );
       },
     );
+  }
+
+  Widget _buildDetailsToggles(
+    AppColorsExtension c,
+    TextStyle bodyStyle,
+    StrutStyle strut,
+    TextScaler textScaler,
+  ) {
+    return ListenableBuilder(
+      listenable:
+          Listenable.merge([_contentController, _contentScrollController]),
+      builder: (context, _) {
+        final details = findDetailsRegions(_contentController.text);
+        if (details.isEmpty) return const SizedBox.shrink();
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final span = _contentController.buildTextSpan(
+                context: context, style: bodyStyle, withComposing: false);
+            final measured = measureRanges(
+                span,
+                [for (final d in details) d.summaryLineRange],
+                strut,
+                textScaler,
+                constraints.maxWidth);
+            final scrollY = _contentScrollController.hasClients
+                ? _contentScrollController.offset
+                : 0.0;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                for (final m in measured)
+                  Positioned(
+                    right: 0,
+                    top: m.top - scrollY,
+                    height: m.bottom - m.top,
+                    child: _DetailsToggleButton(
+                      open: details[m.index].open,
+                      onTap: widget.isReadOnly
+                          ? null
+                          : () => _toggleDetailsOpen(details[m.index]),
+                    ),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// `<details>` ↔ `<details open>` 토글. 펼침 상태가 파일에 저장되어 GitHub
+  /// 웹/다른 디바이스와 공유된다.
+  void _toggleDetailsOpen(DetailsRegion d) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final line =
+        text.substring(d.detailsLineRange.start, d.detailsLineRange.end);
+    final newLine = d.open
+        ? line.replaceFirst('<details open>', '<details>')
+        : line.replaceFirst('<details>', '<details open>');
+    if (newLine == line) return;
+    final selection = _contentController.selection;
+    final newText = text.replaceRange(
+        d.detailsLineRange.start, d.detailsLineRange.end, newLine);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: (selection.isValid ? selection.baseOffset : d.start)
+            .clamp(0, newText.length),
+      ),
+    );
+    _onContentChanged();
   }
 
   static final RegExp _leadingIndent = RegExp(r'^[ \t]*');
@@ -1030,6 +1107,33 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
               border: Border.all(color: c.border),
             ),
             child: Icon(widget.icon, size: 16, color: c.textSecondary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// details 블록 summary 줄 오른쪽의 접기/펼치기 버튼.
+class _DetailsToggleButton extends StatelessWidget {
+  final bool open;
+  final VoidCallback? onTap;
+
+  const _DetailsToggleButton({required this.open, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Icon(
+            open ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
+            size: 18,
+            color: c.textMuted,
           ),
         ),
       ),

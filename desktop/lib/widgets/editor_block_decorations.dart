@@ -266,6 +266,33 @@ List<({TableRegion table, double top, double bottom})> measureTableRegions(
   return out;
 }
 
+/// 임의 문자 범위 목록의 세로 구간(top..bottom, 스크롤 전 텍스트 좌표)을
+/// 측정한다. details chevron과 인라인 이미지 오버레이 배치에 쓰인다.
+List<({int index, double top, double bottom})> measureRanges(
+  InlineSpan span,
+  List<({int start, int end})> ranges,
+  StrutStyle strutStyle,
+  TextScaler textScaler,
+  double width,
+) {
+  if (ranges.isEmpty || width <= 0) return const [];
+  final painter = TextPainter(
+    text: span,
+    textDirection: TextDirection.ltr,
+    strutStyle: strutStyle,
+    textScaler: textScaler,
+  )..layout(maxWidth: math.max(0, width - 3.0)); // matches the field's caret gap
+  final out = <({int index, double top, double bottom})>[];
+  for (var i = 0; i < ranges.length; i++) {
+    final ext = boxSpanForRange(painter, ranges[i].start, ranges[i].end);
+    if (ext != null) {
+      out.add((index: i, top: ext.top, bottom: ext.bottom));
+    }
+  }
+  painter.dispose();
+  return out;
+}
+
 /// 데코레이션 영역 후처리: 테이블과 겹치는 quote 바(테이블 행도 `|`로 시작),
 /// 테이블 구분선과 겹치는 rule 선을 제거한다.
 List<EditorBlockRegion> filterEditorRegions(

@@ -308,4 +308,48 @@ void main() {
       expect(findDetailsRegions(text), isEmpty);
     });
   });
+
+  group('DetailsBlockInputFormatter', () {
+    TextEditingValue apply(String oldText, int cursor, String typed) {
+      final oldValue = TextEditingValue(
+        text: oldText,
+        selection: TextSelection.collapsed(offset: cursor),
+      );
+      final newText = oldText.replaceRange(cursor, cursor, typed);
+      final newValue = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: cursor + typed.length),
+      );
+      return DetailsBlockInputFormatter().formatEditUpdate(oldValue, newValue);
+    }
+
+    test('줄 시작 "> " 입력이 details 스켈레톤으로 바뀐다', () {
+      final result = apply('>', 1, ' ');
+      expect(result.text, '<details>\n<summary></summary>\n\n</details>');
+      expect(result.selection.baseOffset, '<details>\n<summary>'.length);
+    });
+
+    test('앞 줄이 있어도 동작한다', () {
+      final result = apply('line1\n>', 7, ' ');
+      expect(result.text, 'line1\n<details>\n<summary></summary>\n\n</details>');
+    });
+
+    test('줄 중간의 "> "는 건드리지 않는다', () {
+      final result = apply('a >', 3, ' ');
+      expect(result.text, 'a > ');
+    });
+
+    test('붙여넣기(여러 글자 삽입)는 건드리지 않는다', () {
+      final oldValue = const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+      const newValue = TextEditingValue(
+        text: '> ',
+        selection: TextSelection.collapsed(offset: 2),
+      );
+      final result = DetailsBlockInputFormatter().formatEditUpdate(oldValue, newValue);
+      expect(result.text, '> ');
+    });
+  });
 }
