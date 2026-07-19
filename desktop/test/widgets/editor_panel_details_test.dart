@@ -149,4 +149,37 @@ void main() {
     // chevron 전체가 제목 시작점보다 왼쪽에 있어야 한다.
     expect(chevronRight, lessThanOrEqualTo(titleLeft + 0.5));
   });
+
+  testWidgets('일반 텍스트는 밀리지 않고 details 본문만 들여쓴다', (tester) async {
+    const content =
+        'plain line\n<details open>\n<summary>t</summary>\n  body indented\n</details>';
+    await tester.pumpWidget(MaterialApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: EditorPanel(note: note(content), onNoteChanged: (_) {}),
+      ),
+    ));
+    await tester.pump();
+
+    final panelLeft = tester.getTopLeft(find.byType(EditorPanel)).dx;
+    final etFinder = find.descendant(
+        of: contentField(), matching: find.byType(EditableText));
+    final fieldLeft = tester.getTopLeft(etFinder).dx;
+    // 텍스트 시작 위치는 기존 왼쪽 여백(16)과 동일 — 노트 전체가 밀리지 않는다.
+    expect(fieldLeft - panelLeft, 16.0);
+
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    double glyphLeft(String fragment) {
+      final start = content.indexOf(fragment);
+      final boxes = re.getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: start + 1));
+      expect(boxes, isNotEmpty, reason: fragment);
+      return boxes.first.left;
+    }
+
+    final plainLeft = glyphLeft('plain');
+    final bodyLeft = glyphLeft('body indented');
+    // 본문 첫 글자는 저장된 2칸 공백만큼 일반 텍스트보다 들여쓰인다.
+    expect(bodyLeft, greaterThan(plainLeft + 4));
+  });
 }

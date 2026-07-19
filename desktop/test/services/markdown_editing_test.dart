@@ -323,15 +323,47 @@ void main() {
       return DetailsBlockInputFormatter().formatEditUpdate(oldValue, newValue);
     }
 
-    test('줄 시작 "> " 입력이 details 스켈레톤으로 바뀐다', () {
+    test('줄 시작 "> " 입력이 details 스켈레톤으로 바뀐다 (본문 들여쓰기 포함)', () {
       final result = apply('>', 1, ' ');
-      expect(result.text, '<details>\n<summary></summary>\n\n</details>');
+      expect(result.text, '<details>\n<summary></summary>\n  \n</details>');
       expect(result.selection.baseOffset, '<details>\n<summary>'.length);
     });
 
     test('앞 줄이 있어도 동작한다', () {
       final result = apply('line1\n>', 7, ' ');
-      expect(result.text, 'line1\n<details>\n<summary></summary>\n\n</details>');
+      expect(
+          result.text, 'line1\n<details>\n<summary></summary>\n  \n</details>');
+    });
+
+    test('summary 줄에서 Enter를 치면 본문 들여쓰기가 이어진다', () {
+      const text = '<details>\n<summary>t</summary>\n  \n</details>';
+      final cursor = text.indexOf('</summary>') + '</summary>'.length;
+      final result = apply(text, cursor, '\n');
+      expect(result.text,
+          '<details>\n<summary>t</summary>\n  \n  \n</details>');
+      expect(result.selection.baseOffset, cursor + 1 + 2);
+    });
+
+    test('본문 줄에서 Enter를 치면 들여쓰기가 이어진다', () {
+      const text = '<details>\n<summary>t</summary>\n  abc\n</details>';
+      final cursor = text.indexOf('abc') + 3;
+      final result = apply(text, cursor, '\n');
+      expect(result.text,
+          '<details>\n<summary>t</summary>\n  abc\n  \n</details>');
+      expect(result.selection.baseOffset, cursor + 1 + 2);
+    });
+
+    test('들여쓰기만 있는 빈 본문 줄에서의 Enter는 이어가지 않는다 (탈출구)', () {
+      const text = '<details>\n<summary>t</summary>\n  \n</details>';
+      final cursor = text.indexOf('  \n</details>') + 2;
+      final result = apply(text, cursor, '\n');
+      expect(result.text,
+          '<details>\n<summary>t</summary>\n  \n\n</details>');
+    });
+
+    test('details 밖에서의 Enter는 건드리지 않는다', () {
+      final result = apply('plain', 5, '\n');
+      expect(result.text, 'plain\n');
     });
 
     test('줄 중간의 "> "는 건드리지 않는다', () {

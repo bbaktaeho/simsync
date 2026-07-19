@@ -196,7 +196,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
         case EditorBlockKind.detailsGuide:
           // 접기 버튼 화살표 아래로 이어지는 흐릿한 세로선 — 열린 블록이
           // 어디까지인지 보여준다. 거터 안에 있어 본문과 겹치지 않는다.
-          final x = math.max(0.0, leftInset - 16);
+          final x = math.max(0.0, leftInset - 10);
           final rect = Rect.fromLTRB(x, top + 1, x + 2, bottom - 1);
           canvas.drawRRect(
             RRect.fromRectAndRadius(rect, const Radius.circular(1)),
