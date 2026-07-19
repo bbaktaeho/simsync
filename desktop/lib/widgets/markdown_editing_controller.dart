@@ -278,13 +278,13 @@ class MarkdownEditingController extends TextEditingController {
     final m = _summaryLine.firstMatch(line);
     if (m == null) return _styleLine(line, base, c, active);
     final titleStyle = base.copyWith(fontWeight: FontWeight.w600);
-    // '<summary>' 9글자를 아이콘 폭(~18px)보다 넓은 인덴트로 축소한다.
+    // '<summary>' 9글자를 아이콘 폭(~24px)보다 넓은 인덴트로 축소한다.
     // 폰트 크기에 비례하므로 콘텐츠 줌과 함께 커진다.
     final indentStyle = active
         ? base.copyWith(color: c.textMuted)
         : base.copyWith(
             color: Colors.transparent,
-            fontSize: (base.fontSize ?? 14) * 0.42,
+            fontSize: (base.fontSize ?? 14) * 0.52,
             letterSpacing: 0);
     return [
       TextSpan(text: m.group(1)!, style: indentStyle),

@@ -26,7 +26,7 @@ void main() {
     ));
     await tester.pump();
     // chevron 아이콘(접힘 상태 = 오른쪽 화살표)을 찾아 탭
-    final chevron = find.byIcon(Icons.chevron_right_rounded);
+    final chevron = find.byIcon(Icons.arrow_right_rounded);
     expect(chevron, findsOneWidget);
     await tester.tap(chevron);
     // 자동 저장 디바운스(1초) 경과
@@ -52,7 +52,7 @@ void main() {
     // "bo|dy" 위치(오프셋 33) — 태그 줄(`<details>`, 0..9) 뒤에 있으므로
     // 토글 시 ' open' 5글자만큼 밀려야 같은 글자를 계속 가리킨다.
     controller.selection = const TextSelection.collapsed(offset: 33);
-    final chevron = find.byIcon(Icons.chevron_right_rounded);
+    final chevron = find.byIcon(Icons.arrow_right_rounded);
     expect(chevron, findsOneWidget);
     await tester.tap(chevron);
     await tester.pump();
@@ -131,7 +131,7 @@ void main() {
     ));
     await tester.pump();
 
-    final chevron = find.byIcon(Icons.chevron_right_rounded);
+    final chevron = find.byIcon(Icons.arrow_right_rounded);
     expect(chevron, findsOneWidget);
     final chevronRight = tester.getTopRight(chevron).dx;
 

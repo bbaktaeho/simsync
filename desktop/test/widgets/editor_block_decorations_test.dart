@@ -130,4 +130,21 @@ void main() {
           filtered.where((r) => r.kind == EditorBlockKind.rule), hasLength(1));
     });
   });
+
+  group('detailsGuideRegions', () {
+    test('열린 블록의 본문 범위만 가이드가 된다', () {
+      const text = '<details open>\n<summary>t</summary>\nbody a\nbody b\n</details>\n'
+          '<details>\n<summary>c</summary>\nhidden\n</details>';
+      final guides = detailsGuideRegions(findDetailsRegions(text));
+      expect(guides, hasLength(1));
+      expect(guides.single.kind, EditorBlockKind.detailsGuide);
+      expect(text.substring(guides.single.start, guides.single.end),
+          'body a\nbody b');
+    });
+
+    test('본문이 없는 열린 블록은 가이드가 없다', () {
+      const text = '<details open>\n<summary>t</summary>\n</details>';
+      expect(detailsGuideRegions(findDetailsRegions(text)), isEmpty);
+    });
+  });
 }

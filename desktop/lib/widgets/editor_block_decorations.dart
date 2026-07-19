@@ -6,7 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../services/markdown_editing.dart';
 
 /// Kind of block decoration painted behind the (still-editable) TextField.
-enum EditorBlockKind { code, rule, quote }
+enum EditorBlockKind { code, rule, quote, detailsGuide }
 
 /// A block-level region of the editor text that gets a painted decoration: a
 /// fenced code block (box), a `---` thematic break (rule), or a `>` blockquote
@@ -127,6 +127,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
     required this.codeBorder,
     required this.ruleColor,
     required this.quoteBar,
+    required this.detailsGuide,
   }) : super(repaint: repaint);
 
   /// 필드의 RenderEditable 조회. 아직 붙지 않았으면 null (첫 프레임 등).
@@ -137,6 +138,9 @@ class EditorBlockDecorationPainter extends CustomPainter {
   final Color codeBorder;
   final Color ruleColor;
   final Color quoteBar;
+
+  /// 열린 details 본문 왼쪽의 접기 범위 가이드 라인 색 (흐릿하게).
+  final Color detailsGuide;
 
   /// 이 높이 이하의 영역은 접힌 것으로 보고 그리지 않는다 (닫힌 details 본문).
   static const double _collapsedBandThreshold = 1.0;
@@ -157,6 +161,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
       ..color = ruleColor
       ..strokeWidth = 1;
     final bar = Paint()..color = quoteBar;
+    final guide = Paint()..color = detailsGuide;
 
     for (final region in regions) {
       final band = editableBandForRange(re, region.start, region.end);
@@ -179,6 +184,14 @@ class EditorBlockDecorationPainter extends CustomPainter {
           canvas.drawRRect(
             RRect.fromRectAndRadius(rect, const Radius.circular(1.5)),
             bar,
+          );
+        case EditorBlockKind.detailsGuide:
+          // 접기 버튼(chevron) 열 아래로 이어지는 흐릿한 세로선 — 열린 블록이
+          // 어디까지인지 보여준다.
+          final rect = Rect.fromLTRB(8, top + 1, 10, bottom - 1);
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(1)),
+            guide,
           );
       }
     }
@@ -208,6 +221,21 @@ class EditorBlockDecorationPainter extends CustomPainter {
     bottom = math.max(bottom, box.bottom);
   }
   return (top: top, bottom: bottom);
+}
+
+/// 열린 details 블록의 본문 범위를 [EditorBlockKind.detailsGuide] 영역으로
+/// 만든다 — 에디터에서 "어디까지 열려 있는지"를 흐릿한 세로선으로 보여주는
+/// 용도. 닫힌 블록과 빈 본문은 제외.
+List<EditorBlockRegion> detailsGuideRegions(List<DetailsRegion> details) {
+  return [
+    for (final d in details)
+      if (d.open && d.bodyLineRanges.isNotEmpty)
+        EditorBlockRegion(
+          start: d.bodyLineRanges.first.start,
+          end: d.bodyLineRanges.last.end,
+          kind: EditorBlockKind.detailsGuide,
+        ),
+  ];
 }
 
 /// 데코레이션 영역 후처리: 테이블과 겹치는 quote 바(테이블 행도 `|`로 시작),

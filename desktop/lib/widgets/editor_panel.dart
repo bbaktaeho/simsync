@@ -856,8 +856,11 @@ class EditorPanelState extends State<EditorPanel> {
                     parseEditorBlockRegions(_contentController.text);
                 final tables = findTableRegions(_contentController.text);
                 final details = findDetailsRegions(_contentController.text);
-                final regions =
-                    filterEditorRegions(allRegions, tables, details);
+                final regions = [
+                  ...filterEditorRegions(allRegions, tables, details),
+                  // 열린 details 본문 왼쪽의 접기 범위 가이드 라인.
+                  ...detailsGuideRegions(details),
+                ];
                 if (regions.isEmpty) {
                   return const SizedBox.expand();
                 }
@@ -870,6 +873,7 @@ class EditorPanelState extends State<EditorPanel> {
                     codeBorder: c.border,
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
+                    detailsGuide: c.textMuted.withValues(alpha: 0.35),
                   ),
                 );
               },
@@ -1335,7 +1339,8 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
   }
 }
 
-/// details 블록 summary 줄 오른쪽의 접기/펼치기 버튼.
+/// details 블록 summary 줄 왼쪽의 접기/펼치기 버튼.
+/// 채워진 삼각형 + 본문보다 진한 색으로 접기 지점을 뚜렷하게 보여준다.
 class _DetailsToggleButton extends StatelessWidget {
   final bool open;
   final VoidCallback? onTap;
@@ -1350,11 +1355,11 @@ class _DetailsToggleButton extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
           child: Icon(
-            open ? Icons.expand_more_rounded : Icons.chevron_right_rounded,
-            size: 18,
-            color: c.textMuted,
+            open ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
+            size: 24,
+            color: c.textSecondary,
           ),
         ),
       ),
