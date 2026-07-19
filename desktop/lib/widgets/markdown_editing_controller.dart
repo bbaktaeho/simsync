@@ -112,9 +112,9 @@ class MarkdownEditingController extends TextEditingController {
 
     // Table lines are hidden so the decoration layer can paint a rendered table
     // over them: header/body rows go transparent (keeping their height as the
-    // row's vertical space). The separator's font shrinks toward ~0, but the
-    // shared strut floors its line height, so the painter absorbs the leftover
-    // slack by dividing the table band evenly (see _paintTable).
+    // row's vertical space). The separator line collapses to ~0 height (the
+    // editor strut is a near-zero explicit minimum, so a tiny font really
+    // shrinks the line box).
     final tableRowStarts = <int>{};
     final tableSepStarts = <int>{};
     for (final t in findTableRegions(text)) {
@@ -124,16 +124,22 @@ class MarkdownEditingController extends TextEditingController {
       tableSepStarts.add(t.separatorRange.start);
     }
 
-    // <details> 블록: 태그 줄은 구조 노이즈로 숨기고(높이 유지), summary는
-    // 제목으로 강조한다. 본문은 항상 표시한다 — 접힘 상태(open 속성)는 파일
-    // 포맷/GitHub 웹 렌더링용이고 에디터 내 높이 접기는 하지 않는다
-    // (스트럿 floor 제거가 미러 페인터 정렬을 깨는 것이 실측으로 확인됨).
+    // <details> 블록: 태그 줄은 캐럿이 없을 때 높이까지 접고, summary는
+    // 제목으로 강조한다. 닫힌(open 속성 없는) 블록의 본문 줄은 실제로 접는다
+    // — 에디터 스트럿이 극소 명시값이라 극소 폰트 줄의 라인 박스가 ~0으로
+    // 줄어든다. open 속성은 파일에 저장되어 GitHub 웹과도 상태를 공유한다.
     final detailsTagStarts = <int>{};
     final detailsSummaryStarts = <int>{};
+    final detailsCollapsedStarts = <int>{};
     for (final d in findDetailsRegions(text)) {
       detailsTagStarts.add(d.detailsLineRange.start);
       detailsTagStarts.add(d.closeLineRange.start);
       detailsSummaryStarts.add(d.summaryLineRange.start);
+      if (!d.open) {
+        for (final r in d.bodyLineRanges) {
+          detailsCollapsedStarts.add(r.start);
+        }
+      }
     }
 
     // 인라인 이미지 줄: 태그 텍스트는 항상 숨기고 오버레이가 이미지를 그린다.
@@ -173,16 +179,22 @@ class MarkdownEditingController extends TextEditingController {
         }
       } else if (inFence) {
         spans.addAll(_codeSpans(line, fenceLang, theme, codeBase));
+      } else if (detailsCollapsedStarts.contains(lineStart)) {
+        // 닫힌 details의 본문 줄: 높이까지 접는다. (테이블/이미지 줄이어도
+        // 접힘이 우선 — 오버레이는 밴드 높이 ~0을 보고 스스로 숨는다.)
+        spans.add(TextSpan(text: line, style: _collapsed(base)));
       } else if (tableSepStarts.contains(lineStart)) {
-        spans.add(TextSpan(
-            text: line,
-            style: base.copyWith(fontSize: 0.1, color: Colors.transparent)));
+        spans.add(TextSpan(text: line, style: _collapsed(base)));
       } else if (tableRowStarts.contains(lineStart)) {
         spans.add(TextSpan(text: line, style: base.copyWith(color: Colors.transparent)));
       } else if (imageStarts.containsKey(lineStart)) {
         spans.addAll(_imageLineSpans(line, imageStarts[lineStart]!, base));
       } else if (detailsTagStarts.contains(lineStart)) {
-        spans.add(TextSpan(text: line, style: _hideKeepHeight(base, c, active)));
+        // 태그 줄은 구조 노이즈: 캐럿이 있으면 편집용으로 노출, 아니면 접는다.
+        spans.add(TextSpan(
+            text: line,
+            style:
+                active ? base.copyWith(color: c.textMuted) : _collapsed(base)));
       } else if (detailsSummaryStarts.contains(lineStart)) {
         spans.addAll(_summarySpans(line, base, c, active));
       } else {
@@ -190,7 +202,12 @@ class MarkdownEditingController extends TextEditingController {
       }
 
       if (i < lines.length - 1) {
-        spans.add(TextSpan(text: '\n', style: base));
+        // 접힌 줄은 그 줄을 끝내는 개행까지 접어야 라인 박스가 완전히 사라진다.
+        final collapseNewline = detailsCollapsedStarts.contains(lineStart) ||
+            tableSepStarts.contains(lineStart) ||
+            (detailsTagStarts.contains(lineStart) && !active);
+        spans.add(TextSpan(
+            text: '\n', style: collapseNewline ? _collapsed(base) : base));
       }
       offset = lineEnd + 1; // + the '\n'
     }
@@ -216,6 +233,12 @@ class MarkdownEditingController extends TextEditingController {
         ? lineStyle.copyWith(color: c.textMuted)
         : lineStyle.copyWith(color: Colors.transparent);
   }
+
+  /// 줄을 높이까지 접는다(투명 + 극소 폰트). 에디터 스트럿이 극소 명시값이라
+  /// 라인 박스가 실제로 ~0 높이로 줄어든다. 문자는 남으므로 invariant는
+  /// 유지되고, 캐럿/선택도 정상 동작한다.
+  TextStyle _collapsed(TextStyle base) => base.copyWith(
+      fontSize: 0.1, height: 1.0, letterSpacing: 0, color: Colors.transparent);
 
   /// 이미지 줄 상하 여백 (오버레이의 그림 여백과 일치해야 한다).
   static const double imagePadding = 6.0;
@@ -247,14 +270,24 @@ class MarkdownEditingController extends TextEditingController {
   static final RegExp _summaryLine =
       RegExp(r'^(\s*<summary>)(.*)(</summary>\s*)$');
 
-  /// `<summary>제목</summary>` 줄: 태그는 마커로 접고 제목은 강조한다.
+  /// `<summary>제목</summary>` 줄: 여는 태그는 접기 chevron 자리를 남기는
+  /// 투명 인덴트로 줄이고(왼쪽 버튼과 제목이 겹치지 않게), 닫는 태그는
+  /// 마커로 접는다. 제목은 강조한다.
   List<InlineSpan> _summarySpans(
       String line, TextStyle base, AppColorsExtension c, bool active) {
     final m = _summaryLine.firstMatch(line);
     if (m == null) return _styleLine(line, base, c, active);
     final titleStyle = base.copyWith(fontWeight: FontWeight.w600);
+    // '<summary>' 9글자를 아이콘 폭(~18px)보다 넓은 인덴트로 축소한다.
+    // 폰트 크기에 비례하므로 콘텐츠 줌과 함께 커진다.
+    final indentStyle = active
+        ? base.copyWith(color: c.textMuted)
+        : base.copyWith(
+            color: Colors.transparent,
+            fontSize: (base.fontSize ?? 14) * 0.42,
+            letterSpacing: 0);
     return [
-      TextSpan(text: m.group(1)!, style: _marker(base, c, active)),
+      TextSpan(text: m.group(1)!, style: indentStyle),
       ..._styleInline(m.group(2)!, titleStyle, c, active),
       TextSpan(text: m.group(3)!, style: _marker(base, c, active)),
     ];

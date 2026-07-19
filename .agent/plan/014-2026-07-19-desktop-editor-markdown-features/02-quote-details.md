@@ -18,9 +18,15 @@ created: 2026-07-19
 
 이미지 높이 예약(04 문서)은 스트럿과 무관하다: 스트럿은 최소값(floor)일 뿐이고, 큰 첫 글자는 줄을 그 이상으로 키운다. body 스트럿 그대로 동작한다.
 
-## Task 3: 취소됨 (극소 스트럿 전환)
+> **번복 (2026-07-19, 소유자 지시):** 에디터 내 실제 접힘이 요구사항으로 확정되어 위의 "후속 과제"를 즉시 실행했다. 미러 TextPainter 측정을 전면 폐기하고:
+> 1. 데코 페인터는 paint 시점에, 오버레이(테이블/이미지/chevron)는 `CustomMultiChildLayout` 델리게이트의 performLayout 시점(Stack 자식 순서상 필드 레이아웃 직후)에 **RenderEditable을 직접 조회**한다 (`editor_overlay_layout.dart` 신설). RenderEditable의 박스는 스크롤 반영 viewport 좌표(실측 확인).
+> 2. 필드 스트럿을 극소 명시값 `StrutStyle(fontSize: 0.1, height: 1, leading: 0)`으로 전환 — 미러 정합 문제가 사라졌으므로 안전하다. 닫힌 details 본문 줄(+종결 개행)은 `fontSize 0.1` 투명으로 실제 ~0 높이로 접힌다.
+> 3. chevron은 summary 왼쪽으로 이동 (소유자 지시). `<summary>` 여는 태그를 투명 인덴트(본문 폰트의 0.42배 폭)로 렌더링해 버튼 자리를 확보한다.
+> 4. 정렬 검증: 테이블 오버레이가 숨겨진 마크다운 밴드 위 0.5px 이내(스크롤 포함), 닫힌 본문 밴드 높이 < 1.5px — 위젯 테스트로 고정.
 
-위 결정 기록 참조. 구현 시도(8f6ba90)는 2ca5b9a로 revert됨. 아래 Task 4부터 진행한다.
+## Task 3: 취소 후 번복됨 (극소 스트럿 전환)
+
+1차: 구현 시도(8f6ba90)는 2ca5b9a로 revert. 2차(소유자 지시): RenderEditable 직접 측정 전환과 함께 재도입되어 최종 반영됨. 위 번복 기록 참조.
 
 
 ## Task 4: `|` 인용문

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pasteboard/pasteboard.dart';
@@ -15,6 +16,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
+import 'editor_overlay_layout.dart';
 import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
@@ -76,6 +78,27 @@ class EditorPanelState extends State<EditorPanel> {
   DateTime? _lastSaved;
   String? _loadedNoteId;
   double _panZoomBaseScale = 1.0;
+
+  /// 콘텐츠 TextField의 렌더 트리 진입점. 데코 페인터/오버레이가 미러
+  /// TextPainter 대신 실제 RenderEditable을 직접 조회하는 데 쓴다.
+  final GlobalKey _fieldKey = GlobalKey();
+
+  /// 콘텐츠 TextField 내부의 [RenderEditable]. 아직 붙지 않았으면 null.
+  RenderEditable? _renderEditable() {
+    RenderEditable? found;
+    void visit(RenderObject child) {
+      if (found != null) return;
+      if (child is RenderEditable) {
+        found = child;
+        return;
+      }
+      child.visitChildren(visit);
+    }
+
+    final root = _fieldKey.currentContext?.findRenderObject();
+    if (root != null) visit(root);
+    return found;
+  }
 
   @override
   void initState() {
@@ -768,22 +791,21 @@ class EditorPanelState extends State<EditorPanel> {
     final baseStyle =
         AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
     // A Material TextField does not render with the raw `style` we pass — it
-    // merges it onto the theme's body style, which injects extras like
-    // `letterSpacing` and an even `leadingDistribution`. The decoration painter
-    // and table overlays lay out their OWN TextPainter, so they must measure
-    // with the SAME effective style the field's RenderEditable uses; otherwise
-    // wrapping and baseline diverge and the code boxes / rules / table overlays
-    // drift from the text. Mirror the field's merge here and share the result.
+    // merges it onto the theme's body style. Mirror that merge so the hint and
+    // the inline table cells use the field's effective style.
     final bodyStyle =
         (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
             .merge(baseStyle);
-    // The decoration painter lays out an identical TextPainter, so the field and
-    // the painter must share strut + text scaler + width for the boxes to align.
-    // The strut mirrors the body style so the caret lines up with the text.
-    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
-    final textScaler = MediaQuery.textScalerOf(context);
+    // 극소 명시 스트럿: 줄 높이의 최소값(floor)을 사실상 없앤다. 덕분에 접힌
+    // 줄(닫힌 details 본문, 테이블 구분선)은 실제 ~0 높이로 줄어들고, 일반
+    // 줄은 자기 폰트 크기로 높이가 정해진다. StrutStyle.disabled를 쓰지 않는
+    // 이유: EditableText가 null fontSize를 본문 스타일에서 상속시켜 floor가
+    // 되살아난다 (실측 확인). 데코/오버레이 좌표는 미러 TextPainter가 아니라
+    // RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
+    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
 
     final field = TextField(
+      key: _fieldKey,
       controller: _contentController,
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
@@ -815,6 +837,10 @@ class EditorPanelState extends State<EditorPanel> {
       child: field,
     );
 
+    // 오버레이(테이블/이미지/chevron)는 CustomMultiChildLayout으로 배치한다.
+    // 델리게이트의 performLayout은 Stack 자식 순서상 필드 레이아웃 직후에
+    // 돌기 때문에, RenderEditable을 조회하면 이번 프레임의 실제 배치를 얻는다
+    // (빌드 시점 미러 측정의 1프레임 지연/발산 문제가 없다).
     final Widget body = Stack(
       fit: StackFit.expand,
       children: [
@@ -829,21 +855,17 @@ class EditorPanelState extends State<EditorPanel> {
                 final allRegions =
                     parseEditorBlockRegions(_contentController.text);
                 final tables = findTableRegions(_contentController.text);
-                final regions = filterEditorRegions(allRegions, tables);
+                final details = findDetailsRegions(_contentController.text);
+                final regions =
+                    filterEditorRegions(allRegions, tables, details);
                 if (regions.isEmpty) {
                   return const SizedBox.expand();
                 }
                 return CustomPaint(
                   painter: EditorBlockDecorationPainter(
-                    span: _contentController.buildTextSpan(
-                      context: context,
-                      style: bodyStyle,
-                      withComposing: false,
-                    ),
+                    editable: _renderEditable,
                     regions: regions,
-                    strutStyle: strut,
-                    textScaler: textScaler,
-                    scrollController: _contentScrollController,
+                    repaint: _contentScrollController,
                     codeBackground: c.surfaceLight,
                     codeBorder: c.border,
                     ruleColor: c.border,
@@ -859,15 +881,15 @@ class EditorPanelState extends State<EditorPanel> {
         // on top of the field so they can take taps and show the +col/+row
         // controls when the caret is inside them.
         Positioned.fill(
-          child: _buildTableOverlays(c, bodyStyle, strut, textScaler),
+          child: _buildTableOverlays(c, bodyStyle),
         ),
-        // details 접기/펼치기 chevron — summary 줄 오른쪽 끝에 겹친다.
+        // details 접기/펼치기 chevron — summary 줄 왼쪽에 겹친다.
         Positioned.fill(
-          child: _buildDetailsToggles(c, bodyStyle, strut, textScaler),
+          child: _buildDetailsToggles(c),
         ),
         // 인라인 이미지 — 숨겨진 <img> 줄의 예약 밴드 위에 그린다.
         Positioned.fill(
-          child: _buildImageOverlays(c, bodyStyle, strut, textScaler),
+          child: _buildImageOverlays(c),
         ),
       ],
     );
@@ -881,176 +903,149 @@ class EditorPanelState extends State<EditorPanel> {
     );
   }
 
-  // Positions an [InlineTableView] over each table's hidden markdown. It rebuilds
-  // on every text/caret/scroll change so the overlays follow the content; the
-  // table containing the caret renders active (with the +col/+row controls).
-  Widget _buildTableOverlays(
-    AppColorsExtension c,
-    TextStyle bodyStyle,
-    StrutStyle strut,
-    TextScaler textScaler,
-  ) {
+  /// 오버레이 델리게이트가 공유하는 relayout 트리거: 텍스트/캐럿 변경과 스크롤.
+  Listenable get _overlayRelayout =>
+      Listenable.merge([_contentController, _contentScrollController]);
+
+  // Positions an [InlineTableView] over each table's hidden markdown. 자식
+  // 목록은 텍스트/캐럿 변경 때 재빌드되고, 위치는 델리게이트가 레이아웃
+  // 시점에 RenderEditable에서 직접 읽는다.
+  Widget _buildTableOverlays(AppColorsExtension c, TextStyle bodyStyle) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_contentController, _contentScrollController]),
+      listenable: _contentController,
       builder: (context, _) {
         final tables = findTableRegions(_contentController.text);
         if (tables.isEmpty) return const SizedBox.shrink();
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final span = _contentController.buildTextSpan(
-                context: context, style: bodyStyle, withComposing: false);
-            final measured = measureTableRegions(
-                span, tables, strut, textScaler, constraints.maxWidth);
-            final scrollY = _contentScrollController.hasClients
-                ? _contentScrollController.offset
-                : 0.0;
-            final sel = _contentController.selection;
-            final caret = sel.isValid ? sel.baseOffset : -1;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final m in measured)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: m.top - scrollY,
-                    height: m.bottom - m.top,
-                    child: InlineTableView(
-                      key: ValueKey(m.table.start),
-                      data: m.table.table,
-                      active: !widget.isReadOnly &&
-                          caret >= m.table.start &&
-                          caret <= m.table.end,
-                      cellStyle: bodyStyle,
-                      onActivate: () => _activateTable(m.table),
-                      onAddRow: () => _addTableRow(m.table),
-                      onAddColumn: () => _addTableColumn(m.table),
-                      onRemove: () => _removeTable(m.table),
-                      onCellChanged: (row, col, value) =>
-                          _setTableCell(m.table, row, col, value),
-                      onRemoveRow: (row) => _removeTableRow(m.table, row),
-                      onRemoveColumn: (col) =>
-                          _removeTableColumn(m.table, col),
-                    ),
-                  ),
-              ],
-            );
-          },
+        final sel = _contentController.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final t in tables)
+                EditorOverlayItem(
+                  id: t.start,
+                  start: t.start,
+                  end: t.end,
+                  anchor: EditorOverlayAnchor.band,
+                ),
+            ],
+          ),
+          children: [
+            for (final t in tables)
+              LayoutId(
+                id: t.start,
+                child: InlineTableView(
+                  key: ValueKey(t.start),
+                  data: t.table,
+                  active: !widget.isReadOnly &&
+                      caret >= t.start &&
+                      caret <= t.end,
+                  cellStyle: bodyStyle,
+                  onActivate: () => _activateTable(t),
+                  onAddRow: () => _addTableRow(t),
+                  onAddColumn: () => _addTableColumn(t),
+                  onRemove: () => _removeTable(t),
+                  onCellChanged: (row, col, value) =>
+                      _setTableCell(t, row, col, value),
+                  onRemoveRow: (row) => _removeTableRow(t, row),
+                  onRemoveColumn: (col) => _removeTableColumn(t, col),
+                ),
+              ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildDetailsToggles(
-    AppColorsExtension c,
-    TextStyle bodyStyle,
-    StrutStyle strut,
-    TextScaler textScaler,
-  ) {
+  // details 접기 chevron을 summary 줄 왼쪽 끝에 겹친다. summary 렌더링이
+  // '<summary>' 태그를 투명 인덴트로 남겨두므로 제목과 겹치지 않는다.
+  Widget _buildDetailsToggles(AppColorsExtension c) {
     return ListenableBuilder(
-      listenable:
-          Listenable.merge([_contentController, _contentScrollController]),
+      listenable: _contentController,
       builder: (context, _) {
         final details = findDetailsRegions(_contentController.text);
         if (details.isEmpty) return const SizedBox.shrink();
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final span = _contentController.buildTextSpan(
-                context: context, style: bodyStyle, withComposing: false);
-            final measured = measureRanges(
-                span,
-                [for (final d in details) d.summaryLineRange],
-                strut,
-                textScaler,
-                constraints.maxWidth);
-            final scrollY = _contentScrollController.hasClients
-                ? _contentScrollController.offset
-                : 0.0;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final m in measured)
-                  Positioned(
-                    right: 0,
-                    top: m.top - scrollY,
-                    height: m.bottom - m.top,
-                    child: _DetailsToggleButton(
-                      open: details[m.index].open,
-                      onTap: widget.isReadOnly
-                          ? null
-                          : () => _toggleDetailsOpen(details[m.index]),
-                    ),
-                  ),
-              ],
-            );
-          },
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final d in details)
+                EditorOverlayItem(
+                  id: d.start,
+                  start: d.summaryLineRange.start,
+                  end: d.summaryLineRange.end,
+                  anchor: EditorOverlayAnchor.leadingChevron,
+                ),
+            ],
+          ),
+          children: [
+            for (final d in details)
+              LayoutId(
+                id: d.start,
+                child: _DetailsToggleButton(
+                  open: d.open,
+                  onTap: widget.isReadOnly
+                      ? null
+                      : () => _toggleDetailsOpen(d),
+                ),
+              ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildImageOverlays(
-    AppColorsExtension c,
-    TextStyle bodyStyle,
-    StrutStyle strut,
-    TextScaler textScaler,
-  ) {
+  Widget _buildImageOverlays(AppColorsExtension c) {
     final onLoad = widget.onLoadImage;
     if (onLoad == null) return const SizedBox.shrink();
     return ListenableBuilder(
-      listenable:
-          Listenable.merge([_contentController, _contentScrollController]),
+      listenable: _contentController,
       builder: (context, _) {
         final images = findImageRegions(_contentController.text);
         if (images.isEmpty) return const SizedBox.shrink();
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final span = _contentController.buildTextSpan(
-                context: context, style: bodyStyle, withComposing: false);
-            final measured = measureRanges(
-                span,
-                [for (final r in images) (start: r.start, end: r.end)],
-                strut,
-                textScaler,
-                constraints.maxWidth);
-            final scrollY = _contentScrollController.hasClients
-                ? _contentScrollController.offset
-                : 0.0;
-            final sel = _contentController.selection;
-            final caret = sel.isValid ? sel.baseOffset : -1;
-            final scale = widget.contentScale;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final m in measured)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: m.top -
-                        scrollY +
-                        MarkdownEditingController.imagePadding * scale,
-                    height: images[m.index].height * scale.toDouble(),
-                    child: InlineImageView(
-                      key: ValueKey(
-                          '${images[m.index].start}:${images[m.index].src}'),
-                      src: images[m.index].src,
-                      width: images[m.index].width,
-                      height: images[m.index].height,
-                      scale: scale,
-                      active: !widget.isReadOnly &&
-                          caret >= images[m.index].start &&
-                          caret <= images[m.index].end,
-                      readOnly: widget.isReadOnly,
-                      loadImage: onLoad,
-                      onActivate: () => _activateImage(images[m.index]),
-                      onResized: (w, h) =>
-                          _resizeImage(images[m.index], w, h),
-                      onRemove: () => _removeImage(images[m.index]),
-                    ),
-                  ),
-              ],
-            );
-          },
+        final sel = _contentController.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        final scale = widget.contentScale;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final r in images)
+                EditorOverlayItem(
+                  id: r.start,
+                  start: r.start,
+                  end: r.end,
+                  anchor: EditorOverlayAnchor.imageBand,
+                  childHeight: r.height * scale,
+                  topInset: MarkdownEditingController.imagePadding * scale,
+                ),
+            ],
+          ),
+          children: [
+            for (final r in images)
+              LayoutId(
+                id: r.start,
+                child: InlineImageView(
+                  key: ValueKey('${r.start}:${r.src}'),
+                  src: r.src,
+                  width: r.width,
+                  height: r.height,
+                  scale: scale,
+                  active: !widget.isReadOnly &&
+                      caret >= r.start &&
+                      caret <= r.end,
+                  readOnly: widget.isReadOnly,
+                  loadImage: onLoad,
+                  onActivate: () => _activateImage(r),
+                  onResized: (w, h) => _resizeImage(r, w, h),
+                  onRemove: () => _removeImage(r),
+                ),
+              ),
+          ],
         );
       },
     );

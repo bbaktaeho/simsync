@@ -335,28 +335,52 @@ void main() {
       ); // summary 줄 활성
     });
 
-    testWidgets('태그 줄은 inactive에서 투명 처리된다 (높이 유지)', (tester) async {
+    testWidgets('태그 줄은 inactive에서 높이까지 접힌다', (tester) async {
       final span = await _build(tester, closed);
       final style = _styleOf(span, '<details>');
       expect(style!.color, Colors.transparent);
-      // 폰트 크기는 유지 — 높이 접기가 아니라 fence 줄과 같은 숨김이다.
+      // 극소 폰트 = 실제 접힘 (에디터 스트럿이 극소 명시값이라 floor 없음).
+      expect(style.fontSize, lessThan(1));
+    });
+
+    testWidgets('닫힌 블록의 본문 줄은 개행까지 접힌다', (tester) async {
+      final span = await _build(tester, closed);
+      final style = _styleOf(span, 'body line');
+      expect(style!.color, Colors.transparent);
+      expect(style.fontSize, lessThan(1));
+      // 본문 줄을 끝내는 개행도 접혀야 라인 박스가 완전히 사라진다.
+      final flat = _flatten(span);
+      final bodyIdx = flat.indexWhere((e) => e.$1.contains('body line'));
+      final newline = flat[bodyIdx + 1];
+      expect(newline.$1, '\n');
+      expect(newline.$2!.fontSize, lessThan(1));
+    });
+
+    testWidgets('열린 블록의 본문 줄은 일반 렌더링된다', (tester) async {
+      final span = await _build(tester, opened);
+      final style = _styleOf(span, 'body line');
+      expect(style?.color, isNot(Colors.transparent));
+      expect(style?.fontSize ?? 100, greaterThan(1));
+    });
+
+    testWidgets('캐럿이 태그 줄에 있으면 원문이 노출된다 (편집 가능)', (tester) async {
+      final span = await _build(tester, closed,
+          focused: true, selection: const TextSelection.collapsed(offset: 2));
+      final style = _styleOf(span, '<details>');
+      expect(style!.color, isNot(Colors.transparent));
       expect(style.fontSize ?? 100, greaterThan(1));
     });
 
-    testWidgets('본문 줄은 열림/닫힘 무관하게 일반 렌더링된다', (tester) async {
-      for (final text in [closed, opened]) {
-        final span = await _build(tester, text);
-        final style = _styleOf(span, 'body line');
-        expect(style?.color, isNot(Colors.transparent));
-      }
-    });
-
-    testWidgets('summary 제목은 semibold, 태그는 마커 처리된다', (tester) async {
+    testWidgets('summary 제목은 semibold, 여는 태그는 chevron 인덴트가 된다',
+        (tester) async {
       final span = await _build(tester, closed);
       expect(_styleOf(span, '제목')!.fontWeight, FontWeight.w600);
-      // inactive에서 <summary> 마커는 폭 접힘(극소 폰트 + 투명)
+      // inactive에서 <summary>는 왼쪽 접기 버튼 자리를 남기는 투명 인덴트
+      // (극소 마커보다 넓고, 본문 폰트보다 작다).
       final marker = _styleOf(span, '<summary>');
       expect(marker!.color, Colors.transparent);
+      expect(marker.fontSize!, greaterThan(1));
+      expect(marker.fontSize!, lessThan(10));
     });
   });
 

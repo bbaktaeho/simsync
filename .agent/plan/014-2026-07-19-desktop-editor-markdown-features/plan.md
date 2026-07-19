@@ -65,7 +65,7 @@ Expected: analyze 0 issues, 전체 테스트 PASS
 체크리스트:
 1. cmd+B/I/E/K, cmd+shift+X/C/H 단축키 동작. cmd+X 잘라내기 정상 동작 유지
 2. `| ` 인용문 렌더링(왼쪽 바), 기존 `> ` 노트 인용문 하위 호환
-3. 줄 시작 `> ` 입력 → details 스켈레톤 생성, 우측 chevron 토글이 `<details open>` 속성을 파일에 기록 (에디터 본문은 항상 표시)
+3. 줄 시작 `> ` 입력 → details 스켈레톤 생성, summary 좌측 chevron 토글로 에디터 안에서 본문이 실제로 접히고/펼쳐지며 `<details open>` 속성이 파일에 기록됨
 4. 언어 미지정 ``` 블록에 dart/json 코드 입력 후 캐럿을 밖으로 → 자동 컬러링
 5. 스크린샷 복사(cmd+ctrl+shift+4) 후 cmd+V → 이미지 표시, 텍스트 붙여넣기 정상, 우하단 핸들 리사이즈, X 삭제
 6. 툴바 이미지 버튼 → 파일 첨부

@@ -1,9 +1,6 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simsync/services/markdown_editing.dart';
-import 'package:simsync/theme/app_colors.dart';
 import 'package:simsync/widgets/editor_block_decorations.dart';
-import 'package:simsync/widgets/markdown_editing_controller.dart';
 
 void main() {
   group('parseEditorBlockRegions', () {
@@ -73,49 +70,6 @@ void main() {
     });
   });
 
-  group('measureTableRegions', () {
-    testWidgets('returns one vertical extent per table, ordered by position', (
-      tester,
-    ) async {
-      const text =
-          'intro\n\n| Name | Score |\n| :-- | --: |\n| Alice | 90 |\n| Bob | 7 |';
-      final controller = MarkdownEditingController(text: text);
-      late InlineSpan span;
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: ThemeData(extensions: const [AppColorsExtension.light]),
-          home: Builder(builder: (context) {
-            span =
-                controller.buildTextSpan(context: context, withComposing: false);
-            return const SizedBox();
-          }),
-        ),
-      );
-
-      final measured = measureTableRegions(
-        span,
-        findTableRegions(text),
-        StrutStyle.fromTextStyle(const TextStyle(fontSize: 14)),
-        TextScaler.noScaling,
-        420,
-      );
-      expect(measured, hasLength(1));
-      // The table sits below the 'intro' prose, so its top is positive, and it
-      // spans a real (positive) height covering its rows.
-      expect(measured.first.top, greaterThan(0));
-      expect(measured.first.bottom, greaterThan(measured.first.top));
-      expect(measured.first.table.table.columns, 2);
-    });
-
-    test('returns empty for text with no tables', () {
-      expect(
-        measureTableRegions(const TextSpan(text: 'no table'), const [],
-            const StrutStyle(), TextScaler.noScaling, 400),
-        isEmpty,
-      );
-    });
-  });
-
   group('pipe quote regions', () {
     test('| 줄이 quote 영역으로 잡힌다', () {
       const text = '| a\n| b\nplain';
@@ -129,7 +83,7 @@ void main() {
       const text = '| h1 | h2 |\n| --- | --- |\n| a | b |';
       final regions = parseEditorBlockRegions(text);
       final tables = findTableRegions(text);
-      final filtered = filterEditorRegions(regions, tables);
+      final filtered = filterEditorRegions(regions, tables, const []);
       expect(filtered.where((r) => r.kind == EditorBlockKind.quote), isEmpty);
     });
 
@@ -137,13 +91,43 @@ void main() {
       const text = 'x | y\n---\n| a | b |'; // 파이프 없는 구분선 케이스는 기존 로직 유지 확인용
       final regions = parseEditorBlockRegions(text);
       final tables = findTableRegions(text);
-      final filtered = filterEditorRegions(regions, tables);
+      final filtered = filterEditorRegions(regions, tables, const []);
       for (final t in tables) {
         expect(
           filtered.any((r) => r.kind == EditorBlockKind.rule && r.start == t.separatorRange.start),
           isFalse,
         );
       }
+    });
+
+    test('filterEditorRegions는 닫힌 details 안의 rule/quote 장식을 버린다', () {
+      const text =
+          '<details>\n<summary>t</summary>\n---\n| q\n</details>\nplain\n---';
+      final regions = parseEditorBlockRegions(text);
+      final tables = findTableRegions(text);
+      final details = findDetailsRegions(text);
+      final filtered = filterEditorRegions(regions, tables, details);
+      // 닫힌 블록 안의 --- rule과 | quote는 걸러진다.
+      final insideRules = filtered.where((r) =>
+          r.kind == EditorBlockKind.rule && r.end < text.indexOf('plain'));
+      final insideQuotes =
+          filtered.where((r) => r.kind == EditorBlockKind.quote);
+      expect(insideRules, isEmpty);
+      expect(insideQuotes, isEmpty);
+      // 블록 밖 마지막 --- rule은 남는다.
+      expect(
+        filtered.where((r) => r.kind == EditorBlockKind.rule).length,
+        1,
+      );
+    });
+
+    test('열린 details 안의 장식은 유지된다', () {
+      const text = '<details open>\n<summary>t</summary>\n---\n</details>';
+      final regions = parseEditorBlockRegions(text);
+      final filtered = filterEditorRegions(
+          regions, const [], findDetailsRegions(text));
+      expect(
+          filtered.where((r) => r.kind == EditorBlockKind.rule), hasLength(1));
     });
   });
 }
