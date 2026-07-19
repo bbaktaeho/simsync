@@ -108,6 +108,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   final List<String> _openTabIds = [];
   static const int _maxTabs = 10;
 
+  /// 포맷팅 단축키를 에디터 상태로 전달하기 위한 키.
+  final GlobalKey<EditorPanelState> _editorKey = GlobalKey<EditorPanelState>();
+
   /// True once the initial date's note has been auto-opened on first load, so
   /// later reloads never reopen a tab the user deliberately closed.
   bool _didInitialTabOpen = false;
@@ -1255,7 +1258,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
           case ShortcutAction.formatLink:
           case ShortcutAction.formatCheckbox:
           case ShortcutAction.formatHighlight:
-            return false;
+            // 에디터 본문에 포커스가 있을 때만 소비한다. 아니면 시스템 기본
+            // 동작(예: cmd+shift+X가 다른 곳에서 갖는 의미)을 막지 않는다.
+            final editor = _editorKey.currentState;
+            if (editor == null || !editor.hasEditorFocus) return false;
+            editor.applyFormat(binding.action);
         }
         return true;
       }
@@ -1366,6 +1373,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
 
     final editor = EditorPanel(
+      key: _editorKey,
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,

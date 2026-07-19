@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
+import '../settings/shortcut_binding.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
@@ -47,10 +48,10 @@ class EditorPanel extends StatefulWidget {
   });
 
   @override
-  State<EditorPanel> createState() => _EditorPanelState();
+  State<EditorPanel> createState() => EditorPanelState();
 }
 
-class _EditorPanelState extends State<EditorPanel> {
+class EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
   late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
@@ -191,6 +192,57 @@ class _EditorPanelState extends State<EditorPanel> {
     final updated = renumberOrderedListAtCursor(_contentController.value);
     if (updated.text == _contentController.text) return;
     _contentController.value = updated;
+    _onContentChanged();
+  }
+
+  /// 전역 단축키 핸들러(document_screen)가 포커스 여부를 확인할 때 사용.
+  bool get hasEditorFocus => _contentFocusNode.hasFocus;
+
+  /// 전역 단축키의 포맷팅 액션을 에디터에 적용한다. 동작은 툴바와 동일한
+  /// _wrapSelection/_toggleLinePrefix를 재사용한다.
+  void applyFormat(ShortcutAction action) {
+    if (widget.isReadOnly || widget.note == null) return;
+    switch (action) {
+      case ShortcutAction.formatBold:
+        _wrapSelection('**');
+      case ShortcutAction.formatItalic:
+        _wrapSelection('*');
+      case ShortcutAction.formatStrikethrough:
+        _wrapSelection('~~');
+      case ShortcutAction.formatInlineCode:
+        _wrapSelection('`');
+      case ShortcutAction.formatHighlight:
+        _wrapSelection('==');
+      case ShortcutAction.formatCheckbox:
+        _toggleLinePrefix('- [ ] ');
+      case ShortcutAction.formatLink:
+        _insertLink();
+      case ShortcutAction.openSettings:
+      case ShortcutAction.zoomIn:
+      case ShortcutAction.zoomOut:
+      case ShortcutAction.search:
+      case ShortcutAction.closeTab:
+        break;
+    }
+  }
+
+  /// 선택 영역을 [텍스트]() 링크로 만든다. 선택이 있으면 캐럿을 URL 자리에,
+  /// 없으면 빈 링크를 삽입하고 캐럿을 대괄호 안에 둔다.
+  void _insertLink() {
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final selected = text.substring(start, end);
+    final replacement = '[$selected]()';
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(start, end, replacement),
+      selection: TextSelection.collapsed(
+        offset: selected.isEmpty ? start + 1 : start + replacement.length - 1,
+      ),
+    );
     _onContentChanged();
   }
 
