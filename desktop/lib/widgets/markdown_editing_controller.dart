@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/github.dart';
@@ -40,8 +42,18 @@ class MarkdownEditingController extends TextEditingController {
   final Map<String, List<Node>?> _highlightCache = {};
   static const int _highlightCacheLimit = 2000;
 
+  /// 언어 미지정 fence 블록의 자동 감지 캐시 (블록 내용 → 감지 언어 또는 null).
+  final Map<String, String?> _autoLangCache = {};
+  static const int _autoLangCacheLimit = 100;
+
+  /// 블록 시작 오프셋 → 직전 감지 언어. 캐럿이 블록 안에 있는 동안(내용이
+  /// 계속 바뀌어 캐시 미스가 나는 동안) 전체 재감지 대신 직전 결과를 유지한다.
+  final Map<int, String?> _stickyAutoLang = {};
+
   static final RegExp _heading = RegExp(r'^(#{1,6})(\s+)(.*)$');
-  static final RegExp _blockquote = RegExp(r'^(\s*(?:>\s?)+)(.*)$');
+  // 인용문: 새 문법은 `| `, 레거시 `> `도 하위 호환으로 계속 렌더링한다.
+  // 테이블 줄은 buildTextSpan에서 먼저 걸러지므로 여기 도달하지 않는다.
+  static final RegExp _blockquote = RegExp(r'^(\s*(?:[>|]\s?)+)(.*)$');
   static final RegExp _checkbox = RegExp(r'^(\s*[-*+] \[)([ xX])(\] )(.*)$');
   static final RegExp _bullet = RegExp(r'^(\s*)([-*+])(\s+)(.*)$');
   static final RegExp _ordered = RegExp(r'^(\s*)(\d+[.)])(\s+)(.*)$');
@@ -100,9 +112,9 @@ class MarkdownEditingController extends TextEditingController {
 
     // Table lines are hidden so the decoration layer can paint a rendered table
     // over them: header/body rows go transparent (keeping their height as the
-    // row's vertical space). The separator's font shrinks toward ~0, but the
-    // shared strut floors its line height, so the painter absorbs the leftover
-    // slack by dividing the table band evenly (see _paintTable).
+    // row's vertical space). The separator line collapses to ~0 height (the
+    // editor strut is a near-zero explicit minimum, so a tiny font really
+    // shrinks the line box).
     final tableRowStarts = <int>{};
     final tableSepStarts = <int>{};
     for (final t in findTableRegions(text)) {
@@ -112,7 +124,33 @@ class MarkdownEditingController extends TextEditingController {
       tableSepStarts.add(t.separatorRange.start);
     }
 
+    // <details> 블록: 태그 줄은 캐럿이 없을 때 높이까지 접고, summary는
+    // 제목으로 강조한다. 닫힌(open 속성 없는) 블록의 본문 줄은 실제로 접는다
+    // — 에디터 스트럿이 극소 명시값이라 극소 폰트 줄의 라인 박스가 ~0으로
+    // 줄어든다. open 속성은 파일에 저장되어 GitHub 웹과도 상태를 공유한다.
+    final detailsTagStarts = <int>{};
+    final detailsSummaryStarts = <int>{};
+    final detailsCollapsedStarts = <int>{};
+    for (final d in findDetailsRegions(text)) {
+      detailsTagStarts.add(d.detailsLineRange.start);
+      detailsTagStarts.add(d.closeLineRange.start);
+      detailsSummaryStarts.add(d.summaryLineRange.start);
+      if (!d.open) {
+        for (final r in d.bodyLineRanges) {
+          detailsCollapsedStarts.add(r.start);
+        }
+      }
+    }
+
+    // 인라인 이미지 줄: 태그 텍스트는 항상 숨기고 오버레이가 이미지를 그린다.
+    final imageStarts = <int, ImageRegion>{};
+    for (final r in findImageRegions(text)) {
+      imageStarts[r.start] = r;
+    }
+
     final lines = text.split('\n');
+    final autoLangByFence =
+        _computeAutoLangs(lines, selStart, selEnd, hasActive);
     final spans = <InlineSpan>[];
     var inFence = false;
     var fenceLang = 'plaintext';
@@ -135,21 +173,41 @@ class MarkdownEditingController extends TextEditingController {
         } else {
           inFence = true;
           fenceLang = _parseFenceLang(line);
+          if (fenceLang == 'plaintext') {
+            fenceLang = autoLangByFence[lineStart] ?? 'plaintext';
+          }
         }
       } else if (inFence) {
         spans.addAll(_codeSpans(line, fenceLang, theme, codeBase));
+      } else if (detailsCollapsedStarts.contains(lineStart)) {
+        // 닫힌 details의 본문 줄: 높이까지 접는다. (테이블/이미지 줄이어도
+        // 접힘이 우선 — 오버레이는 밴드 높이 ~0을 보고 스스로 숨는다.)
+        spans.add(TextSpan(text: line, style: _collapsed(base)));
       } else if (tableSepStarts.contains(lineStart)) {
-        spans.add(TextSpan(
-            text: line,
-            style: base.copyWith(fontSize: 0.1, color: Colors.transparent)));
+        spans.add(TextSpan(text: line, style: _collapsed(base)));
       } else if (tableRowStarts.contains(lineStart)) {
         spans.add(TextSpan(text: line, style: base.copyWith(color: Colors.transparent)));
+      } else if (imageStarts.containsKey(lineStart)) {
+        spans.addAll(_imageLineSpans(line, imageStarts[lineStart]!, base));
+      } else if (detailsTagStarts.contains(lineStart)) {
+        // 태그 줄은 구조 노이즈: 캐럿이 있으면 편집용으로 노출, 아니면 접는다.
+        spans.add(TextSpan(
+            text: line,
+            style:
+                active ? base.copyWith(color: c.textMuted) : _collapsed(base)));
+      } else if (detailsSummaryStarts.contains(lineStart)) {
+        spans.addAll(_summarySpans(line, base, c, active));
       } else {
         spans.addAll(_styleLine(line, base, c, active));
       }
 
       if (i < lines.length - 1) {
-        spans.add(TextSpan(text: '\n', style: base));
+        // 접힌 줄은 그 줄을 끝내는 개행까지 접어야 라인 박스가 완전히 사라진다.
+        final collapseNewline = detailsCollapsedStarts.contains(lineStart) ||
+            tableSepStarts.contains(lineStart) ||
+            (detailsTagStarts.contains(lineStart) && !active);
+        spans.add(TextSpan(
+            text: '\n', style: collapseNewline ? _collapsed(base) : base));
       }
       offset = lineEnd + 1; // + the '\n'
     }
@@ -174,6 +232,56 @@ class MarkdownEditingController extends TextEditingController {
     return active
         ? lineStyle.copyWith(color: c.textMuted)
         : lineStyle.copyWith(color: Colors.transparent);
+  }
+
+  /// 줄을 높이까지 접는다(투명 + 극소 폰트). 에디터 스트럿이 극소 명시값이라
+  /// 라인 박스가 실제로 ~0 높이로 줄어든다. 문자는 남으므로 invariant는
+  /// 유지되고, 캐럿/선택도 정상 동작한다.
+  TextStyle _collapsed(TextStyle base) => base.copyWith(
+      fontSize: 0.1, height: 1.0, letterSpacing: 0, color: Colors.transparent);
+
+  /// 이미지 줄 상하 여백 (오버레이의 그림 여백과 일치해야 한다).
+  static const double imagePadding = 6.0;
+
+  /// 이미지 줄: 첫 글자에 (이미지 높이 + 여백) 크기 폰트를 줘 줄 높이를
+  /// 예약하고, 전체를 투명 처리한다. 오버레이가 이 밴드 위에 이미지를 그린다.
+  /// 캐럿이 줄에 있어도 원문을 노출하지 않는다(높이 요동 방지) — 수정/삭제는
+  /// 오버레이 컨트롤로 한다.
+  List<InlineSpan> _imageLineSpans(String line, ImageRegion r, TextStyle base) {
+    final reserved = (r.height + imagePadding * 2) * scale;
+    return [
+      TextSpan(
+        text: line.substring(0, 1),
+        style: base.copyWith(
+            fontSize: reserved, height: 1.0, color: Colors.transparent),
+      ),
+      if (line.length > 1)
+        TextSpan(
+          text: line.substring(1),
+          style: base.copyWith(
+              fontSize: 0.1,
+              height: 1.0,
+              letterSpacing: 0,
+              color: Colors.transparent),
+        ),
+    ];
+  }
+
+  static final RegExp _summaryLine =
+      RegExp(r'^(\s*<summary>)(.*)(</summary>\s*)$');
+
+  /// `<summary>제목</summary>` 줄: 태그는 마커로 접고 제목은 강조한다.
+  /// 접기 버튼은 텍스트 왼쪽의 거터에 있으므로 제목과 겹치지 않는다.
+  List<InlineSpan> _summarySpans(
+      String line, TextStyle base, AppColorsExtension c, bool active) {
+    final m = _summaryLine.firstMatch(line);
+    if (m == null) return _styleLine(line, base, c, active);
+    final titleStyle = base.copyWith(fontWeight: FontWeight.w600);
+    return [
+      TextSpan(text: m.group(1)!, style: _marker(base, c, active)),
+      ..._styleInline(m.group(2)!, titleStyle, c, active),
+      TextSpan(text: m.group(3)!, style: _marker(base, c, active)),
+    ];
   }
 
   List<InlineSpan> _styleLine(
@@ -375,6 +483,62 @@ class MarkdownEditingController extends TextEditingController {
     return spans;
   }
 
+  /// 언어 미지정 fence 블록마다 자동 감지 언어를 정한다.
+  /// 반환: fence 여는 줄 시작 오프셋 → 언어.
+  Map<int, String> _computeAutoLangs(
+      List<String> lines, int selStart, int selEnd, bool hasActive) {
+    final result = <int, String>{};
+    var offset = 0;
+    var inFence = false;
+    var fenceStart = -1;
+    var explicitLang = false;
+    final content = StringBuffer();
+
+    for (final line in lines) {
+      final lineStart = offset;
+      final lineEnd = offset + line.length;
+      if (_fence.hasMatch(line)) {
+        if (inFence) {
+          if (!explicitLang && content.isNotEmpty) {
+            // 캐럿이 블록(여는 fence..닫는 fence) 안이면 감지를 미룬다.
+            final caretInside =
+                hasActive && selStart <= lineEnd && selEnd >= fenceStart;
+            final lang =
+                _autoLang(content.toString(), fenceStart, caretInside);
+            if (lang != null) result[fenceStart] = lang;
+          }
+          inFence = false;
+        } else {
+          inFence = true;
+          fenceStart = lineStart;
+          explicitLang = _parseFenceLang(line) != 'plaintext';
+          content.clear();
+        }
+      } else if (inFence && !explicitLang) {
+        if (content.isNotEmpty) content.write('\n');
+        content.write(line);
+      }
+      offset = lineEnd + 1;
+    }
+    return result;
+  }
+
+  String? _autoLang(String blockText, int blockStart, bool caretInside) {
+    if (_autoLangCache.containsKey(blockText)) {
+      final cached = _autoLangCache[blockText];
+      if (_stickyAutoLang.length >= _autoLangCacheLimit) _stickyAutoLang.clear();
+      _stickyAutoLang[blockStart] = cached;
+      return cached;
+    }
+    if (caretInside) return _stickyAutoLang[blockStart];
+    final lang = detectFenceLanguage(blockText);
+    if (_autoLangCache.length >= _autoLangCacheLimit) _autoLangCache.clear();
+    _autoLangCache[blockText] = lang;
+    if (_stickyAutoLang.length >= _autoLangCacheLimit) _stickyAutoLang.clear();
+    _stickyAutoLang[blockStart] = lang;
+    return lang;
+  }
+
   List<Node>? _parseCached(String line, String lang) {
     final key = '$lang $line';
     final cached = _highlightCache[key];
@@ -394,6 +558,26 @@ class MarkdownEditingController extends TextEditingController {
     final match = _fenceLang.firstMatch(line);
     final lang = match?.group(1)?.trim() ?? '';
     return lang.isEmpty ? 'plaintext' : lang;
+  }
+
+  /// 블록 전체 텍스트로 언어를 자동 감지한다. 신뢰도가 낮으면 null
+  /// (무채색 유지). highlight의 auto-detection은 비싸므로 호출부에서 캐시한다.
+  static String? detectFenceLanguage(String blockText) {
+    try {
+      final result = runZoned(
+        () => highlight.parse(blockText, autoDetection: true),
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) {
+            // highlight의 autoDetection은 언어별 시도 중 실패를 print로 흘린다.
+            // 라이브러리 내부 노이즈이므로 이 호출 범위에서만 무음 처리한다.
+          },
+        ),
+      );
+      if ((result.relevance ?? 0) < 5) return null;
+      return result.language;
+    } catch (_) {
+      return null;
+    }
   }
 
   TextStyle _headingStyle(int level) {

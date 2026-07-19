@@ -267,4 +267,121 @@ void main() {
       expect(result.text, 'hello\n\n');
     });
   });
+
+  group('findDetailsRegions', () {
+    test('닫힌 블록을 파싱한다', () {
+      const text = '<details>\n<summary>제목</summary>\n\n내용\n</details>';
+      final regions = findDetailsRegions(text);
+      expect(regions, hasLength(1));
+      final d = regions.first;
+      expect(d.open, isFalse);
+      expect(d.start, 0);
+      expect(d.end, text.length);
+      expect(text.substring(d.summaryLineRange.start, d.summaryLineRange.end),
+          '<summary>제목</summary>');
+      expect(d.bodyLineRanges, hasLength(2)); // 빈 줄 + '내용'
+    });
+
+    test('open 속성을 읽는다', () {
+      const text = '<details open>\n<summary>t</summary>\nbody\n</details>';
+      expect(findDetailsRegions(text).single.open, isTrue);
+    });
+
+    test('summary 줄이 없으면 무시한다', () {
+      const text = '<details>\nno summary\n</details>';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('닫는 태그가 없으면 무시한다', () {
+      const text = '<details>\n<summary>t</summary>\nbody';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('코드 fence 안의 details는 무시한다', () {
+      const text = '```\n<details>\n<summary>t</summary>\n</details>\n```';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+
+    test('본문에 fence가 있으면 그 블록은 무시한다', () {
+      const text =
+          '<details>\n<summary>t</summary>\n```\ncode\n```\n</details>';
+      expect(findDetailsRegions(text), isEmpty);
+    });
+  });
+
+  group('DetailsBlockInputFormatter', () {
+    TextEditingValue apply(String oldText, int cursor, String typed) {
+      final oldValue = TextEditingValue(
+        text: oldText,
+        selection: TextSelection.collapsed(offset: cursor),
+      );
+      final newText = oldText.replaceRange(cursor, cursor, typed);
+      final newValue = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: cursor + typed.length),
+      );
+      return DetailsBlockInputFormatter().formatEditUpdate(oldValue, newValue);
+    }
+
+    test('줄 시작 "> " 입력이 details 스켈레톤으로 바뀐다', () {
+      final result = apply('>', 1, ' ');
+      expect(result.text, '<details>\n<summary></summary>\n\n</details>');
+      expect(result.selection.baseOffset, '<details>\n<summary>'.length);
+    });
+
+    test('앞 줄이 있어도 동작한다', () {
+      final result = apply('line1\n>', 7, ' ');
+      expect(result.text, 'line1\n<details>\n<summary></summary>\n\n</details>');
+    });
+
+    test('줄 중간의 "> "는 건드리지 않는다', () {
+      final result = apply('a >', 3, ' ');
+      expect(result.text, 'a > ');
+    });
+
+    test('붙여넣기(여러 글자 삽입)는 건드리지 않는다', () {
+      final oldValue = const TextEditingValue(
+        text: '',
+        selection: TextSelection.collapsed(offset: 0),
+      );
+      const newValue = TextEditingValue(
+        text: '> ',
+        selection: TextSelection.collapsed(offset: 2),
+      );
+      final result = DetailsBlockInputFormatter().formatEditUpdate(oldValue, newValue);
+      expect(result.text, '> ');
+    });
+  });
+
+  group('findImageRegions', () {
+    test('한 줄 img 태그를 파싱한다', () {
+      const text = 'before\n<img src="assets/a.png" width="300" height="200">\nafter';
+      final regions = findImageRegions(text);
+      expect(regions, hasLength(1));
+      final r = regions.first;
+      expect(r.src, 'assets/a.png');
+      expect(r.width, 300);
+      expect(r.height, 200);
+      expect(text.substring(r.start, r.end),
+          '<img src="assets/a.png" width="300" height="200">');
+    });
+
+    test('serializeImageTag는 파서와 왕복 대칭이다', () {
+      final tag = serializeImageTag('assets/a.png', 300, 200);
+      final regions = findImageRegions(tag);
+      expect(regions.single.src, 'assets/a.png');
+      expect(regions.single.width, 300);
+      expect(regions.single.height, 200);
+    });
+
+    test('fence 안의 img 태그는 무시한다', () {
+      const text = '```\n<img src="a.png" width="1" height="1">\n```';
+      expect(findImageRegions(text), isEmpty);
+    });
+
+    test('속성이 빠진 태그는 무시한다 (원문 노출 = 자가 복구)', () {
+      const text = '<img src="a.png" width="300">';
+      expect(findImageRegions(text), isEmpty);
+    });
+  });
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:yaml/yaml.dart';
 
 import '../../models/note.dart';
@@ -712,5 +714,35 @@ class GitHubNoteStorage implements NoteStorage {
     _idToPath.remove(note.id);
     _treeMap?.remove(path);
     _persistRemove(path);
+  }
+
+  @override
+  String noteDirPath(DateTime noteDate) => _dayDirPath(noteDate);
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async {
+    try {
+      return await _client.getRawFile(relativePath);
+    } on GitHubNotFoundException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    // 이미지 파일명은 유일해서 보통 신규 생성(sha 불필요)이다. 만약 같은
+    // 경로가 이미 있으면 update를 위해 sha를 조회한다 (writeTextFile 패턴).
+    String? sha;
+    try {
+      sha = (await _client.getFile(relativePath)).sha;
+    } on GitHubNotFoundException {
+      sha = null;
+    }
+    await _client.putBinaryFile(
+      path: relativePath,
+      bytes: bytes,
+      message: 'Add asset: $relativePath',
+      sha: sha,
+    );
   }
 }

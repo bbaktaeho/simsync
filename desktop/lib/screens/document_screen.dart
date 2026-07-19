@@ -12,6 +12,7 @@ import '../settings/shortcut_binding.dart';
 import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/codex_cli_service.dart';
+import '../services/image_asset_service.dart';
 import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
@@ -94,6 +95,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
     return _storage;
   }
 
+  /// 스토리지별 이미지 자산 서비스 (메모리/디스크 캐시 보존을 위해 재사용).
+  final Map<NoteStorage, ImageAssetService> _imageServices = {};
+
+  ImageAssetService _imageServiceFor(Note note) {
+    final storage = _storageFor(note);
+    return _imageServices.putIfAbsent(
+      storage,
+      () => ImageAssetService(
+        storage: storage,
+        // 원격(synced) 스토리지만 디스크 캐시를 쓴다. 로컬은 원본이 곧 디스크.
+        useDiskCache: identical(storage, _storage),
+      ),
+    );
+  }
+
   /// Storage wrapper for AI review files (synced store + optional local mirror).
   /// Rebuilt each access so it tracks a changed local path.
   ReviewService get _reviewService =>
@@ -107,6 +123,9 @@ class _DocumentScreenState extends State<DocumentScreen> {
   /// empty in which case the editor shows the create screen).
   final List<String> _openTabIds = [];
   static const int _maxTabs = 10;
+
+  /// 포맷팅 단축키를 에디터 상태로 전달하기 위한 키.
+  final GlobalKey<EditorPanelState> _editorKey = GlobalKey<EditorPanelState>();
 
   /// True once the initial date's note has been auto-opened on first load, so
   /// later reloads never reopen a tab the user deliberately closed.
@@ -1248,6 +1267,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
           case ShortcutAction.closeTab:
             final activeId = _selectedNote?.id;
             if (activeId != null) _closeTab(activeId);
+          case ShortcutAction.formatBold:
+          case ShortcutAction.formatItalic:
+          case ShortcutAction.formatStrikethrough:
+          case ShortcutAction.formatInlineCode:
+          case ShortcutAction.formatLink:
+          case ShortcutAction.formatCheckbox:
+          case ShortcutAction.formatHighlight:
+            // 에디터 본문에 포커스가 있을 때만 소비한다. 아니면 시스템 기본
+            // 동작(예: cmd+shift+X가 다른 곳에서 갖는 의미)을 막지 않는다.
+            final editor = _editorKey.currentState;
+            if (editor == null || !editor.hasEditorFocus) return false;
+            editor.applyFormat(binding.action);
         }
         return true;
       }
@@ -1358,6 +1389,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
     }
 
     final editor = EditorPanel(
+      key: _editorKey,
       note: _selectedNote,
       onNoteChanged: _onNoteChanged,
       selectedDate: _selectedNote == null ? _selectedDate : null,
@@ -1371,6 +1403,20 @@ class _DocumentScreenState extends State<DocumentScreen> {
       onIncreaseContentScale: _increaseContentScale,
       onDecreaseContentScale: _decreaseContentScale,
       onSetContentScale: _setContentScale,
+      onAttachImage: _selectedNote == null || selectedNoteIsReadOnly
+          ? null
+          : (bytes, ext) {
+              final note = _selectedNote!;
+              return _imageServiceFor(note).saveImage(
+                  noteDate: note.noteDate, bytes: bytes, extension: ext);
+            },
+      onLoadImage: _selectedNote == null
+          ? null
+          : (src) {
+              final note = _selectedNote!;
+              return _imageServiceFor(note)
+                  .loadImage(noteDate: note.noteDate, src: src);
+            },
     );
 
     final openTabs = _openTabNotes;

@@ -75,6 +75,21 @@ class _FakeNoteStorage implements NoteStorage {
   Future<void> writeTextFile(String relativePath, String content) async {
     textFiles[relativePath] = content;
   }
+
+  @override
+  String noteDirPath(DateTime noteDate) =>
+      '${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}-${noteDate.day.toString().padLeft(2, '0')}';
+
+  final Map<String, Uint8List> binaryFiles = {};
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async =>
+      binaryFiles[relativePath];
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    binaryFiles[relativePath] = bytes;
+  }
 }
 
 class _FakeAuthService implements AuthService {

@@ -89,10 +89,10 @@ void main() {
     // The content field renders markdown inline via the custom controller.
     expect(_contentController(tester), isA<MarkdownEditingController>());
 
-    // The strut floor matches the body font (mdBody = 14 at scale 1.0) so the
-    // caret lines up with the text — guards against a too-small strut.
+    // 극소 명시 스트럿: 줄 높이 floor를 사실상 없애 닫힌 details 본문 접힘과
+    // 이미지 줄 높이 예약을 가능하게 한다 (좌표는 RenderEditable 직접 조회).
     final field = tester.widget<TextField>(_contentFinder);
-    expect(field.strutStyle?.fontSize, 14.0);
+    expect(field.strutStyle?.fontSize, 0.1);
   });
 
   testWidgets('reveals the caret line markers and collapses inactive lines', (
@@ -552,79 +552,58 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets(
-      'decoration painter measures with the field\'s effective text style', (
+  testWidgets('table overlay sits exactly on its hidden markdown band', (
     tester,
   ) async {
-    // Regression: a Material TextField merges its style onto the theme body
-    // style, injecting letterSpacing + an even leading distribution. The
-    // decoration painter lays out its own TextPainter; if it measures with a
-    // different style than the visible text uses, code boxes / rules / table
-    // overlays drift from the text (wrapping + baseline diverge). Lock the
-    // painter's span style to the field's effective style.
-    await _pump(
-      tester,
-      note: _note(content: 'intro\n\n```go\nfunc main() {}\n```\n\n---\n\nend'),
-    );
-
-    final etFinder =
-        find.descendant(of: _contentFinder, matching: find.byType(EditableText));
-    final fieldStyle = tester.widget<EditableText>(etFinder).style;
-
-    final painter = tester
-        .widgetList<CustomPaint>(find.byType(CustomPaint))
-        .map((cp) => cp.painter)
-        .whereType<EditorBlockDecorationPainter>()
-        .first;
-    final spanStyle = (painter.span as TextSpan).style!;
-
-    expect(spanStyle.fontSize, fieldStyle.fontSize);
-    expect(spanStyle.height, fieldStyle.height);
-    expect(spanStyle.fontFamily, fieldStyle.fontFamily);
-    expect(spanStyle.letterSpacing, fieldStyle.letterSpacing);
-    expect(spanStyle.leadingDistribution, fieldStyle.leadingDistribution);
-
-    await tester.pump(const Duration(seconds: 2));
-  });
-
-  testWidgets('code box decoration sits exactly on the code text', (
-    tester,
-  ) async {
-    // End-to-end alignment: the painter must measure each code line at the same
-    // y the field renders it, or the box drifts from the text. Compares the
-    // field's RenderEditable caret position to the painter's own TextPainter.
-    const content = 'intro\n\n```go\nfunc main() {}\n```\n\nend';
+    // End-to-end alignment: overlays position themselves by querying the
+    // field's RenderEditable at layout time (no mirror TextPainter). The
+    // rendered table widget must sit exactly on its hidden markdown band.
+    const content = 'intro\n\n| H1 | H2 |\n| --- | --- |\n| a | b |\n\nend';
     await _pump(tester, note: _note(content: content));
 
     final etFinder =
         find.descendant(of: _contentFinder, matching: find.byType(EditableText));
-    final codeStart = content.indexOf('func');
-    final codeEnd = codeStart + 'func main() {}'.length;
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final tableStart = content.indexOf('| H1');
+    final tableEnd = content.indexOf('| a | b |') + '| a | b |'.length;
+    final boxes = re.getBoxesForSelection(
+        TextSelection(baseOffset: tableStart, extentOffset: tableEnd));
+    final bandTop =
+        boxes.map((b) => b.top).reduce((a, b) => a < b ? a : b);
+
+    final overlayTop = tester.getTopLeft(find.byType(InlineTableView)).dy;
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    expect(overlayTop - fieldTop, closeTo(bandTop, 0.5));
+  });
+
+  testWidgets('table overlay follows the band when the editor scrolls', (
+    tester,
+  ) async {
+    // RenderEditable의 박스는 스크롤 반영(viewport) 좌표 — 스크롤 후에도
+    // 오버레이가 밴드 위에 정확히 있어야 한다.
+    final filler = List.generate(30, (i) => 'line $i').join('\n');
+    final content = '$filler\n| H1 | H2 |\n| --- | --- |\n| a | b |\nend';
+    await _pump(tester, note: _note(content: content));
+
+    final etFinder =
+        find.descendant(of: _contentFinder, matching: find.byType(EditableText));
+    final scrollable = find
+        .descendant(of: _contentFinder, matching: find.byType(Scrollable))
+        .first;
+    final scrollState = tester.state<ScrollableState>(scrollable);
+    scrollState.position.jumpTo(80);
+    await tester.pump();
 
     final re = tester.state<EditableTextState>(etFinder).renderEditable;
-    final reStart = re.getLocalRectForCaret(TextPosition(offset: codeStart));
-    final reEnd = re.getLocalRectForCaret(TextPosition(offset: codeEnd));
+    final tableStart = content.indexOf('| H1');
+    final tableEnd = content.indexOf('| a | b |') + '| a | b |'.length;
+    final boxes = re.getBoxesForSelection(
+        TextSelection(baseOffset: tableStart, extentOffset: tableEnd));
+    final bandTop =
+        boxes.map((b) => b.top).reduce((a, b) => a < b ? a : b);
 
-    final painter = tester
-        .widgetList<CustomPaint>(find.byType(CustomPaint))
-        .map((cp) => cp.painter)
-        .whereType<EditorBlockDecorationPainter>()
-        .first;
-    final width = tester.getSize(_contentFinder).width;
-    final tp = TextPainter(
-      text: painter.span,
-      textDirection: TextDirection.ltr,
-      strutStyle: painter.strutStyle,
-      textScaler: painter.textScaler,
-    )..layout(maxWidth: width - 3.0);
-    final tpStart =
-        tp.getOffsetForCaret(TextPosition(offset: codeStart), Rect.zero);
-    final tpEnd = tp.getOffsetForCaret(TextPosition(offset: codeEnd), Rect.zero);
-    tp.dispose();
-
-    expect(tpStart.dy, closeTo(reStart.top, 0.5));
-    expect(tpEnd.dy, closeTo(reEnd.top, 0.5));
-
-    await tester.pump(const Duration(seconds: 2));
+    final overlayTop = tester.getTopLeft(find.byType(InlineTableView)).dy;
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    expect(overlayTop - fieldTop, closeTo(bandTop, 0.5));
   });
 }

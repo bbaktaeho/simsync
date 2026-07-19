@@ -1,16 +1,23 @@
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../models/note.dart';
+import '../settings/shortcut_binding.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
+import 'editor_overlay_layout.dart';
+import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
 import 'table_editor_dialog.dart';
@@ -31,6 +38,15 @@ class EditorPanel extends StatefulWidget {
   final Future<void> Function()? onDecreaseContentScale;
   final Future<void> Function(double value)? onSetContentScale;
 
+  /// 노트 기준 상대 src('assets/…')의 이미지 바이트 로더. null이면 이미지
+  /// 오버레이 비활성(로드 경로가 없는 컨텍스트).
+  final Future<Uint8List?> Function(String src)? onLoadImage;
+
+  /// 이미지 바이트를 스토리지에 저장하고 삽입할 src('assets/…')를 돌려준다.
+  /// null이면 이미지 첨부 비활성 (읽기 전용 등).
+  final Future<String> Function(Uint8List bytes, String extension)?
+      onAttachImage;
+
   const EditorPanel({
     super.key,
     this.note,
@@ -44,13 +60,15 @@ class EditorPanel extends StatefulWidget {
     this.onIncreaseContentScale,
     this.onDecreaseContentScale,
     this.onSetContentScale,
+    this.onLoadImage,
+    this.onAttachImage,
   });
 
   @override
-  State<EditorPanel> createState() => _EditorPanelState();
+  State<EditorPanel> createState() => EditorPanelState();
 }
 
-class _EditorPanelState extends State<EditorPanel> {
+class EditorPanelState extends State<EditorPanel> {
   late TextEditingController _titleController;
   late MarkdownEditingController _contentController;
   late TextEditingController _tagController;
@@ -60,6 +78,32 @@ class _EditorPanelState extends State<EditorPanel> {
   DateTime? _lastSaved;
   String? _loadedNoteId;
   double _panZoomBaseScale = 1.0;
+
+  /// 콘텐츠 TextField의 렌더 트리 진입점. 데코 페인터/오버레이가 미러
+  /// TextPainter 대신 실제 RenderEditable을 직접 조회하는 데 쓴다.
+  final GlobalKey _fieldKey = GlobalKey();
+
+  /// 접기 거터 폭: 텍스트 전체가 이만큼 오른쪽에서 시작하고, details 접기
+  /// 버튼과 열림 범위 가이드 라인이 이 안에 그려진다. 본문 텍스트와 접기
+  /// UI가 겹치지 않는다.
+  static const double _foldGutterWidth = 28.0;
+
+  /// 콘텐츠 TextField 내부의 [RenderEditable]. 아직 붙지 않았으면 null.
+  RenderEditable? _renderEditable() {
+    RenderEditable? found;
+    void visit(RenderObject child) {
+      if (found != null) return;
+      if (child is RenderEditable) {
+        found = child;
+        return;
+      }
+      child.visitChildren(visit);
+    }
+
+    final root = _fieldKey.currentContext?.findRenderObject();
+    if (root != null) visit(root);
+    return found;
+  }
 
   @override
   void initState() {
@@ -194,6 +238,57 @@ class _EditorPanelState extends State<EditorPanel> {
     _onContentChanged();
   }
 
+  /// 전역 단축키 핸들러(document_screen)가 포커스 여부를 확인할 때 사용.
+  bool get hasEditorFocus => _contentFocusNode.hasFocus;
+
+  /// 전역 단축키의 포맷팅 액션을 에디터에 적용한다. 동작은 툴바와 동일한
+  /// _wrapSelection/_toggleLinePrefix를 재사용한다.
+  void applyFormat(ShortcutAction action) {
+    if (widget.isReadOnly || widget.note == null) return;
+    switch (action) {
+      case ShortcutAction.formatBold:
+        _wrapSelection('**');
+      case ShortcutAction.formatItalic:
+        _wrapSelection('*');
+      case ShortcutAction.formatStrikethrough:
+        _wrapSelection('~~');
+      case ShortcutAction.formatInlineCode:
+        _wrapSelection('`');
+      case ShortcutAction.formatHighlight:
+        _wrapSelection('==');
+      case ShortcutAction.formatCheckbox:
+        _toggleLinePrefix('- [ ] ');
+      case ShortcutAction.formatLink:
+        _insertLink();
+      case ShortcutAction.openSettings:
+      case ShortcutAction.zoomIn:
+      case ShortcutAction.zoomOut:
+      case ShortcutAction.search:
+      case ShortcutAction.closeTab:
+        break;
+    }
+  }
+
+  /// 선택 영역을 [텍스트]() 링크로 만든다. 선택이 있으면 캐럿을 URL 자리에,
+  /// 없으면 빈 링크를 삽입하고 캐럿을 대괄호 안에 둔다.
+  void _insertLink() {
+    final value = _contentController.value;
+    final text = value.text;
+    final selection = value.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(0, text.length);
+    final selected = text.substring(start, end);
+    final replacement = '[$selected]()';
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(start, end, replacement),
+      selection: TextSelection.collapsed(
+        offset: selected.isEmpty ? start + 1 : start + replacement.length - 1,
+      ),
+    );
+    _onContentChanged();
+  }
+
   /// Inserts [block] at the cursor, ensuring it starts on its own line and is
   /// followed by a trailing newline.
   void _insertBlock(String block) {
@@ -208,6 +303,100 @@ class _EditorPanelState extends State<EditorPanel> {
     _contentController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
+    _onContentChanged();
+  }
+
+  /// 삽입 시 기본 표시 폭 (px). 원본이 더 작으면 원본 폭.
+  static const int _defaultImageWidth = 480;
+
+  /// 이미지 바이트를 업로드하고 캐럿 위치에 <img> 태그를 삽입한다.
+  /// (테스트에서 직접 호출할 수 있게 public)
+  Future<void> attachImageBytes(Uint8List bytes, String extension) async {
+    final onAttach = widget.onAttachImage;
+    final note = widget.note;
+    if (onAttach == null || widget.isReadOnly || note == null) return;
+    final noteId = note.id;
+    try {
+      final decoded = await decodeImageFromList(bytes);
+      final natW = decoded.width;
+      final natH = decoded.height;
+      decoded.dispose();
+      final src = await onAttach(bytes, extension);
+      final w = math.min(natW, _defaultImageWidth);
+      final h = (natH * w / natW).round();
+      if (!mounted) return;
+      // 업로드 중 노트가 바뀌었으면 삽입하지 않는다 (_save의 stale 타이머 가드와
+      // 같은 패턴). 파일은 원래 노트의 assets/에 저장돼 있으므로 유실은 없다.
+      if (widget.note?.id != noteId || _loadedNoteId != noteId) return;
+      _insertBlock(serializeImageTag(src, w, h));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이미지 첨부에 실패했습니다.')),
+      );
+    }
+  }
+
+  Future<void> _attachImageFromPicker() async {
+    if (widget.isReadOnly ||
+        widget.note == null ||
+        widget.onAttachImage == null) {
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'gif', 'webp'],
+      withData: true,
+    );
+    final file = result?.files.firstOrNull;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+    await attachImageBytes(bytes, (file.extension ?? 'png').toLowerCase());
+  }
+
+  /// cmd+V 인터셉트: 클립보드에 이미지가 있으면 첨부, 아니면 일반 텍스트
+  /// 붙여넣기를 수동 수행한다(이벤트를 가로챘으므로). 우클릭 메뉴 Paste는
+  /// 이 경로를 타지 않는다 — 텍스트만 붙는 기존 동작 유지 (MVP 한계).
+  KeyEventResult _onEditorKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.keyV) {
+      return KeyEventResult.ignored;
+    }
+    if (!HardwareKeyboard.instance.isMetaPressed) {
+      return KeyEventResult.ignored;
+    }
+    if (widget.isReadOnly || widget.note == null || widget.onAttachImage == null) {
+      return KeyEventResult.ignored;
+    }
+    unawaited(_handlePaste());
+    return KeyEventResult.handled;
+  }
+
+  Future<void> _handlePaste() async {
+    Uint8List? image;
+    try {
+      image = await Pasteboard.image;
+    } catch (_) {
+      // 클립보드 이미지 조회 실패는 무시하고 일반 텍스트 붙여넣기로 진행한다.
+      // (이벤트를 이미 소비했으므로 여기서 끝나면 붙여넣기가 통째로 사라진다.)
+      image = null;
+    }
+    if (image != null) {
+      await attachImageBytes(image, 'png');
+      return;
+    }
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final t = data?.text;
+    if (t == null || t.isEmpty) return;
+    final value = _contentController.value;
+    final start = (value.selection.isValid ? value.selection.start : value.text.length)
+        .clamp(0, value.text.length);
+    final end = (value.selection.isValid ? value.selection.end : start)
+        .clamp(start, value.text.length);
+    _contentController.value = TextEditingValue(
+      text: value.text.replaceRange(start, end, t),
+      selection: TextSelection.collapsed(offset: start + t.length),
     );
     _onContentChanged();
   }
@@ -521,6 +710,12 @@ class _EditorPanelState extends State<EditorPanel> {
             ),
             const SizedBox(width: AppDimensions.spacingXs),
             _ToolbarIconButton(
+              icon: Icons.image_outlined,
+              tooltip: '이미지 첨부',
+              onTap: () => unawaited(_attachImageFromPicker()),
+            ),
+            const SizedBox(width: AppDimensions.spacingXs),
+            _ToolbarIconButton(
               icon: Icons.format_list_numbered_rounded,
               tooltip: 'Renumber list',
               onTap: _renumberList,
@@ -601,29 +796,29 @@ class _EditorPanelState extends State<EditorPanel> {
     final baseStyle =
         AppTextStyles.mdBody(widget.contentScale).copyWith(color: c.textPrimary);
     // A Material TextField does not render with the raw `style` we pass — it
-    // merges it onto the theme's body style, which injects extras like
-    // `letterSpacing` and an even `leadingDistribution`. The decoration painter
-    // and table overlays lay out their OWN TextPainter, so they must measure
-    // with the SAME effective style the field's RenderEditable uses; otherwise
-    // wrapping and baseline diverge and the code boxes / rules / table overlays
-    // drift from the text. Mirror the field's merge here and share the result.
+    // merges it onto the theme's body style. Mirror that merge so the hint and
+    // the inline table cells use the field's effective style.
     final bodyStyle =
         (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
             .merge(baseStyle);
-    // The decoration painter lays out an identical TextPainter, so the field and
-    // the painter must share strut + text scaler + width for the boxes to align.
-    // The strut mirrors the body style so the caret lines up with the text.
-    final strut = StrutStyle.fromTextStyle(bodyStyle, forceStrutHeight: false);
-    final textScaler = MediaQuery.textScalerOf(context);
+    // 극소 명시 스트럿: 줄 높이의 최소값(floor)을 사실상 없앤다. 덕분에 접힌
+    // 줄(닫힌 details 본문, 테이블 구분선)은 실제 ~0 높이로 줄어들고, 일반
+    // 줄은 자기 폰트 크기로 높이가 정해진다. StrutStyle.disabled를 쓰지 않는
+    // 이유: EditableText가 null fontSize를 본문 스타일에서 상속시켜 floor가
+    // 되살아난다 (실측 확인). 데코/오버레이 좌표는 미러 TextPainter가 아니라
+    // RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
+    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
 
     final field = TextField(
+      key: _fieldKey,
       controller: _contentController,
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
       readOnly: widget.isReadOnly,
-      inputFormatters:
-          widget.isReadOnly ? null : [MarkdownListInputFormatter()],
+      inputFormatters: widget.isReadOnly
+          ? null
+          : [MarkdownListInputFormatter(), DetailsBlockInputFormatter()],
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,
@@ -641,6 +836,22 @@ class _EditorPanelState extends State<EditorPanel> {
       ),
     );
 
+    // cmd+V 이미지 붙여넣기를 TextField 기본 paste보다 먼저 가로챈다.
+    // 필드는 접기 거터만큼 오른쪽으로 배치 — 거터에는 details 접기 버튼과
+    // 가이드 라인이 놓인다. (세로 좌표는 그대로라 RenderEditable 밴드 측정에
+    // 영향이 없고, 가로는 leftInset으로 보정한다.)
+    final wrappedField = Padding(
+      padding: const EdgeInsets.only(left: _foldGutterWidth),
+      child: Focus(
+        onKeyEvent: _onEditorKeyEvent,
+        child: field,
+      ),
+    );
+
+    // 오버레이(테이블/이미지/chevron)는 CustomMultiChildLayout으로 배치한다.
+    // 델리게이트의 performLayout은 Stack 자식 순서상 필드 레이아웃 직후에
+    // 돌기 때문에, RenderEditable을 조회하면 이번 프레임의 실제 배치를 얻는다
+    // (빌드 시점 미러 측정의 1프레임 지연/발산 문제가 없다).
     final Widget body = Stack(
       fit: StackFit.expand,
       children: [
@@ -655,45 +866,46 @@ class _EditorPanelState extends State<EditorPanel> {
                 final allRegions =
                     parseEditorBlockRegions(_contentController.text);
                 final tables = findTableRegions(_contentController.text);
-                // A pipe-less `---` table separator also matches the `---` rule;
-                // drop that rule so it is not drawn as a line inside the table.
-                final sepStarts = {for (final t in tables) t.separatorRange.start};
-                final regions = sepStarts.isEmpty
-                    ? allRegions
-                    : allRegions
-                        .where((r) => !(r.kind == EditorBlockKind.rule &&
-                            sepStarts.contains(r.start)))
-                        .toList();
+                final details = findDetailsRegions(_contentController.text);
+                final regions = [
+                  ...filterEditorRegions(allRegions, tables, details),
+                  // 열린 details 본문 왼쪽의 접기 범위 가이드 라인.
+                  ...detailsGuideRegions(details),
+                ];
                 if (regions.isEmpty) {
                   return const SizedBox.expand();
                 }
                 return CustomPaint(
                   painter: EditorBlockDecorationPainter(
-                    span: _contentController.buildTextSpan(
-                      context: context,
-                      style: bodyStyle,
-                      withComposing: false,
-                    ),
+                    editable: _renderEditable,
                     regions: regions,
-                    strutStyle: strut,
-                    textScaler: textScaler,
-                    scrollController: _contentScrollController,
+                    repaint: _contentScrollController,
                     codeBackground: c.surfaceLight,
                     codeBorder: c.border,
                     ruleColor: c.border,
                     quoteBar: c.textMuted,
+                    detailsGuide: c.textMuted.withValues(alpha: 0.35),
+                    leftInset: _foldGutterWidth,
                   ),
                 );
               },
             ),
           ),
         ),
-        field,
+        wrappedField,
         // Tables render as real, scrollable widgets over their hidden markdown,
         // on top of the field so they can take taps and show the +col/+row
         // controls when the caret is inside them.
         Positioned.fill(
-          child: _buildTableOverlays(c, bodyStyle, strut, textScaler),
+          child: _buildTableOverlays(c, bodyStyle),
+        ),
+        // details 접기/펼치기 chevron — summary 줄 왼쪽에 겹친다.
+        Positioned.fill(
+          child: _buildDetailsToggles(c),
+        ),
+        // 인라인 이미지 — 숨겨진 <img> 줄의 예약 밴드 위에 그린다.
+        Positioned.fill(
+          child: _buildImageOverlays(c),
         ),
       ],
     );
@@ -701,70 +913,225 @@ class _EditorPanelState extends State<EditorPanel> {
     return _buildZoomAwareSurface(
       Container(
         color: c.scaffold,
-        padding: const EdgeInsets.all(AppDimensions.spacingLg),
+        // 왼쪽은 접기 거터(_foldGutterWidth)가 스택 안에서 여백 역할을
+        // 겸하므로 바깥 패딩을 줄인다.
+        padding: const EdgeInsets.fromLTRB(
+          AppDimensions.spacingSm,
+          AppDimensions.spacingLg,
+          AppDimensions.spacingLg,
+          AppDimensions.spacingLg,
+        ),
         child: body,
       ),
     );
   }
 
-  // Positions an [InlineTableView] over each table's hidden markdown. It rebuilds
-  // on every text/caret/scroll change so the overlays follow the content; the
-  // table containing the caret renders active (with the +col/+row controls).
-  Widget _buildTableOverlays(
-    AppColorsExtension c,
-    TextStyle bodyStyle,
-    StrutStyle strut,
-    TextScaler textScaler,
-  ) {
+  /// 오버레이 델리게이트가 공유하는 relayout 트리거: 텍스트/캐럿 변경과 스크롤.
+  Listenable get _overlayRelayout =>
+      Listenable.merge([_contentController, _contentScrollController]);
+
+  // Positions an [InlineTableView] over each table's hidden markdown. 자식
+  // 목록은 텍스트/캐럿 변경 때 재빌드되고, 위치는 델리게이트가 레이아웃
+  // 시점에 RenderEditable에서 직접 읽는다.
+  Widget _buildTableOverlays(AppColorsExtension c, TextStyle bodyStyle) {
     return ListenableBuilder(
-      listenable: Listenable.merge([_contentController, _contentScrollController]),
+      listenable: _contentController,
       builder: (context, _) {
         final tables = findTableRegions(_contentController.text);
         if (tables.isEmpty) return const SizedBox.shrink();
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final span = _contentController.buildTextSpan(
-                context: context, style: bodyStyle, withComposing: false);
-            final measured = measureTableRegions(
-                span, tables, strut, textScaler, constraints.maxWidth);
-            final scrollY = _contentScrollController.hasClients
-                ? _contentScrollController.offset
-                : 0.0;
-            final sel = _contentController.selection;
-            final caret = sel.isValid ? sel.baseOffset : -1;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final m in measured)
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: m.top - scrollY,
-                    height: m.bottom - m.top,
-                    child: InlineTableView(
-                      key: ValueKey(m.table.start),
-                      data: m.table.table,
-                      active: !widget.isReadOnly &&
-                          caret >= m.table.start &&
-                          caret <= m.table.end,
-                      cellStyle: bodyStyle,
-                      onActivate: () => _activateTable(m.table),
-                      onAddRow: () => _addTableRow(m.table),
-                      onAddColumn: () => _addTableColumn(m.table),
-                      onRemove: () => _removeTable(m.table),
-                      onCellChanged: (row, col, value) =>
-                          _setTableCell(m.table, row, col, value),
-                      onRemoveRow: (row) => _removeTableRow(m.table, row),
-                      onRemoveColumn: (col) =>
-                          _removeTableColumn(m.table, col),
-                    ),
-                  ),
-              ],
-            );
-          },
+        final sel = _contentController.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            leftInset: _foldGutterWidth,
+            items: [
+              for (final t in tables)
+                EditorOverlayItem(
+                  id: t.start,
+                  start: t.start,
+                  end: t.end,
+                  anchor: EditorOverlayAnchor.band,
+                ),
+            ],
+          ),
+          children: [
+            for (final t in tables)
+              LayoutId(
+                id: t.start,
+                child: InlineTableView(
+                  key: ValueKey(t.start),
+                  data: t.table,
+                  active: !widget.isReadOnly &&
+                      caret >= t.start &&
+                      caret <= t.end,
+                  cellStyle: bodyStyle,
+                  onActivate: () => _activateTable(t),
+                  onAddRow: () => _addTableRow(t),
+                  onAddColumn: () => _addTableColumn(t),
+                  onRemove: () => _removeTable(t),
+                  onCellChanged: (row, col, value) =>
+                      _setTableCell(t, row, col, value),
+                  onRemoveRow: (row) => _removeTableRow(t, row),
+                  onRemoveColumn: (col) => _removeTableColumn(t, col),
+                ),
+              ),
+          ],
         );
       },
     );
+  }
+
+  // details 접기 chevron을 summary 줄 왼쪽 끝에 겹친다. summary 렌더링이
+  // '<summary>' 태그를 투명 인덴트로 남겨두므로 제목과 겹치지 않는다.
+  Widget _buildDetailsToggles(AppColorsExtension c) {
+    return ListenableBuilder(
+      listenable: _contentController,
+      builder: (context, _) {
+        final details = findDetailsRegions(_contentController.text);
+        if (details.isEmpty) return const SizedBox.shrink();
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final d in details)
+                EditorOverlayItem(
+                  id: d.start,
+                  start: d.summaryLineRange.start,
+                  end: d.summaryLineRange.end,
+                  anchor: EditorOverlayAnchor.leadingChevron,
+                ),
+            ],
+          ),
+          children: [
+            for (final d in details)
+              LayoutId(
+                id: d.start,
+                child: _DetailsToggleButton(
+                  open: d.open,
+                  onTap: widget.isReadOnly
+                      ? null
+                      : () => _toggleDetailsOpen(d),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildImageOverlays(AppColorsExtension c) {
+    final onLoad = widget.onLoadImage;
+    if (onLoad == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: _contentController,
+      builder: (context, _) {
+        final images = findImageRegions(_contentController.text);
+        if (images.isEmpty) return const SizedBox.shrink();
+        final sel = _contentController.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        final scale = widget.contentScale;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            leftInset: _foldGutterWidth,
+            items: [
+              for (final r in images)
+                EditorOverlayItem(
+                  id: r.start,
+                  start: r.start,
+                  end: r.end,
+                  anchor: EditorOverlayAnchor.imageBand,
+                  childHeight: r.height * scale,
+                  topInset: MarkdownEditingController.imagePadding * scale,
+                ),
+            ],
+          ),
+          children: [
+            for (final r in images)
+              LayoutId(
+                id: r.start,
+                child: InlineImageView(
+                  key: ValueKey('${r.start}:${r.src}'),
+                  src: r.src,
+                  width: r.width,
+                  height: r.height,
+                  scale: scale,
+                  active: !widget.isReadOnly &&
+                      caret >= r.start &&
+                      caret <= r.end,
+                  readOnly: widget.isReadOnly,
+                  loadImage: onLoad,
+                  onActivate: () => _activateImage(r),
+                  onResized: (w, h) => _resizeImage(r, w, h),
+                  onRemove: () => _removeImage(r),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 이미지를 클릭하면 캐럿을 (숨겨진) 태그 줄로 옮겨 활성화한다.
+  void _activateImage(ImageRegion r) {
+    if (widget.isReadOnly) return;
+    _contentFocusNode.requestFocus();
+    _contentController.selection = TextSelection.collapsed(
+        offset: r.start.clamp(0, _contentController.text.length));
+  }
+
+  // 리사이즈 결과를 태그의 width/height 속성으로 재기록한다.
+  void _resizeImage(ImageRegion r, int w, int h) {
+    if (widget.isReadOnly || widget.note == null) return;
+    _replaceRange(r.start, r.end, serializeImageTag(r.src, w, h));
+  }
+
+  // 태그 줄 전체(뒤따르는 개행 포함)를 삭제한다. 파일 정리는 하지 않는다
+  // (orphan 허용 — 설계 문서 범위 외 참고).
+  void _removeImage(ImageRegion r) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final s = r.start.clamp(0, text.length);
+    var e = r.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    _contentController.value = TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    _onContentChanged();
+  }
+
+  /// `<details>` ↔ `<details open>` 토글. 펼침 상태가 파일에 저장되어 GitHub
+  /// 웹/다른 디바이스와 공유된다.
+  void _toggleDetailsOpen(DetailsRegion d) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    final line =
+        text.substring(d.detailsLineRange.start, d.detailsLineRange.end);
+    final newLine = d.open
+        ? line.replaceFirst('<details open>', '<details>')
+        : line.replaceFirst('<details>', '<details open>');
+    if (newLine == line) return;
+    final delta = newLine.length - line.length;
+    final selection = _contentController.selection;
+    final caret = selection.isValid ? selection.baseOffset : d.start;
+    // 태그 줄(<details>) 뒤에 캐럿이 있으면 줄 길이 변화(±' open')만큼 같이
+    // 밀어줘야 캐럿이 같은 글자를 계속 가리킨다. 태그 줄 안/이전이면 그대로 둔다.
+    final adjustedCaret =
+        caret > d.detailsLineRange.end ? caret + delta : caret;
+    final newText = text.replaceRange(
+        d.detailsLineRange.start, d.detailsLineRange.end, newLine);
+    _contentController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: adjustedCaret.clamp(0, newText.length),
+      ),
+    );
+    _onContentChanged();
   }
 
   static final RegExp _leadingIndent = RegExp(r'^[ \t]*');
@@ -773,7 +1140,8 @@ class _EditorPanelState extends State<EditorPanel> {
     RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (before bullet)
     RegExp(r'^[-*+] '), // bullet
     RegExp(r'^\d+[.)] '), // ordered
-    RegExp(r'^> '), // quote
+    RegExp(r'^\| '), // quote (new)
+    RegExp(r'^> '), // quote (legacy, 교체 인식용)
   ];
 
   /// Length of any recognized block prefix at the start of [body] (no indent),
@@ -985,6 +1353,34 @@ class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
               border: Border.all(color: c.border),
             ),
             child: Icon(widget.icon, size: 16, color: c.textSecondary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// details 블록 summary 줄 왼쪽의 접기/펼치기 버튼.
+/// 채워진 삼각형 + 본문보다 진한 색으로 접기 지점을 뚜렷하게 보여준다.
+class _DetailsToggleButton extends StatelessWidget {
+  final bool open;
+  final VoidCallback? onTap;
+
+  const _DetailsToggleButton({required this.open, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Icon(
+            open ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
+            size: 24,
+            color: c.textSecondary,
           ),
         ),
       ),

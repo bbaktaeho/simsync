@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import '../../models/note.dart';
 import '../note_storage.dart';
@@ -169,5 +170,27 @@ class LocalNoteStorage implements NoteStorage {
     final file = File('$basePath/$relativePath');
     await file.parent.create(recursive: true);
     await file.writeAsString(content);
+  }
+
+  @override
+  String noteDirPath(DateTime noteDate) {
+    final yearMonth =
+        '${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}';
+    final day = noteDate.day.toString().padLeft(2, '0');
+    return 'notes/$yearMonth/$day';
+  }
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async {
+    final file = File('$basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
+  }
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    final file = File('$basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes);
   }
 }

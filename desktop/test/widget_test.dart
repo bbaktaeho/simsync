@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -652,6 +653,21 @@ class _FakeNoteStorage implements NoteStorage {
   Future<void> writeTextFile(String relativePath, String content) async {
     _textFiles[relativePath] = content;
   }
+
+  @override
+  String noteDirPath(DateTime noteDate) =>
+      '${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}-${noteDate.day.toString().padLeft(2, '0')}';
+
+  final Map<String, Uint8List> _binaryFiles = {};
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async =>
+      _binaryFiles[relativePath];
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    _binaryFiles[relativePath] = bytes;
+  }
 }
 
 class _MemoryNoteStorage implements NoteStorage {
@@ -739,6 +755,21 @@ class _MemoryNoteStorage implements NoteStorage {
   @override
   Future<void> writeTextFile(String relativePath, String content) async {
     _textFiles[relativePath] = content;
+  }
+
+  @override
+  String noteDirPath(DateTime noteDate) =>
+      '${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}-${noteDate.day.toString().padLeft(2, '0')}';
+
+  final Map<String, Uint8List> _binaryFiles = {};
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async =>
+      _binaryFiles[relativePath];
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    _binaryFiles[relativePath] = bytes;
   }
 }
 

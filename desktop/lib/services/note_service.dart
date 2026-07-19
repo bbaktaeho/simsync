@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -37,6 +38,9 @@ class NoteService implements NoteStorage {
     final basePath = '$home/.simsync/documents';
     return NoteService._(basePath);
   }
+
+  /// 테스트용: 임의 경로를 루트로 쓰는 NoteService.
+  factory NoteService.forTesting(String basePath) => NoteService._(basePath);
 
   Directory get _baseDir => Directory(_basePath);
 
@@ -176,6 +180,23 @@ class NoteService implements NoteStorage {
     final file = File('$_basePath/$relativePath');
     await file.parent.create(recursive: true);
     await file.writeAsString(content);
+  }
+
+  @override
+  String noteDirPath(DateTime noteDate) => _dirDateFmt.format(noteDate);
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async {
+    final file = File('$_basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
+  }
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    final file = File('$_basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes);
   }
 
   // ── Helpers ──

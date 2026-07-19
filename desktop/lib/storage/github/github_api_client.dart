@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -169,10 +170,26 @@ class GitHubApiClient {
     required String content,
     required String message,
     String? sha,
+  }) {
+    return putBinaryFile(
+      path: path,
+      bytes: Uint8List.fromList(utf8.encode(content)),
+      message: message,
+      sha: sha,
+    );
+  }
+
+  /// Creates or updates a binary file (raw bytes, base64-encoded directly —
+  /// no utf8 round-trip, so images survive intact). Returns the new SHA.
+  Future<String> putBinaryFile({
+    required String path,
+    required Uint8List bytes,
+    required String message,
+    String? sha,
   }) async {
     final body = <String, dynamic>{
       'message': message,
-      'content': base64.encode(utf8.encode(content)),
+      'content': base64.encode(bytes),
     };
     if (sha != null) {
       body['sha'] = sha;
@@ -198,6 +215,29 @@ class GitHubApiClient {
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final contentMap = json['content'] as Map<String, dynamic>;
     return contentMap['sha'] as String;
+  }
+
+  /// Fetches a file's raw bytes via the raw media type. Works past the 1MB
+  /// base64 limit of the JSON contents response. Throws
+  /// [GitHubNotFoundException] on 404.
+  Future<Uint8List> getRawFile(String path) async {
+    final response = await _httpClient.get(
+      _contentsUri(path),
+      headers: {
+        ..._headers,
+        'Accept': 'application/vnd.github.raw+json',
+      },
+    );
+
+    if (response.statusCode == 404) {
+      throw GitHubNotFoundException(path);
+    }
+
+    if (response.statusCode != 200) {
+      throw GitHubApiException(response.statusCode, response.body);
+    }
+
+    return response.bodyBytes;
   }
 
   /// Deletes a file. Uses [http.Request] to send a DELETE with a body.
