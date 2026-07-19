@@ -295,4 +295,18 @@ void main() {
     final span = await _build(tester, '```nonsenselang\nsome code\n```');
     expect(span.toPlainText(), '```nonsenselang\nsome code\n```');
   });
+
+  group('pipe blockquote', () {
+    testWidgets('| 인용문 줄도 문자 보존 invariant를 지킨다', (tester) async {
+      const text = '| quoted line\nplain';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+
+    testWidgets('레거시 > 인용문도 여전히 매칭된다', (tester) async {
+      const text = '> old quote';
+      final span = await _build(tester, text);
+      expect(_flatten(span).map((e) => e.$1).join(), text);
+    });
+  });
 }

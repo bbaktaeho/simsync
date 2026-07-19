@@ -39,7 +39,7 @@ class EditorBlockRegion {
 
 final RegExp _fence = RegExp(r'^\s*(?:```|~~~)');
 final RegExp _rule = RegExp(r'^\s*(?:-{3,}|\*{3,}|_{3,})\s*$');
-final RegExp _quote = RegExp(r'^\s*>');
+final RegExp _quote = RegExp(r'^\s*[>|]');
 
 /// Scans [text] for fenced code blocks, `---` rules and `>` blockquotes,
 /// returning their character ranges. A code block's range is its CONTENT lines
@@ -264,4 +264,24 @@ List<({TableRegion table, double top, double bottom})> measureTableRegions(
   }
   painter.dispose();
   return out;
+}
+
+/// 데코레이션 영역 후처리: 테이블과 겹치는 quote 바(테이블 행도 `|`로 시작),
+/// 테이블 구분선과 겹치는 rule 선을 제거한다.
+List<EditorBlockRegion> filterEditorRegions(
+  List<EditorBlockRegion> regions,
+  List<TableRegion> tables,
+) {
+  if (regions.isEmpty) return regions;
+  final sepStarts = {for (final t in tables) t.separatorRange.start};
+  return regions.where((r) {
+    if (r.kind == EditorBlockKind.rule && sepStarts.contains(r.start)) {
+      return false;
+    }
+    if (r.kind == EditorBlockKind.quote &&
+        tables.any((t) => r.start <= t.end && r.end >= t.start)) {
+      return false;
+    }
+    return true;
+  }).toList();
 }

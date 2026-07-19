@@ -115,4 +115,35 @@ void main() {
       );
     });
   });
+
+  group('pipe quote regions', () {
+    test('| 줄이 quote 영역으로 잡힌다', () {
+      const text = '| a\n| b\nplain';
+      final regions = parseEditorBlockRegions(text);
+      expect(regions, [
+        const EditorBlockRegion(start: 0, end: 7, kind: EditorBlockKind.quote),
+      ]);
+    });
+
+    test('filterEditorRegions는 테이블과 겹치는 quote 영역을 버린다', () {
+      const text = '| h1 | h2 |\n| --- | --- |\n| a | b |';
+      final regions = parseEditorBlockRegions(text);
+      final tables = findTableRegions(text);
+      final filtered = filterEditorRegions(regions, tables);
+      expect(filtered.where((r) => r.kind == EditorBlockKind.quote), isEmpty);
+    });
+
+    test('filterEditorRegions는 테이블 구분선의 rule 영역도 버린다 (기존 동작 이전)', () {
+      const text = 'x | y\n---\n| a | b |'; // 파이프 없는 구분선 케이스는 기존 로직 유지 확인용
+      final regions = parseEditorBlockRegions(text);
+      final tables = findTableRegions(text);
+      final filtered = filterEditorRegions(regions, tables);
+      for (final t in tables) {
+        expect(
+          filtered.any((r) => r.kind == EditorBlockKind.rule && r.start == t.separatorRange.start),
+          isFalse,
+        );
+      }
+    });
+  });
 }

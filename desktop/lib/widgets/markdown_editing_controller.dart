@@ -41,7 +41,9 @@ class MarkdownEditingController extends TextEditingController {
   static const int _highlightCacheLimit = 2000;
 
   static final RegExp _heading = RegExp(r'^(#{1,6})(\s+)(.*)$');
-  static final RegExp _blockquote = RegExp(r'^(\s*(?:>\s?)+)(.*)$');
+  // 인용문: 새 문법은 `| `, 레거시 `> `도 하위 호환으로 계속 렌더링한다.
+  // 테이블 줄은 buildTextSpan에서 먼저 걸러지므로 여기 도달하지 않는다.
+  static final RegExp _blockquote = RegExp(r'^(\s*(?:[>|]\s?)+)(.*)$');
   static final RegExp _checkbox = RegExp(r'^(\s*[-*+] \[)([ xX])(\] )(.*)$');
   static final RegExp _bullet = RegExp(r'^(\s*)([-*+])(\s+)(.*)$');
   static final RegExp _ordered = RegExp(r'^(\s*)(\d+[.)])(\s+)(.*)$');

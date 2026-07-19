@@ -707,15 +707,7 @@ class EditorPanelState extends State<EditorPanel> {
                 final allRegions =
                     parseEditorBlockRegions(_contentController.text);
                 final tables = findTableRegions(_contentController.text);
-                // A pipe-less `---` table separator also matches the `---` rule;
-                // drop that rule so it is not drawn as a line inside the table.
-                final sepStarts = {for (final t in tables) t.separatorRange.start};
-                final regions = sepStarts.isEmpty
-                    ? allRegions
-                    : allRegions
-                        .where((r) => !(r.kind == EditorBlockKind.rule &&
-                            sepStarts.contains(r.start)))
-                        .toList();
+                final regions = filterEditorRegions(allRegions, tables);
                 if (regions.isEmpty) {
                   return const SizedBox.expand();
                 }
@@ -825,7 +817,8 @@ class EditorPanelState extends State<EditorPanel> {
     RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (before bullet)
     RegExp(r'^[-*+] '), // bullet
     RegExp(r'^\d+[.)] '), // ordered
-    RegExp(r'^> '), // quote
+    RegExp(r'^\| '), // quote (new)
+    RegExp(r'^> '), // quote (legacy, 교체 인식용)
   ];
 
   /// Length of any recognized block prefix at the start of [body] (no indent),
