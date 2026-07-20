@@ -1071,12 +1071,22 @@ class _DocumentScreenState extends State<DocumentScreen> {
       final dateStr = DateFormat('yyyy-MM-dd').format(result.note.noteDate);
       final title =
           result.note.title.isEmpty ? 'Untitled' : result.note.title;
-      final base = '[$dateStr] $title 동기화 노트로 전환했습니다.';
+      // 날짜와 타이틀만 굵게 — 나머지는 스낵바 기본 스타일을 그대로 상속한다.
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(failed == 0
-              ? base
-              : '$base 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
+          content: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: '[$dateStr] $title',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const TextSpan(text: ' 동기화 노트로 전환했습니다.'),
+                if (failed > 0)
+                  TextSpan(text: ' 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
+              ],
+            ),
+          ),
         ),
       );
     }
