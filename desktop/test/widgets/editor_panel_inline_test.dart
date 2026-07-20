@@ -89,10 +89,11 @@ void main() {
     // The content field renders markdown inline via the custom controller.
     expect(_contentController(tester), isA<MarkdownEditingController>());
 
-    // 극소 명시 스트럿: 줄 높이 floor를 사실상 없애 닫힌 details 본문 접힘과
-    // 이미지 줄 높이 예약을 가능하게 한다 (좌표는 RenderEditable 직접 조회).
+    // 스트럿 완전 비활성: fontSize 0.0은 엔진/TextPainter의 공식 "스트럿
+    // 없음" 마커다 — 닫힌 details 본문 접힘(줄 높이 floor 제거)과 정상 캐럿
+    // 메트릭을 동시에 만족시킨다 (editor_caret_test.dart 참조).
     final field = tester.widget<TextField>(_contentFinder);
-    expect(field.strutStyle?.fontSize, 0.1);
+    expect(field.strutStyle?.fontSize, 0.0);
   });
 
   testWidgets('reveals the caret line markers and collapses inactive lines', (
