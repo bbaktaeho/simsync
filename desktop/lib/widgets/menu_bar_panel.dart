@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
+import '../services/image_asset_service.dart';
 import '../services/menu_bar_controller.dart';
 import '../settings/app_settings_controller.dart';
+import '../settings/shortcut_binding.dart';
+import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
@@ -33,6 +39,93 @@ class MenuBarPanel extends StatefulWidget {
 
 class _MenuBarPanelState extends State<MenuBarPanel> {
   bool _calendarExpanded = true;
+
+  /// 포맷팅 단축키를 팝오버의 에디터로 전달하기 위한 키.
+  final GlobalKey<EditorPanelState> _editorKey = GlobalKey<EditorPanelState>();
+
+  /// 스토리지별 이미지 자산 서비스 (메인 창의 document_screen과 동일 정책:
+  /// 원격(synced) 스토리지만 디스크 캐시).
+  final Map<NoteStorage, ImageAssetService> _imageServices = {};
+
+  ImageAssetService? _imageServiceFor(Note note) {
+    final storage = _c.storageFor(note);
+    if (storage == null) return null;
+    return _imageServices.putIfAbsent(
+      storage,
+      () => ImageAssetService(
+        storage: storage,
+        useDiskCache: identical(storage, _c.syncedStorage),
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 팝오버는 별도 엔진이라 메인 창(document_screen)의 전역 단축키 핸들러가
+    // 없다 — 포맷팅/확대/축소 단축키를 여기서 동일하게 처리한다.
+    HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
+  }
+
+  @override
+  void dispose() {
+    HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
+    super.dispose();
+  }
+
+  bool _handleHardwareKeyEvent(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+
+    final hw = HardwareKeyboard.instance;
+    final isMetaPressed = hw.isMetaPressed;
+    final isShiftPressed = hw.isShiftPressed;
+
+    for (final binding in widget.settings.bindings) {
+      if (binding.matches(
+        event,
+        isMetaPressed: isMetaPressed,
+        isShiftPressed: isShiftPressed,
+      )) {
+        switch (binding.action) {
+          case ShortcutAction.zoomIn:
+            unawaited(widget.settings.increaseContentScale());
+          case ShortcutAction.zoomOut:
+            unawaited(widget.settings.decreaseContentScale());
+          case ShortcutAction.formatBold:
+          case ShortcutAction.formatItalic:
+          case ShortcutAction.formatStrikethrough:
+          case ShortcutAction.formatInlineCode:
+          case ShortcutAction.formatLink:
+          case ShortcutAction.formatCheckbox:
+          case ShortcutAction.formatHighlight:
+            final editor = _editorKey.currentState;
+            if (editor == null || !editor.hasEditorFocus) return false;
+            editor.applyFormat(binding.action);
+          case ShortcutAction.openSettings:
+          case ShortcutAction.search:
+          case ShortcutAction.closeTab:
+            // 팝오버에는 해당 화면이 없다 — 소비하지 않는다.
+            return false;
+        }
+        return true;
+      }
+    }
+
+    // 메인 창과 동일한 숫자패드 줌 변형.
+    if (isMetaPressed) {
+      final key = event.logicalKey;
+      if (key == LogicalKeyboardKey.numpadAdd) {
+        unawaited(widget.settings.increaseContentScale());
+        return true;
+      }
+      if (key == LogicalKeyboardKey.numpadSubtract) {
+        unawaited(widget.settings.decreaseContentScale());
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   // Side length of a calendar day cell; the draggable divider between the
   // calendar and the note list adjusts it (smaller cells => more room for the
@@ -234,18 +327,35 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
             _buildEditorHeader(context, note),
             Divider(height: 1, color: c.border),
             Expanded(
-              child: EditorPanel(
-                note: note,
-                onNoteChanged: _c.updateNote,
+              child: Builder(builder: (context) {
                 // Same rule as the document screen: with sync off, synced
                 // notes are read-only (editing would still commit to GitHub).
-                isReadOnly: note.storageType != StorageType.local &&
-                    !widget.settings.value.syncEnabled,
-                contentScale: widget.settings.value.contentScale,
-                onIncreaseContentScale: widget.settings.increaseContentScale,
-                onDecreaseContentScale: widget.settings.decreaseContentScale,
-                onSetContentScale: widget.settings.setContentScale,
-              ),
+                final isReadOnly = note.storageType != StorageType.local &&
+                    !widget.settings.value.syncEnabled;
+                final imageService = _imageServiceFor(note);
+                return EditorPanel(
+                  key: _editorKey,
+                  note: note,
+                  onNoteChanged: _c.updateNote,
+                  isReadOnly: isReadOnly,
+                  contentScale: widget.settings.value.contentScale,
+                  onIncreaseContentScale: widget.settings.increaseContentScale,
+                  onDecreaseContentScale: widget.settings.decreaseContentScale,
+                  onSetContentScale: widget.settings.setContentScale,
+                  // 메인 창과 동일한 이미지 로드/첨부 와이어링 — 팝오버에서도
+                  // 인라인 이미지 표시와 붙여넣기/파일 첨부가 동작한다.
+                  onLoadImage: imageService == null
+                      ? null
+                      : (src) => imageService.loadImage(
+                          noteDate: note.noteDate, src: src),
+                  onAttachImage: imageService == null || isReadOnly
+                      ? null
+                      : (Uint8List bytes, String ext) => imageService.saveImage(
+                          noteDate: note.noteDate,
+                          bytes: bytes,
+                          extension: ext),
+                );
+              }),
             ),
           ],
         ),

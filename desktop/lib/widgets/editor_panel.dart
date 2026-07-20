@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
@@ -24,6 +25,37 @@ import 'table_editor_dialog.dart';
 
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
+
+/// 엔진(레이아웃)과 TextPainter(캐럿 메트릭) 모두 "스트럿 없음"으로 취급하는
+/// 스트럿. 줄 높이 floor가 사라져 접힌 줄(닫힌 details 본문, 테이블 구분선)이
+/// 실제 ~0 높이가 되면서도, 캐럿은 실제 글리프 메트릭으로 정상 배치된다.
+///
+/// 이렇게 우회하는 이유 (전부 실측/소스로 확인):
+/// - `StrutStyle.disabled`: EditableText가 `inheritFromTextStyle`로 null
+///   fontSize를 본문 폰트로 채워, 엔진이 "폰트 자연 높이"를 floor로 되살린다.
+/// - `StrutStyle(fontSize: 0.1)`: 레이아웃 floor는 없지만 TextPainter의
+///   `_strutDisabled`가 fontSize == 0.0만 비활성으로 인정하므로 스트럿이
+///   "활성"으로 남아, 문서 끝/빈 줄 캐럿의 전체 높이가 스트럿 박스(~0.1px)로
+///   계산되고 macOS 캐럿 센터링이 캐럿을 ~12px 위로 밀어낸다.
+/// - `StrutStyle(fontSize: 0)`: 생성자 assert(fontSize > 0)로 직접 생성 불가.
+///
+/// 따라서 getter 재정의로 fontSize 0.0을 보고하고(TextPainter/엔진의 공식
+/// "스트럿 비활성" 마커), EditableText의 상속 변환을 무력화한다.
+class _DisabledStrutStyle extends StrutStyle {
+  const _DisabledStrutStyle() : super(height: 1, leading: 0);
+
+  @override
+  double? get fontSize => 0.0;
+
+  @override
+  StrutStyle inheritFromTextStyle(TextStyle? other) => this;
+
+  // EditableText가 lineHeightScaleFactorOverride를 merge로 반영하며 스트럿을
+  // 재생성한다(assert fontSize > 0에 걸림). 이 에디터는 자체 콘텐츠 줌을
+  // 쓰므로 해당 오버라이드를 무시하고 비활성 스트럿을 유지한다.
+  @override
+  StrutStyle merge(StrutStyle? other) => this;
+}
 
 class EditorPanel extends StatefulWidget {
   final Note? note;
@@ -839,19 +871,23 @@ class EditorPanelState extends State<EditorPanel> {
     final bodyStyle =
         (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
             .merge(baseStyle);
-    // 극소 명시 스트럿: 줄 높이의 최소값(floor)을 사실상 없앤다. 덕분에 접힌
-    // 줄(닫힌 details 본문, 테이블 구분선)은 실제 ~0 높이로 줄어들고, 일반
-    // 줄은 자기 폰트 크기로 높이가 정해진다. StrutStyle.disabled를 쓰지 않는
-    // 이유: EditableText가 null fontSize를 본문 스타일에서 상속시켜 floor가
-    // 되살아난다 (실측 확인). 데코/오버레이 좌표는 미러 TextPainter가 아니라
-    // RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
-    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
+    // 스트럿 완전 비활성(_DisabledStrutStyle 주석 참조): 접힌 줄은 실제 ~0
+    // 높이가 되고, 일반 줄은 자기 폰트 크기로 높이가 정해지며, 캐럿은 실제
+    // 글리프 메트릭으로 배치된다. 데코/오버레이 좌표는 미러 TextPainter가
+    // 아니라 RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
+    const strut = _DisabledStrutStyle();
 
     final field = TextField(
       key: _fieldKey,
       controller: _contentController,
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
+      // 선택/밴드 박스를 풀 라인 박스로 만든다. 기본(tight)은 글리프 잉크
+      // 경계를 반환해 폰트 메트릭(Inter의 ascent+descent 등)에 따라 라인
+      // 박스와 어긋난다 — 이미지 예약 줄처럼 큰 라인에서는 그 오차가
+      // 비례해서 커져, 오버레이가 위/아래 줄을 침범했다. max면 밴드가
+      // 항상 정확한 라인 경계와 일치한다 (선택 하이라이트도 풀 라인).
+      selectionHeightStyle: ui.BoxHeightStyle.max,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
       readOnly: widget.isReadOnly,
       inputFormatters: widget.isReadOnly
@@ -1001,21 +1037,23 @@ class EditorPanelState extends State<EditorPanel> {
             for (final t in tables)
               LayoutId(
                 id: t.start,
-                child: InlineTableView(
-                  key: ValueKey(t.start),
-                  data: t.table,
-                  active: !widget.isReadOnly &&
-                      caret >= t.start &&
-                      caret <= t.end,
-                  cellStyle: bodyStyle,
-                  onActivate: () => _activateTable(t),
-                  onAddRow: () => _addTableRow(t),
-                  onAddColumn: () => _addTableColumn(t),
-                  onRemove: () => _removeTable(t),
-                  onCellChanged: (row, col, value) =>
-                      _setTableCell(t, row, col, value),
-                  onRemoveRow: (row) => _removeTableRow(t, row),
-                  onRemoveColumn: (col) => _removeTableColumn(t, col),
+                child: _forwardEditorScroll(
+                  child: InlineTableView(
+                    key: ValueKey(t.start),
+                    data: t.table,
+                    active: !widget.isReadOnly &&
+                        caret >= t.start &&
+                        caret <= t.end,
+                    cellStyle: bodyStyle,
+                    onActivate: () => _activateTable(t),
+                    onAddRow: () => _addTableRow(t),
+                    onAddColumn: () => _addTableColumn(t),
+                    onRemove: () => _removeTable(t),
+                    onCellChanged: (row, col, value) =>
+                        _setTableCell(t, row, col, value),
+                    onRemoveRow: (row) => _removeTableRow(t, row),
+                    onRemoveColumn: (col) => _removeTableColumn(t, col),
+                  ),
                 ),
               ),
           ],
@@ -1063,6 +1101,44 @@ class EditorPanelState extends State<EditorPanel> {
     );
   }
 
+  /// 오버레이(이미지/테이블) 위의 스크롤 입력을 에디터 스크롤로 전달한다.
+  ///
+  /// 오버레이가 히트 테스트를 가로채면 아래 TextField의 Scrollable이 스크롤
+  /// 입력을 받지 못한다. 마우스 휠(PointerScrollEvent)과 트랙패드 두 손가락
+  /// 스크롤(PointerPanZoomUpdate)은 서로 다른 이벤트 계열이라 둘 다 다뤄야
+  /// 한다 — v0.2.2 수정이 휠만 다뤄 트랙패드에서 여전히 죽어 있었다.
+  Widget _forwardEditorScroll({required Widget child}) {
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is! PointerScrollEvent) return;
+        if (HardwareKeyboard.instance.isMetaPressed) return; // cmd+휠 = 줌
+        // 오버레이 내부에 자체 Scrollable(테이블 가로 스크롤)이 있으면 그쪽이
+        // 먼저 등록해 이긴다 — resolver 규약을 따라 충돌 없이 공존한다.
+        GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+          _scrollEditorBy((e as PointerScrollEvent).scrollDelta.dy);
+        });
+      },
+      onPointerPanZoomUpdate: (event) {
+        // 트랙패드 두 손가락 스크롤. 핀치 줌(scale 변화)은 조상 줌 Listener가
+        // 처리하므로 여기서는 순수 팬만 전달한다. 드래그 방향과 콘텐츠 이동
+        // 방향은 반대(콘텐츠가 손가락을 따라감)라 부호를 뒤집는다.
+        if (event.scale != 1.0) return;
+        _scrollEditorBy(-event.panDelta.dy);
+      },
+      child: child,
+    );
+  }
+
+  void _scrollEditorBy(double delta) {
+    if (!_contentScrollController.hasClients) return;
+    final position = _contentScrollController.position;
+    final target = (position.pixels + delta)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target != position.pixels) {
+      position.jumpTo(target);
+    }
+  }
+
   Widget _buildImageOverlays(AppColorsExtension c) {
     final onLoad = widget.onLoadImage;
     if (onLoad == null) return const SizedBox.shrink();
@@ -1087,7 +1163,6 @@ class EditorPanelState extends State<EditorPanel> {
                   end: r.end,
                   anchor: EditorOverlayAnchor.imageBand,
                   childHeight: r.height * scale,
-                  topInset: MarkdownEditingController.imagePadding * scale,
                 ),
             ],
           ),
@@ -1095,20 +1170,22 @@ class EditorPanelState extends State<EditorPanel> {
             for (final r in images)
               LayoutId(
                 id: r.start,
-                child: InlineImageView(
-                  key: ValueKey('${r.start}:${r.src}'),
-                  src: r.src,
-                  width: r.width,
-                  height: r.height,
-                  scale: scale,
-                  active: !widget.isReadOnly &&
-                      caret >= r.start &&
-                      caret <= r.end,
-                  readOnly: widget.isReadOnly,
-                  loadImage: onLoad,
-                  onActivate: () => _activateImage(r),
-                  onResized: (w, h) => _resizeImage(r, w, h),
-                  onRemove: () => _removeImage(r),
+                child: _forwardEditorScroll(
+                  child: InlineImageView(
+                    key: ValueKey('${r.start}:${r.src}'),
+                    src: r.src,
+                    width: r.width,
+                    height: r.height,
+                    scale: scale,
+                    active: !widget.isReadOnly &&
+                        caret >= r.start &&
+                        caret <= r.end,
+                    readOnly: widget.isReadOnly,
+                    loadImage: onLoad,
+                    onActivate: () => _activateImage(r),
+                    onResized: (w, h) => _resizeImage(r, w, h),
+                    onRemove: () => _removeImage(r),
+                  ),
                 ),
               ),
           ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +49,67 @@ void main() {
     expect(find.byType(InlineImageView), findsOneWidget);
   });
 
+  testWidgets('이미지 위에서 휠 스크롤이 에디터 스크롤로 전달된다', (tester) async {
+    // 오버레이가 히트 테스트를 가로채므로 Listener가 휠을 에디터 스크롤로
+    // 넘겨야 한다 (v0.2.2에서 이미지 위 스크롤이 죽어 있던 버그).
+    final filler = List.generate(60, (i) => 'line $i').join('\n');
+    await pump(tester, note('$img\n$filler'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is TextField &&
+                w.decoration?.hintText == 'Start writing in markdown...'),
+            matching: find.byType(Scrollable))
+        .first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    // 이미지 박스 안쪽에 포인터를 두고 휠을 굴린다.
+    final target =
+        tester.getTopLeft(find.byType(InlineImageView)) + const Offset(10, 10);
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(target);
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0),
+        reason: '이미지 위에서도 에디터가 스크롤되어야 한다');
+  });
+
+  testWidgets('이미지 위 트랙패드 두 손가락 스크롤도 에디터 스크롤로 전달된다',
+      (tester) async {
+    // macOS 트랙패드는 휠(PointerScrollEvent)이 아니라 팬줌(PointerPanZoom)
+    // 이벤트를 보낸다 — v0.2.2 수정이 휠만 다뤄 트랙패드에서 여전히 죽어
+    // 있던 버그의 회귀 테스트.
+    final filler = List.generate(60, (i) => 'line $i').join('\n');
+    await pump(tester, note('$img\n$filler'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is TextField &&
+                w.decoration?.hintText == 'Start writing in markdown...'),
+            matching: find.byType(Scrollable))
+        .first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    final target =
+        tester.getTopLeft(find.byType(InlineImageView)) + const Offset(10, 10);
+    final pointer = TestPointer(2, PointerDeviceKind.trackpad);
+    await tester.sendEventToBinding(pointer.panZoomStart(target));
+    await tester.sendEventToBinding(
+        pointer.panZoomUpdate(target, pan: const Offset(0, -120)));
+    await tester.sendEventToBinding(pointer.panZoomEnd());
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0),
+        reason: '트랙패드 스크롤도 이미지 위에서 동작해야 한다');
+  });
+
   testWidgets('이미지 오버레이 레이어는 ClipRect로 감싸여 에디터 밖으로 새지 않는다',
       (tester) async {
     // CustomMultiChildLayout은 자식 페인트를 클리핑하지 않으므로, 스크롤로
@@ -60,6 +122,63 @@ void main() {
           of: find.byType(InlineImageView), matching: find.byType(ClipRect)),
       findsWidgets,
     );
+  });
+
+  testWidgets('큰 이미지도 윗줄을 침범하지 않는다 (상단 고정, 아래로만 확장)',
+      (tester) async {
+    // 예약 글리프의 잉크가 라인 박스를 위로 넘치면 밴드 top이 윗줄까지
+    // 올라가 이미지가 위 텍스트를 덮는다 — 이미지가 클수록 침범이 커진다.
+    const bigImg = '<img src="assets/a.png" width="450" height="300">';
+    const content = 'above text\n\n$bigImg\n\nbelow';
+    await pump(tester, note(content));
+    await tester.pumpAndSettle();
+
+    final etFinder = find.descendant(
+        of: find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'Start writing in markdown...'),
+        matching: find.byType(EditableText));
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final aboveStart = content.indexOf('above');
+    final aboveBoxes = re.getBoxesForSelection(TextSelection(
+        baseOffset: aboveStart, extentOffset: aboveStart + 'above text'.length));
+    final aboveBottom =
+        aboveBoxes.map((b) => b.bottom).reduce((a, b) => a > b ? a : b);
+
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    final overlayTop = tester.getTopLeft(find.byType(InlineImageView)).dy;
+
+    expect(overlayTop - fieldTop, greaterThanOrEqualTo(aboveBottom - 1),
+        reason: '이미지 상단이 윗줄 텍스트 아래에 있어야 한다');
+  });
+
+  testWidgets('큰 이미지도 아랫줄을 침범하지 않는다', (tester) async {
+    // 밴드 측정이 잉크 경계(tight)면 큰 예약 줄에서 라인 박스와 어긋나
+    // 이미지가 아래 텍스트를 덮을 수 있다 — selectionHeightStyle.max로
+    // 밴드를 정확한 라인 박스로 만든 것에 대한 회귀 테스트.
+    const bigImg = '<img src="assets/a.png" width="450" height="300">';
+    const content = 'above text\n\n$bigImg\n\nbelow text';
+    await pump(tester, note(content));
+    await tester.pumpAndSettle();
+
+    final etFinder = find.descendant(
+        of: find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'Start writing in markdown...'),
+        matching: find.byType(EditableText));
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final belowStart = content.indexOf('below');
+    final belowBoxes = re.getBoxesForSelection(TextSelection(
+        baseOffset: belowStart, extentOffset: belowStart + 'below text'.length));
+    final belowTop =
+        belowBoxes.map((b) => b.top).reduce((a, b) => a < b ? a : b);
+
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    final overlayBottom =
+        tester.getBottomLeft(find.byType(InlineImageView)).dy;
+
+    expect(overlayBottom - fieldTop, lessThanOrEqualTo(belowTop + 1),
+        reason: '이미지 하단이 아랫줄 텍스트 위에 있어야 한다');
   });
 
   testWidgets('onLoadImage가 없으면 오버레이를 만들지 않는다', (tester) async {
