@@ -28,6 +28,7 @@ Future<void> _pump(
   WidgetTester tester,
   List<Note> notes, {
   Future<void> Function(Note)? onConvertToSynced,
+  Future<void> Function(Note)? onConvertToLocal,
 }) async {
   await tester.pumpWidget(MaterialApp(
     theme: buildLightTheme(),
@@ -45,6 +46,7 @@ Future<void> _pump(
           onCreateSyncNote: () {},
           onPageChanged: (_) {},
           onConvertToSynced: onConvertToSynced,
+          onConvertToLocal: onConvertToLocal,
         ),
       ),
     ),
@@ -74,7 +76,7 @@ void main() {
     expect(converted!.id, 'l1');
   });
 
-  testWidgets('동기화 노트 우클릭 메뉴에는 전환 항목이 없다', (tester) async {
+  testWidgets('동기화 노트 우클릭 메뉴에는 동기화 전환 항목이 없다', (tester) async {
     await _pump(
       tester,
       [_note(id: 's1', title: 'synced note', storageType: StorageType.synced)],
@@ -85,6 +87,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('동기화 노트로 전환'), findsNothing);
+  });
+
+  testWidgets('동기화 노트 우클릭 메뉴에 "로컬 노트로 전환"이 있고 콜백을 태운다',
+      (tester) async {
+    Note? converted;
+    await _pump(
+      tester,
+      [_note(id: 's1', title: 'synced note', storageType: StorageType.synced)],
+      onConvertToLocal: (n) async => converted = n,
+    );
+
+    await tester.tap(find.text('synced note'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+
+    final item = find.text('로컬 노트로 전환');
+    expect(item, findsOneWidget);
+    await tester.tap(item);
+    await tester.pumpAndSettle();
+
+    expect(converted?.id, 's1');
+  });
+
+  testWidgets('로컬 노트 우클릭 메뉴에는 로컬 전환 항목이 없다', (tester) async {
+    await _pump(
+      tester,
+      [_note(id: 'l1', title: 'local note', storageType: StorageType.local)],
+      onConvertToLocal: (_) async {},
+    );
+
+    await tester.tap(find.text('local note'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('로컬 노트로 전환'), findsNothing);
   });
 
   testWidgets('onConvertToSynced가 null이면 전환 항목이 없다', (tester) async {

@@ -135,6 +135,74 @@ void main() {
     // 로컬 원본이 보존되어야 한다 (유실 없음).
     expect(local.deleted, isEmpty);
   });
+
+  group('convertSyncedNoteToLocal (반대 방향)', () {
+    Note syncedNote(String content) {
+      final now = DateTime(2026, 7, 21, 9);
+      return Note(
+        id: 'synced-1',
+        noteDate: DateTime(2026, 7, 21),
+        title: 'my note',
+        content: content,
+        isDefault: true,
+        tags: const ['x'],
+        createdAt: now,
+        updatedAt: now,
+        storageType: StorageType.synced,
+      );
+    }
+
+    test('노트를 로컬에 저장하고 synced에서 삭제하며 storageType을 바꾼다', () async {
+      final note = syncedNote('hello');
+      final synced = _FakeStorage(_syncedDir)..notes['synced-1'] = note;
+      final local = _FakeStorage(_localDir);
+
+      final result = await convertSyncedNoteToLocal(
+          note: note, synced: synced, local: local);
+
+      expect(result.note.storageType, StorageType.local);
+      expect(result.note.id, 'synced-1');
+      expect(local.notes['synced-1']!.storageType, StorageType.local);
+      expect(synced.deleted, ['synced-1']);
+    });
+
+    test('이미지 자산을 synced→로컬 경로로 복사한다', () async {
+      const img = '<img src="assets/a.png" width="10" height="10">';
+      final note = syncedNote(img);
+      final synced = _FakeStorage(_syncedDir);
+      synced.files['notes/2026-07/21/assets/a.png'] = png;
+      final local = _FakeStorage(_localDir);
+
+      final result = await convertSyncedNoteToLocal(
+          note: note, synced: synced, local: local);
+
+      expect(local.files['2026-07-21/assets/a.png'], png);
+      expect(result.failedAssets, isEmpty);
+    });
+
+    test('원본(synced) 삭제 실패 시 대상(로컬) 저장을 롤백하고 예외를 던진다', () async {
+      final note = syncedNote('hi');
+      final synced = _DeleteFailingStorage(_syncedDir)..notes['synced-1'] = note;
+      final local = _FakeStorage(_localDir);
+
+      await expectLater(
+        convertSyncedNoteToLocal(note: note, synced: synced, local: local),
+        throwsA(isA<StateError>()),
+      );
+      // 롤백으로 로컬에 중복본이 남지 않아야 한다.
+      expect(local.notes.containsKey('synced-1'), isFalse);
+      // synced 원본은 그대로 (유실 없음).
+      expect(synced.notes.containsKey('synced-1'), isTrue);
+    });
+  });
+}
+
+/// deleteNote가 항상 실패하는 스토리지 (롤백 검증용).
+class _DeleteFailingStorage extends _FakeStorage {
+  _DeleteFailingStorage(super.dirPattern);
+
+  @override
+  Future<void> deleteNote(Note note) async => throw StateError('delete failed');
 }
 
 /// saveNote가 항상 실패하는 synced 스토리지 (유실 방지 순서 검증용).
