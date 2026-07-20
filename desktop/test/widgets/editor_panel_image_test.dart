@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,35 @@ void main() {
     await pump(tester, note('$img\ntext'));
     await tester.pumpAndSettle();
     expect(find.byType(InlineImageView), findsOneWidget);
+  });
+
+  testWidgets('이미지 위에서 휠 스크롤이 에디터 스크롤로 전달된다', (tester) async {
+    // 오버레이가 히트 테스트를 가로채므로 Listener가 휠을 에디터 스크롤로
+    // 넘겨야 한다 (v0.2.2에서 이미지 위 스크롤이 죽어 있던 버그).
+    final filler = List.generate(60, (i) => 'line $i').join('\n');
+    await pump(tester, note('$img\n$filler'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is TextField &&
+                w.decoration?.hintText == 'Start writing in markdown...'),
+            matching: find.byType(Scrollable))
+        .first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    // 이미지 박스 안쪽에 포인터를 두고 휠을 굴린다.
+    final target =
+        tester.getTopLeft(find.byType(InlineImageView)) + const Offset(10, 10);
+    final pointer = TestPointer(1, PointerDeviceKind.mouse);
+    pointer.hover(target);
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 120)));
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0),
+        reason: '이미지 위에서도 에디터가 스크롤되어야 한다');
   });
 
   testWidgets('이미지 오버레이 레이어는 ClipRect로 감싸여 에디터 밖으로 새지 않는다',

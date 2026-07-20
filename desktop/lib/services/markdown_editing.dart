@@ -644,21 +644,15 @@ List<DetailsRegion> findDetailsRegions(String text) {
   return result;
 }
 
-/// details 본문 줄의 들여쓰기 (파일에 실제 저장). 선행 공백 2칸은 GitHub
-/// 마크다운 렌더링에 영향이 없고, 에디터에서는 본문만 살짝 들여쓴 모양이 된다.
-const String detailsBodyIndent = '  ';
-
-/// details 입력 편의 포매터.
+/// 줄 시작에서 `> `를 입력하면 `<details>` 스켈레톤으로 바꾼다. 인용문의 새
+/// 문법은 `| `이므로 `>`는 details 생성 트리거로만 쓰인다. 이미 저장된
+/// `> ` 줄(레거시 인용문)은 건드리지 않는다 — 새로 타이핑되는 경우만 반응.
 ///
-/// 1. 줄 시작에서 `> `를 입력하면 `<details>` 스켈레톤으로 바꾼다. 인용문의 새
-///    문법은 `| `이므로 `>`는 details 생성 트리거로만 쓰인다. 이미 저장된
-///    `> ` 줄(레거시 인용문)은 건드리지 않는다 — 새로 타이핑되는 경우만 반응.
-/// 2. summary 줄이나 본문 줄에서 Enter를 치면 다음 줄에 [detailsBodyIndent]를
-///    이어 붙여 본문 들여쓰기를 유지한다. 들여쓰기만 있는 빈 본문 줄에서의
-///    Enter는 그대로 두어(들여쓰기 미부여) 블록을 벗어날 수 있게 한다.
+/// 본문 자동 들여쓰기(2칸 공백 저장)는 v0.2.1에서 도입했다가 제거했다 —
+/// 공백이 원문에 그대로 보여 줄마다 들쭉날쭉해 보인다는 피드백. 열린 범위는
+/// 거터의 가이드 라인이 이미 보여준다.
 class DetailsBlockInputFormatter extends TextInputFormatter {
-  static const skeleton =
-      '<details>\n<summary></summary>\n$detailsBodyIndent\n</details>';
+  static const skeleton = '<details>\n<summary></summary>\n\n</details>';
   static final int _caretOffset = '<details>\n<summary>'.length;
 
   @override
@@ -673,48 +667,13 @@ class DetailsBlockInputFormatter extends TextInputFormatter {
     final cursor = sel.baseOffset;
     final lineStart = _lineStartOf(newValue.text, cursor);
     final lineEnd = _lineEndOf(newValue.text, cursor);
+    if (cursor != lineEnd) return newValue;
+    if (newValue.text.substring(lineStart, lineEnd) != '> ') return newValue;
 
-    // 1. `> ` → 스켈레톤.
-    if (cursor == lineEnd &&
-        newValue.text.substring(lineStart, lineEnd) == '> ') {
-      final text = newValue.text.replaceRange(lineStart, lineEnd, skeleton);
-      return TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: lineStart + _caretOffset),
-      );
-    }
-
-    // 2. details 안에서의 Enter → 본문 들여쓰기 이어가기.
-    //    (리스트 줄은 MarkdownListInputFormatter가 먼저 처리하며, 그 경우
-    //    삽입이 한 글자가 아니게 되어 여기 도달하지 않는다.)
-    final oldCursor = oldValue.selection.isValid && oldValue.selection.isCollapsed
-        ? oldValue.selection.baseOffset
-        : -1;
-    if (oldCursor < 0 || oldCursor > oldValue.text.length) return newValue;
-    final expected =
-        '${oldValue.text.substring(0, oldCursor)}\n${oldValue.text.substring(oldCursor)}';
-    if (newValue.text != expected || cursor != oldCursor + 1) return newValue;
-
-    final oldLineStart = _lineStartOf(oldValue.text, oldCursor);
-    final oldLineEnd = _lineEndOf(oldValue.text, oldCursor);
-    final oldLine = oldValue.text.substring(oldLineStart, oldLineEnd);
-    // 들여쓰기만 있는 빈 본문 줄에서는 이어가지 않는다 (탈출구).
-    if (oldLine.trim().isEmpty) return newValue;
-
-    final inFoldable = findDetailsRegions(oldValue.text).any((d) {
-      final foldEnd = d.bodyLineRanges.isNotEmpty
-          ? d.bodyLineRanges.last.end
-          : d.summaryLineRange.end;
-      return oldCursor >= d.summaryLineRange.start && oldCursor <= foldEnd;
-    });
-    if (!inFoldable) return newValue;
-
-    final text =
-        '${oldValue.text.substring(0, oldCursor)}\n$detailsBodyIndent${oldValue.text.substring(oldCursor)}';
+    final text = newValue.text.replaceRange(lineStart, lineEnd, skeleton);
     return TextEditingValue(
       text: text,
-      selection: TextSelection.collapsed(
-          offset: oldCursor + 1 + detailsBodyIndent.length),
+      selection: TextSelection.collapsed(offset: lineStart + _caretOffset),
     );
   }
 }

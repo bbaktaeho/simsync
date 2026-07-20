@@ -1092,6 +1092,21 @@ class EditorPanelState extends State<EditorPanel> {
     );
   }
 
+  /// 이미지 오버레이 위에서의 휠 스크롤을 에디터 스크롤로 전달한다. 오버레이가
+  /// 히트 테스트를 가로채면 아래 TextField의 Scrollable이 휠 이벤트를 받지
+  /// 못한다. cmd+휠(콘텐츠 줌)은 조상 Listener가 처리하므로 건드리지 않는다.
+  void _forwardScrollToEditor(PointerSignalEvent event) {
+    if (event is! PointerScrollEvent) return;
+    if (HardwareKeyboard.instance.isMetaPressed) return;
+    if (!_contentScrollController.hasClients) return;
+    final position = _contentScrollController.position;
+    final target = (position.pixels + event.scrollDelta.dy)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target != position.pixels) {
+      position.jumpTo(target);
+    }
+  }
+
   Widget _buildImageOverlays(AppColorsExtension c) {
     final onLoad = widget.onLoadImage;
     if (onLoad == null) return const SizedBox.shrink();
@@ -1124,20 +1139,23 @@ class EditorPanelState extends State<EditorPanel> {
             for (final r in images)
               LayoutId(
                 id: r.start,
-                child: InlineImageView(
-                  key: ValueKey('${r.start}:${r.src}'),
-                  src: r.src,
-                  width: r.width,
-                  height: r.height,
-                  scale: scale,
-                  active: !widget.isReadOnly &&
-                      caret >= r.start &&
-                      caret <= r.end,
-                  readOnly: widget.isReadOnly,
-                  loadImage: onLoad,
-                  onActivate: () => _activateImage(r),
-                  onResized: (w, h) => _resizeImage(r, w, h),
-                  onRemove: () => _removeImage(r),
+                child: Listener(
+                  onPointerSignal: _forwardScrollToEditor,
+                  child: InlineImageView(
+                    key: ValueKey('${r.start}:${r.src}'),
+                    src: r.src,
+                    width: r.width,
+                    height: r.height,
+                    scale: scale,
+                    active: !widget.isReadOnly &&
+                        caret >= r.start &&
+                        caret <= r.end,
+                    readOnly: widget.isReadOnly,
+                    loadImage: onLoad,
+                    onActivate: () => _activateImage(r),
+                    onResized: (w, h) => _resizeImage(r, w, h),
+                    onRemove: () => _removeImage(r),
+                  ),
                 ),
               ),
           ],
