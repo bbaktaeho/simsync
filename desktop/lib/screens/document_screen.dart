@@ -1039,17 +1039,62 @@ class _DocumentScreenState extends State<DocumentScreen> {
       _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트로 전환할 수 없습니다.');
       return;
     }
-    // 최신 내용으로 전환한다 — 편집 직후라면 _allNotes 항목이 controller가
-    // 반영한 최신 content를 이미 담고 있다.
+    await _convertNoteStorage(
+      note: note,
+      targetLabel: '동기화',
+      run: (current) => convertLocalNoteToSynced(
+        note: current,
+        local: local,
+        synced: _storage,
+      ),
+    );
+  }
+
+  /// 동기화 노트를 로컬 노트로 전환한다. 이미지 자산을 로컬 스토리지로 옮기고,
+  /// 로컬에 저장한 뒤 GitHub 원본을 지운다. GitHub 삭제(원본 제거)에 네트워크가
+  /// 필요하므로 동기화가 꺼져 있으면 막는다.
+  Future<void> _onConvertToLocal(Note note) async {
+    final local = widget.localStorage;
+    if (note.storageType != StorageType.synced || local == null) return;
+    if (!_canMutateNote(note)) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 로컬 노트로 전환할 수 없습니다.');
+      return;
+    }
+    await _convertNoteStorage(
+      note: note,
+      targetLabel: '로컬',
+      run: (current) => convertSyncedNoteToLocal(
+        note: current,
+        synced: _storage,
+        local: local,
+      ),
+    );
+  }
+
+  /// 로컬↔동기화 전환 공통 흐름. 진행 중인 저장을 flush/취소해 전환 도중
+  /// 디바운스가 원본 스토리지로 다시 쓰이는 레이스를 막고, 동기화 폴링과
+  /// 겹치지 않게 가드한 뒤 전환을 수행하고 상태/검색/스낵바를 갱신한다.
+  Future<void> _convertNoteStorage({
+    required Note note,
+    required String targetLabel,
+    required Future<NoteConversionResult> Function(Note current) run,
+  }) async {
+    if (_isSyncing) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('동기화 중입니다. 잠시 후 다시 시도하세요.')),
+      );
+      return;
+    }
+    // 진행 중인 편집/디바운스 저장을 먼저 각자의 스토리지에 확정한다. 이걸로
+    // (1) 전환 도중 디바운스가 원본으로 다시 쓰이는 레이스와 (2) 전환이 실패해
+    // 롤백될 때 미저장 편집이 유실되는 것을 함께 막는다.
+    await _flushPendingSaves();
+    // 최신 내용으로 전환한다 — flush 후 _allNotes 항목이 최신 content를 담는다.
     final current = _allNotes.where((n) => n.id == note.id).firstOrNull ?? note;
 
     NoteConversionResult result;
     try {
-      result = await convertLocalNoteToSynced(
-        note: current,
-        local: local,
-        synced: _storage,
-      );
+      result = await run(current);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1067,29 +1112,47 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _searchIndex.upsert(result.note);
     _applySearchQuery(_searchQuery, resetPage: false);
     if (mounted) {
-      final failed = result.failedAssets.length;
-      final dateStr = DateFormat('yyyy-MM-dd').format(result.note.noteDate);
-      final title =
-          result.note.title.isEmpty ? 'Untitled' : result.note.title;
-      // 날짜와 타이틀만 굵게 — 나머지는 스낵바 기본 스타일을 그대로 상속한다.
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: '[$dateStr] $title',
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const TextSpan(text: ' 동기화 노트로 전환했습니다.'),
-                if (failed > 0)
-                  TextSpan(text: ' 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
-              ],
-            ),
+      _showConvertedSnackbar(result.note, result.failedAssets.length, targetLabel);
+    }
+  }
+
+  /// 진행 중인 디바운스 저장 타이머를 취소하고, 대기 중인 모든 dirty 노트를
+  /// 각자의 현재 스토리지에 즉시 저장한다.
+  Future<void> _flushPendingSaves() async {
+    _saveDebounce?.cancel();
+    _saveDebounce = null;
+    final dirty = _allNotes.where((n) => n.isDirty).toList();
+    for (final n in dirty) {
+      try {
+        await _storageFor(n).saveNote(n);
+        n.isDirty = false;
+      } catch (_) {
+        // best-effort; 내용은 _allNotes에 남아 있어 다음 편집/저장에서 재시도된다.
+      }
+    }
+  }
+
+  /// 전환 완료 스낵바: `[날짜] 제목` 만 굵게, 나머지는 기본 스타일 상속.
+  void _showConvertedSnackbar(Note note, int failed, String targetLabel) {
+    final dateStr = DateFormat('yyyy-MM-dd').format(note.noteDate);
+    final title = note.title.isEmpty ? 'Untitled' : note.title;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '[$dateStr] $title',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              TextSpan(text: ' $targetLabel 노트로 전환했습니다.'),
+              if (failed > 0)
+                TextSpan(text: ' 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
+            ],
           ),
         ),
-      );
-    }
+      ),
+    );
   }
 
   Future<void> _onMoveToMemo(Note note) async {
@@ -1644,6 +1707,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
               onMoveToDailyNote: _onMoveToDailyNote,
               onConvertToSynced:
                   widget.localStorage != null ? _onConvertToSynced : null,
+              onConvertToLocal:
+                  widget.localStorage != null ? _onConvertToLocal : null,
             ),
           ),
         ],
