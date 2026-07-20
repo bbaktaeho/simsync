@@ -152,6 +152,35 @@ void main() {
         reason: '이미지 상단이 윗줄 텍스트 아래에 있어야 한다');
   });
 
+  testWidgets('큰 이미지도 아랫줄을 침범하지 않는다', (tester) async {
+    // 밴드 측정이 잉크 경계(tight)면 큰 예약 줄에서 라인 박스와 어긋나
+    // 이미지가 아래 텍스트를 덮을 수 있다 — selectionHeightStyle.max로
+    // 밴드를 정확한 라인 박스로 만든 것에 대한 회귀 테스트.
+    const bigImg = '<img src="assets/a.png" width="450" height="300">';
+    const content = 'above text\n\n$bigImg\n\nbelow text';
+    await pump(tester, note(content));
+    await tester.pumpAndSettle();
+
+    final etFinder = find.descendant(
+        of: find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'Start writing in markdown...'),
+        matching: find.byType(EditableText));
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final belowStart = content.indexOf('below');
+    final belowBoxes = re.getBoxesForSelection(TextSelection(
+        baseOffset: belowStart, extentOffset: belowStart + 'below text'.length));
+    final belowTop =
+        belowBoxes.map((b) => b.top).reduce((a, b) => a < b ? a : b);
+
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    final overlayBottom =
+        tester.getBottomLeft(find.byType(InlineImageView)).dy;
+
+    expect(overlayBottom - fieldTop, lessThanOrEqualTo(belowTop + 1),
+        reason: '이미지 하단이 아랫줄 텍스트 위에 있어야 한다');
+  });
+
   testWidgets('onLoadImage가 없으면 오버레이를 만들지 않는다', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildLightTheme(),
