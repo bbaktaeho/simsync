@@ -8,8 +8,10 @@ enum EditorOverlayAnchor {
   /// 문자 범위의 세로 밴드를 폭 전체로 꽉 채운다 (인라인 테이블).
   band,
 
-  /// 밴드 상단에서 [EditorOverlayItem.topInset]만큼 내려 좌측 정렬, 높이는
-  /// [EditorOverlayItem.childHeight] (인라인 이미지).
+  /// 밴드 세로 중앙에 좌측 정렬, 높이는 [EditorOverlayItem.childHeight]
+  /// (인라인 이미지). 중앙 정렬인 이유: 예약 글리프의 밴드 박스는 폰트
+  /// 메트릭에 따라 라인 박스와 조금 어긋날 수 있지만(leading 분배), 잉크가
+  /// 중앙 분배되므로 밴드 중앙은 항상 예약 줄의 중앙과 일치한다.
   imageBand,
 
   /// 밴드 왼쪽 끝에 세로 중앙 정렬 (details 접기 chevron).
@@ -26,7 +28,6 @@ class EditorOverlayItem {
     required this.end,
     required this.anchor,
     this.childHeight = 0,
-    this.topInset = 0,
   });
 
   final Object id;
@@ -40,9 +41,6 @@ class EditorOverlayItem {
   /// [EditorOverlayAnchor.imageBand] 전용: 자식 배치 높이(px).
   final double childHeight;
 
-  /// [EditorOverlayAnchor.imageBand] 전용: 밴드 상단에서의 여백(px).
-  final double topInset;
-
   @override
   bool operator ==(Object other) =>
       other is EditorOverlayItem &&
@@ -50,11 +48,10 @@ class EditorOverlayItem {
       other.start == start &&
       other.end == end &&
       other.anchor == anchor &&
-      other.childHeight == childHeight &&
-      other.topInset == topInset;
+      other.childHeight == childHeight;
 
   @override
-  int get hashCode => Object.hash(id, start, end, anchor, childHeight, topInset);
+  int get hashCode => Object.hash(id, start, end, anchor, childHeight);
 }
 
 /// 에디터 필드의 [RenderEditable]을 레이아웃 시점에 직접 조회해 자식들을 문자
@@ -124,11 +121,13 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
               item.id, BoxConstraints.tight(Size(contentWidth, band.height)));
           positionChild(item.id, Offset(leftInset, band.top));
         case EditorOverlayAnchor.imageBand:
-          layoutChild(
-              item.id,
-              BoxConstraints.tight(
-                  Size(contentWidth, math.max(0, item.childHeight))));
-          positionChild(item.id, Offset(leftInset, band.top + item.topInset));
+          final childHeight = math.max(0.0, item.childHeight);
+          layoutChild(item.id,
+              BoxConstraints.tight(Size(contentWidth, childHeight)));
+          positionChild(
+            item.id,
+            Offset(leftInset, band.top + (band.height - childHeight) / 2),
+          );
         case EditorOverlayAnchor.leadingChevron:
           final childSize = layoutChild(item.id, BoxConstraints.loose(size));
           positionChild(

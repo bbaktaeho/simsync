@@ -124,6 +124,34 @@ void main() {
     );
   });
 
+  testWidgets('큰 이미지도 윗줄을 침범하지 않는다 (상단 고정, 아래로만 확장)',
+      (tester) async {
+    // 예약 글리프의 잉크가 라인 박스를 위로 넘치면 밴드 top이 윗줄까지
+    // 올라가 이미지가 위 텍스트를 덮는다 — 이미지가 클수록 침범이 커진다.
+    const bigImg = '<img src="assets/a.png" width="450" height="300">';
+    const content = 'above text\n\n$bigImg\n\nbelow';
+    await pump(tester, note(content));
+    await tester.pumpAndSettle();
+
+    final etFinder = find.descendant(
+        of: find.byWidgetPredicate((w) =>
+            w is TextField &&
+            w.decoration?.hintText == 'Start writing in markdown...'),
+        matching: find.byType(EditableText));
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    final aboveStart = content.indexOf('above');
+    final aboveBoxes = re.getBoxesForSelection(TextSelection(
+        baseOffset: aboveStart, extentOffset: aboveStart + 'above text'.length));
+    final aboveBottom =
+        aboveBoxes.map((b) => b.bottom).reduce((a, b) => a > b ? a : b);
+
+    final fieldTop = tester.getTopLeft(etFinder).dy;
+    final overlayTop = tester.getTopLeft(find.byType(InlineImageView)).dy;
+
+    expect(overlayTop - fieldTop, greaterThanOrEqualTo(aboveBottom - 1),
+        reason: '이미지 상단이 윗줄 텍스트 아래에 있어야 한다');
+  });
+
   testWidgets('onLoadImage가 없으면 오버레이를 만들지 않는다', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildLightTheme(),

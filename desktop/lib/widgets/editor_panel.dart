@@ -1156,7 +1156,6 @@ class EditorPanelState extends State<EditorPanel> {
                   end: r.end,
                   anchor: EditorOverlayAnchor.imageBand,
                   childHeight: r.height * scale,
-                  topInset: MarkdownEditingController.imagePadding * scale,
                 ),
             ],
           ),

@@ -240,20 +240,29 @@ class MarkdownEditingController extends TextEditingController {
   TextStyle _collapsed(TextStyle base) => base.copyWith(
       fontSize: 0.1, height: 1.0, letterSpacing: 0, color: Colors.transparent);
 
-  /// 이미지 줄 상하 여백 (오버레이의 그림 여백과 일치해야 한다).
+  /// 이미지 줄 상하 여백 (예약 높이 = 이미지 높이 + 여백*2).
   static const double imagePadding = 6.0;
 
-  /// 이미지 줄: 첫 글자에 (이미지 높이 + 여백) 크기 폰트를 줘 줄 높이를
-  /// 예약하고, 전체를 투명 처리한다. 오버레이가 이 밴드 위에 이미지를 그린다.
-  /// 캐럿이 줄에 있어도 원문을 노출하지 않는다(높이 요동 방지) — 수정/삭제는
-  /// 오버레이 컨트롤로 한다.
+  /// 예약 글리프의 라인 박스 배율. 폰트의 잉크 범위(ascent+descent, Inter는
+  /// ~1.21em)보다 넉넉해야 한다 — height 1.0을 쓰면 잉크가 라인 박스를 위로
+  /// 넘치고, RenderEditable의 밴드 측정(top)이 윗줄까지 올라가 큰 이미지가
+  /// 위 텍스트를 덮는다 (이미지가 클수록 침범이 커지는 것이 실측/수식으로
+  /// 확인된 버그). fontSize를 그만큼 줄이므로 예약 높이는 변하지 않는다.
+  static const double _reservedGlyphHeightFactor = 1.3;
+
+  /// 이미지 줄: 첫 글자에 (이미지 높이 + 여백) 크기의 라인 박스를 줘 줄
+  /// 높이를 예약하고, 전체를 투명 처리한다. 오버레이가 이 밴드 위에 이미지를
+  /// 그린다. 캐럿이 줄에 있어도 원문을 노출하지 않는다(높이 요동 방지) —
+  /// 수정/삭제는 오버레이 컨트롤로 한다.
   List<InlineSpan> _imageLineSpans(String line, ImageRegion r, TextStyle base) {
     final reserved = (r.height + imagePadding * 2) * scale;
     return [
       TextSpan(
         text: line.substring(0, 1),
         style: base.copyWith(
-            fontSize: reserved, height: 1.0, color: Colors.transparent),
+            fontSize: reserved / _reservedGlyphHeightFactor,
+            height: _reservedGlyphHeightFactor,
+            color: Colors.transparent),
       ),
       if (line.length > 1)
         TextSpan(
