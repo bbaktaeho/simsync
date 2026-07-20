@@ -22,6 +22,9 @@ class NoteListSection extends StatelessWidget {
   final Future<void> Function(Note note)? onMoveToMemo;
   final Future<void> Function(Note note)? onMoveToDailyNote;
 
+  /// 로컬 노트를 동기화 노트로 전환한다. 로컬 노트에 우클릭할 때만 노출된다.
+  final Future<void> Function(Note note)? onConvertToSynced;
+
   const NoteListSection({
     super.key,
     required this.notes,
@@ -38,6 +41,7 @@ class NoteListSection extends StatelessWidget {
     this.onMemoTabChanged,
     this.onMoveToMemo,
     this.onMoveToDailyNote,
+    this.onConvertToSynced,
   });
 
   @override
@@ -162,6 +166,9 @@ class NoteListSection extends StatelessWidget {
           onMoveToDailyNote: onMoveToDailyNote != null
               ? () => onMoveToDailyNote!(note)
               : null,
+          onConvertToSynced: onConvertToSynced != null
+              ? () => onConvertToSynced!(note)
+              : null,
         );
       },
     );
@@ -204,6 +211,7 @@ class _NoteListItem extends StatefulWidget {
   final VoidCallback? onDelete;
   final VoidCallback? onMoveToMemo;
   final VoidCallback? onMoveToDailyNote;
+  final VoidCallback? onConvertToSynced;
 
   const _NoteListItem({
     required this.note,
@@ -212,6 +220,7 @@ class _NoteListItem extends StatefulWidget {
     this.onDelete,
     this.onMoveToMemo,
     this.onMoveToDailyNote,
+    this.onConvertToSynced,
   });
 
   @override
@@ -315,6 +324,28 @@ class _NoteListItemState extends State<_NoteListItem> {
     final c = context.colors;
     final items = <PopupMenuEntry<String>>[];
 
+    // 로컬 노트만 동기화 노트로 전환할 수 있다.
+    if (widget.note.storageType == StorageType.local &&
+        widget.onConvertToSynced != null) {
+      items.add(PopupMenuItem(
+        height: 32,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        value: 'convert_to_synced',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_upload_outlined, size: 14, color: c.accent),
+            const SizedBox(width: 6),
+            Text('동기화 노트로 전환',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall!
+                    .copyWith(color: c.textPrimary)),
+          ],
+        ),
+      ));
+    }
+
     if (!widget.note.isMemo && widget.onMoveToMemo != null) {
       items.add(PopupMenuItem(
         height: 32,
@@ -379,6 +410,7 @@ class _NoteListItemState extends State<_NoteListItem> {
       if (value == 'delete') widget.onDelete?.call();
       if (value == 'move_to_memo') widget.onMoveToMemo?.call();
       if (value == 'move_to_daily') widget.onMoveToDailyNote?.call();
+      if (value == 'convert_to_synced') widget.onConvertToSynced?.call();
     });
   }
 

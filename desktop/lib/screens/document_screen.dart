@@ -13,6 +13,7 @@ import '../services/anthropic_api_service.dart';
 import '../services/claude_code_service.dart';
 import '../services/codex_cli_service.dart';
 import '../services/image_asset_service.dart';
+import '../services/note_conversion.dart';
 import '../services/note_merge.dart';
 import '../services/note_service.dart';
 import '../services/review_controller.dart';
@@ -1027,6 +1028,55 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
+  /// 로컬 노트를 동기화 노트로 전환한다. 이미지 자산을 synced 스토리지로
+  /// 옮기고, synced에 저장한 뒤 로컬 원본을 지운다 (헬퍼가 유실 없는 순서를
+  /// 보장). 동기화가 꺼져 있으면 synced 저장이 불가하므로 막는다.
+  Future<void> _onConvertToSynced(Note note) async {
+    final local = widget.localStorage;
+    if (note.storageType != StorageType.local || local == null) return;
+    if (!_syncEnabled) {
+      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트로 전환할 수 없습니다.');
+      return;
+    }
+    // 최신 내용으로 전환한다 — 편집 직후라면 _allNotes 항목이 controller가
+    // 반영한 최신 content를 이미 담고 있다.
+    final current = _allNotes.where((n) => n.id == note.id).firstOrNull ?? note;
+
+    NoteConversionResult result;
+    try {
+      result = await convertLocalNoteToSynced(
+        note: current,
+        local: local,
+        synced: _storage,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('전환 실패: $e')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      final idx = _allNotes.indexWhere((n) => n.id == result.note.id);
+      if (idx != -1) _allNotes[idx] = result.note;
+      if (_selectedNote?.id == result.note.id) _selectedNote = result.note;
+    });
+    _searchIndex.upsert(result.note);
+    _applySearchQuery(_searchQuery, resetPage: false);
+    if (mounted) {
+      final failed = result.failedAssets.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(failed == 0
+              ? '동기화 노트로 전환했습니다.'
+              : '동기화 노트로 전환했습니다. 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
+        ),
+      );
+    }
+  }
+
   Future<void> _onMoveToMemo(Note note) async {
     await _setMemoFlag(note, true);
   }
@@ -1577,6 +1627,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
               onMemoTabChanged: _onMemoTabChanged,
               onMoveToMemo: _onMoveToMemo,
               onMoveToDailyNote: _onMoveToDailyNote,
+              onConvertToSynced:
+                  widget.localStorage != null ? _onConvertToSynced : null,
             ),
           ),
         ],
