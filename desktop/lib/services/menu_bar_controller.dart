@@ -195,11 +195,16 @@ class MenuBarController extends ChangeNotifier {
     notifyListeners();
   }
 
-  NoteStorage? _storageFor(Note note) {
+  /// [note]가 저장되는 스토리지 (로컬 노트면 로컬, 아니면 synced).
+  /// 이미지 자산 입출력 등 패널 쪽 와이어링에도 쓰인다.
+  NoteStorage? storageFor(Note note) {
     final local = _localStorage();
     if (note.storageType == StorageType.local && local != null) return local;
     return _storage();
   }
+
+  /// 현재 synced 스토리지 (없으면 null). 디스크 캐시 사용 여부 판단용.
+  NoteStorage? get syncedStorage => _storage();
 
   /// Creates a synced date note ([memo] = false) or memo ([memo] = true) for the
   /// selected date, persists it, and opens it in the editor overlay. Requires
@@ -261,7 +266,7 @@ class MenuBarController extends ChangeNotifier {
   Future<void> _persist(String id) async {
     final note = _noteById(id);
     if (note == null) return;
-    final storage = _storageFor(note);
+    final storage = storageFor(note);
     if (storage == null) return;
     try {
       await storage.saveNote(note);
