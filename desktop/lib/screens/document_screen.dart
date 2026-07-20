@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
@@ -1067,11 +1068,15 @@ class _DocumentScreenState extends State<DocumentScreen> {
     _applySearchQuery(_searchQuery, resetPage: false);
     if (mounted) {
       final failed = result.failedAssets.length;
+      final dateStr = DateFormat('yyyy-MM-dd').format(result.note.noteDate);
+      final title =
+          result.note.title.isEmpty ? 'Untitled' : result.note.title;
+      final base = '[$dateStr] $title 동기화 노트로 전환했습니다.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(failed == 0
-              ? '동기화 노트로 전환했습니다.'
-              : '동기화 노트로 전환했습니다. 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
+              ? base
+              : '$base 이미지 $failed개는 다시 첨부가 필요할 수 있습니다.'),
         ),
       );
     }
