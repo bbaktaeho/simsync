@@ -1,6 +1,6 @@
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:simsync/models/note.dart';
@@ -119,6 +119,43 @@ void main() {
 
     expect(find.byType(CalendarSection), findsOneWidget);
     expect(find.text('Hello'), findsWidgets); // list row title
+  });
+
+  testWidgets('에디터 오버레이에 이미지 콜백이 연결된다', (tester) async {
+    final note = _note(id: 'n1', date: DateTime(2026, 7, 1));
+    final controller = await _pumpPanel(tester, notes: [note], width: 720);
+    controller.openNote(note);
+    await tester.pumpAndSettle();
+
+    final editor = tester.widget<EditorPanel>(find.byType(EditorPanel));
+    expect(editor.onLoadImage, isNotNull,
+        reason: '팝오버에서도 인라인 이미지가 로드되어야 한다');
+    expect(editor.onAttachImage, isNotNull,
+        reason: '팝오버에서도 이미지 붙여넣기/첨부가 가능해야 한다');
+  });
+
+  testWidgets('팝오버에서 cmd+= / cmd+- 단축키로 확대/축소된다', (tester) async {
+    final note = _note(id: 'n1', date: DateTime(2026, 7, 1));
+    final controller = await _pumpPanel(tester, notes: [note], width: 720);
+    controller.openNote(note);
+    await tester.pumpAndSettle();
+
+    final settings = tester
+        .widget<MenuBarPanel>(find.byType(MenuBarPanel))
+        .settings;
+    final before = settings.value.contentScale;
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.equal);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.equal);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pumpAndSettle();
+
+    expect(settings.value.contentScale, greaterThan(before),
+        reason: '팝오버는 별도 엔진이라 자체 단축키 핸들러가 있어야 한다');
+
+    // 컨트롤러의 저장 디바운스/노티스 타이머를 흘려보낸다.
+    await tester.pump(const Duration(seconds: 4));
   });
 
   testWidgets('tapping a note opens the editor overlay; back closes it', (

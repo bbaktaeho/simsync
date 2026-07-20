@@ -78,6 +78,38 @@ void main() {
         reason: '이미지 위에서도 에디터가 스크롤되어야 한다');
   });
 
+  testWidgets('이미지 위 트랙패드 두 손가락 스크롤도 에디터 스크롤로 전달된다',
+      (tester) async {
+    // macOS 트랙패드는 휠(PointerScrollEvent)이 아니라 팬줌(PointerPanZoom)
+    // 이벤트를 보낸다 — v0.2.2 수정이 휠만 다뤄 트랙패드에서 여전히 죽어
+    // 있던 버그의 회귀 테스트.
+    final filler = List.generate(60, (i) => 'line $i').join('\n');
+    await pump(tester, note('$img\n$filler'));
+    await tester.pumpAndSettle();
+
+    final scrollable = find
+        .descendant(
+            of: find.byWidgetPredicate((w) =>
+                w is TextField &&
+                w.decoration?.hintText == 'Start writing in markdown...'),
+            matching: find.byType(Scrollable))
+        .first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+
+    final target =
+        tester.getTopLeft(find.byType(InlineImageView)) + const Offset(10, 10);
+    final pointer = TestPointer(2, PointerDeviceKind.trackpad);
+    await tester.sendEventToBinding(pointer.panZoomStart(target));
+    await tester.sendEventToBinding(
+        pointer.panZoomUpdate(target, pan: const Offset(0, -120)));
+    await tester.sendEventToBinding(pointer.panZoomEnd());
+    await tester.pump();
+
+    expect(position.pixels, greaterThan(0),
+        reason: '트랙패드 스크롤도 이미지 위에서 동작해야 한다');
+  });
+
   testWidgets('이미지 오버레이 레이어는 ClipRect로 감싸여 에디터 밖으로 새지 않는다',
       (tester) async {
     // CustomMultiChildLayout은 자식 페인트를 클리핑하지 않으므로, 스크롤로

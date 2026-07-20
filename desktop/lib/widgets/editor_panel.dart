@@ -1030,21 +1030,23 @@ class EditorPanelState extends State<EditorPanel> {
             for (final t in tables)
               LayoutId(
                 id: t.start,
-                child: InlineTableView(
-                  key: ValueKey(t.start),
-                  data: t.table,
-                  active: !widget.isReadOnly &&
-                      caret >= t.start &&
-                      caret <= t.end,
-                  cellStyle: bodyStyle,
-                  onActivate: () => _activateTable(t),
-                  onAddRow: () => _addTableRow(t),
-                  onAddColumn: () => _addTableColumn(t),
-                  onRemove: () => _removeTable(t),
-                  onCellChanged: (row, col, value) =>
-                      _setTableCell(t, row, col, value),
-                  onRemoveRow: (row) => _removeTableRow(t, row),
-                  onRemoveColumn: (col) => _removeTableColumn(t, col),
+                child: _forwardEditorScroll(
+                  child: InlineTableView(
+                    key: ValueKey(t.start),
+                    data: t.table,
+                    active: !widget.isReadOnly &&
+                        caret >= t.start &&
+                        caret <= t.end,
+                    cellStyle: bodyStyle,
+                    onActivate: () => _activateTable(t),
+                    onAddRow: () => _addTableRow(t),
+                    onAddColumn: () => _addTableColumn(t),
+                    onRemove: () => _removeTable(t),
+                    onCellChanged: (row, col, value) =>
+                        _setTableCell(t, row, col, value),
+                    onRemoveRow: (row) => _removeTableRow(t, row),
+                    onRemoveColumn: (col) => _removeTableColumn(t, col),
+                  ),
                 ),
               ),
           ],
@@ -1092,15 +1094,38 @@ class EditorPanelState extends State<EditorPanel> {
     );
   }
 
-  /// 이미지 오버레이 위에서의 휠 스크롤을 에디터 스크롤로 전달한다. 오버레이가
-  /// 히트 테스트를 가로채면 아래 TextField의 Scrollable이 휠 이벤트를 받지
-  /// 못한다. cmd+휠(콘텐츠 줌)은 조상 Listener가 처리하므로 건드리지 않는다.
-  void _forwardScrollToEditor(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent) return;
-    if (HardwareKeyboard.instance.isMetaPressed) return;
+  /// 오버레이(이미지/테이블) 위의 스크롤 입력을 에디터 스크롤로 전달한다.
+  ///
+  /// 오버레이가 히트 테스트를 가로채면 아래 TextField의 Scrollable이 스크롤
+  /// 입력을 받지 못한다. 마우스 휠(PointerScrollEvent)과 트랙패드 두 손가락
+  /// 스크롤(PointerPanZoomUpdate)은 서로 다른 이벤트 계열이라 둘 다 다뤄야
+  /// 한다 — v0.2.2 수정이 휠만 다뤄 트랙패드에서 여전히 죽어 있었다.
+  Widget _forwardEditorScroll({required Widget child}) {
+    return Listener(
+      onPointerSignal: (event) {
+        if (event is! PointerScrollEvent) return;
+        if (HardwareKeyboard.instance.isMetaPressed) return; // cmd+휠 = 줌
+        // 오버레이 내부에 자체 Scrollable(테이블 가로 스크롤)이 있으면 그쪽이
+        // 먼저 등록해 이긴다 — resolver 규약을 따라 충돌 없이 공존한다.
+        GestureBinding.instance.pointerSignalResolver.register(event, (e) {
+          _scrollEditorBy((e as PointerScrollEvent).scrollDelta.dy);
+        });
+      },
+      onPointerPanZoomUpdate: (event) {
+        // 트랙패드 두 손가락 스크롤. 핀치 줌(scale 변화)은 조상 줌 Listener가
+        // 처리하므로 여기서는 순수 팬만 전달한다. 드래그 방향과 콘텐츠 이동
+        // 방향은 반대(콘텐츠가 손가락을 따라감)라 부호를 뒤집는다.
+        if (event.scale != 1.0) return;
+        _scrollEditorBy(-event.panDelta.dy);
+      },
+      child: child,
+    );
+  }
+
+  void _scrollEditorBy(double delta) {
     if (!_contentScrollController.hasClients) return;
     final position = _contentScrollController.position;
-    final target = (position.pixels + event.scrollDelta.dy)
+    final target = (position.pixels + delta)
         .clamp(position.minScrollExtent, position.maxScrollExtent);
     if (target != position.pixels) {
       position.jumpTo(target);
@@ -1139,8 +1164,7 @@ class EditorPanelState extends State<EditorPanel> {
             for (final r in images)
               LayoutId(
                 id: r.start,
-                child: Listener(
-                  onPointerSignal: _forwardScrollToEditor,
+                child: _forwardEditorScroll(
                   child: InlineImageView(
                     key: ValueKey('${r.start}:${r.src}'),
                     src: r.src,
