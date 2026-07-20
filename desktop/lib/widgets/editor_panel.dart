@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
@@ -881,6 +882,12 @@ class EditorPanelState extends State<EditorPanel> {
       controller: _contentController,
       focusNode: _contentFocusNode,
       scrollController: _contentScrollController,
+      // 선택/밴드 박스를 풀 라인 박스로 만든다. 기본(tight)은 글리프 잉크
+      // 경계를 반환해 폰트 메트릭(Inter의 ascent+descent 등)에 따라 라인
+      // 박스와 어긋난다 — 이미지 예약 줄처럼 큰 라인에서는 그 오차가
+      // 비례해서 커져, 오버레이가 위/아래 줄을 침범했다. max면 밴드가
+      // 항상 정확한 라인 경계와 일치한다 (선택 하이라이트도 풀 라인).
+      selectionHeightStyle: ui.BoxHeightStyle.max,
       onChanged: widget.isReadOnly ? null : (_) => _onContentChanged(),
       readOnly: widget.isReadOnly,
       inputFormatters: widget.isReadOnly
