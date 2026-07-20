@@ -150,7 +150,8 @@ void main() {
     expect(chevronRight, lessThanOrEqualTo(titleLeft + 0.5));
   });
 
-  testWidgets('일반 텍스트는 밀리지 않고 details 본문만 들여쓴다', (tester) async {
+  testWidgets('일반 텍스트 시작 위치는 밀리지 않는다 (저장된 공백만 들여쓰기로 반영)',
+      (tester) async {
     const content =
         'plain line\n<details open>\n<summary>t</summary>\n  body indented\n</details>';
     await tester.pumpWidget(MaterialApp(
@@ -177,9 +178,10 @@ void main() {
       return boxes.first.left;
     }
 
+    // 본문은 자동 들여쓰기 없이 일반 텍스트와 같은 열에서 시작한다.
+    // (이 노트처럼 저장된 공백이 있으면 그 폭만큼만 들여쓰인다.)
     final plainLeft = glyphLeft('plain');
     final bodyLeft = glyphLeft('body indented');
-    // 본문 첫 글자는 저장된 2칸 공백만큼 일반 텍스트보다 들여쓰인다.
     expect(bodyLeft, greaterThan(plainLeft + 4));
   });
 }
