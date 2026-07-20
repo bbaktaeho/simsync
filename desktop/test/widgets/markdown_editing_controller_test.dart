@@ -414,12 +414,15 @@ void main() {
       expect(_flatten(span).map((e) => e.$1).join(), text);
     });
 
-    testWidgets('img 줄 첫 글자가 이미지 높이만큼 폰트를 갖는다 (높이 예약)',
+    testWidgets('img 줄 첫 글자의 라인 박스가 이미지 높이를 예약한다',
         (tester) async {
       final span = await _build(tester, img);
       final style = _styleOf(span, '<');
-      // 예약 높이 = (height 200 + 패딩 12) * scale(1.0)
-      expect(style!.fontSize, greaterThan(200));
+      // 예약 높이(라인 박스) = fontSize * height = (200 + 패딩 12) * scale(1.0)
+      expect(style!.fontSize! * style.height!, closeTo(212, 0.5));
+      // 잉크 안전 배율: height가 폰트 잉크 범위(Inter ~1.21em)보다 작으면
+      // 글리프가 라인 박스를 위로 넘쳐 큰 이미지가 윗줄을 덮는다.
+      expect(style.height, greaterThanOrEqualTo(1.25));
       expect(style.color, Colors.transparent);
     });
   });
