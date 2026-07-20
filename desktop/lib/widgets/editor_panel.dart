@@ -25,6 +25,37 @@ import 'table_editor_dialog.dart';
 /// Auto-save debounce duration.
 const _autoSaveDelay = Duration(seconds: 1);
 
+/// 엔진(레이아웃)과 TextPainter(캐럿 메트릭) 모두 "스트럿 없음"으로 취급하는
+/// 스트럿. 줄 높이 floor가 사라져 접힌 줄(닫힌 details 본문, 테이블 구분선)이
+/// 실제 ~0 높이가 되면서도, 캐럿은 실제 글리프 메트릭으로 정상 배치된다.
+///
+/// 이렇게 우회하는 이유 (전부 실측/소스로 확인):
+/// - `StrutStyle.disabled`: EditableText가 `inheritFromTextStyle`로 null
+///   fontSize를 본문 폰트로 채워, 엔진이 "폰트 자연 높이"를 floor로 되살린다.
+/// - `StrutStyle(fontSize: 0.1)`: 레이아웃 floor는 없지만 TextPainter의
+///   `_strutDisabled`가 fontSize == 0.0만 비활성으로 인정하므로 스트럿이
+///   "활성"으로 남아, 문서 끝/빈 줄 캐럿의 전체 높이가 스트럿 박스(~0.1px)로
+///   계산되고 macOS 캐럿 센터링이 캐럿을 ~12px 위로 밀어낸다.
+/// - `StrutStyle(fontSize: 0)`: 생성자 assert(fontSize > 0)로 직접 생성 불가.
+///
+/// 따라서 getter 재정의로 fontSize 0.0을 보고하고(TextPainter/엔진의 공식
+/// "스트럿 비활성" 마커), EditableText의 상속 변환을 무력화한다.
+class _DisabledStrutStyle extends StrutStyle {
+  const _DisabledStrutStyle() : super(height: 1, leading: 0);
+
+  @override
+  double? get fontSize => 0.0;
+
+  @override
+  StrutStyle inheritFromTextStyle(TextStyle? other) => this;
+
+  // EditableText가 lineHeightScaleFactorOverride를 merge로 반영하며 스트럿을
+  // 재생성한다(assert fontSize > 0에 걸림). 이 에디터는 자체 콘텐츠 줌을
+  // 쓰므로 해당 오버라이드를 무시하고 비활성 스트럿을 유지한다.
+  @override
+  StrutStyle merge(StrutStyle? other) => this;
+}
+
 class EditorPanel extends StatefulWidget {
   final Note? note;
   final ValueChanged<Note>? onNoteChanged;
@@ -839,13 +870,11 @@ class EditorPanelState extends State<EditorPanel> {
     final bodyStyle =
         (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
             .merge(baseStyle);
-    // 극소 명시 스트럿: 줄 높이의 최소값(floor)을 사실상 없앤다. 덕분에 접힌
-    // 줄(닫힌 details 본문, 테이블 구분선)은 실제 ~0 높이로 줄어들고, 일반
-    // 줄은 자기 폰트 크기로 높이가 정해진다. StrutStyle.disabled를 쓰지 않는
-    // 이유: EditableText가 null fontSize를 본문 스타일에서 상속시켜 floor가
-    // 되살아난다 (실측 확인). 데코/오버레이 좌표는 미러 TextPainter가 아니라
-    // RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
-    const strut = StrutStyle(fontSize: 0.1, height: 1, leading: 0);
+    // 스트럿 완전 비활성(_DisabledStrutStyle 주석 참조): 접힌 줄은 실제 ~0
+    // 높이가 되고, 일반 줄은 자기 폰트 크기로 높이가 정해지며, 캐럿은 실제
+    // 글리프 메트릭으로 배치된다. 데코/오버레이 좌표는 미러 TextPainter가
+    // 아니라 RenderEditable을 직접 조회하므로 스트럿 정합 문제는 없다.
+    const strut = _DisabledStrutStyle();
 
     final field = TextField(
       key: _fieldKey,
