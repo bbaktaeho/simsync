@@ -9,10 +9,14 @@ import (
 )
 
 // 클론 설정을 temp로 만들어 note new를 실행할 준비를 한다.
+// requireConfig가 클론 존재를 .git으로 확인하므로 마커를 함께 만든다.
 func setupClone(t *testing.T) string {
 	t.Helper()
 	tempHome(t)
 	clone := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(clone, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := saveConfig(&cliConfig{Repo: "o/r", ClonePath: clone}); err != nil {
 		t.Fatal(err)
 	}
@@ -106,5 +110,22 @@ func TestNoteNewWithoutConfig(t *testing.T) {
 	err := cmdNoteNew([]string{"--title", "x"})
 	if err == nil || !strings.Contains(err.Error(), "store clone") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+// 클론이 지워졌는데 설정만 남은 경우: 노트를 쓰지 않고 멈춰야 한다.
+// (통과시키면 stale 경로에 디렉토리를 만들어 git 밖에 고아 파일이 생긴다.)
+func TestNoteNewRefusesMissingClone(t *testing.T) {
+	clone := setupClone(t)
+	if err := os.RemoveAll(clone); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmdNoteNew([]string{"--date", "2026-07-28", "--title", "회의록"})
+	if err == nil || !strings.Contains(err.Error(), "클론이 없습니다") {
+		t.Fatalf("err = %v", err)
+	}
+	if _, statErr := os.Stat(clone); !os.IsNotExist(statErr) {
+		t.Error("실패한 note new가 클론 경로를 되살리면 안 된다")
 	}
 }

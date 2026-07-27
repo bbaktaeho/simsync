@@ -79,6 +79,13 @@ func requireConfig() (*cliConfig, error) {
 			"앱에 연결된 스토어(%s)와 클론(%s)이 다릅니다. 'simsync store clone'으로 다시 클론하세요.",
 			shared.fullName(), c.Repo)
 	}
+	// 클론이 지워졌거나 옮겨졌으면 여기서 멈춘다. 통과시키면 note new가 stale
+	// 경로에 디렉토리를 새로 만들고 노트를 써서, git 밖에 고아 파일이 남는다.
+	// (.git은 worktree에서 파일일 수 있어 종류는 보지 않고 존재만 확인한다.)
+	if _, err := os.Stat(filepath.Join(c.ClonePath, ".git")); err != nil {
+		return nil, fmt.Errorf(
+			"클론이 없습니다 (%s). 'simsync store clone'으로 다시 클론하세요.", c.ClonePath)
+	}
 	return c, nil
 }
 
