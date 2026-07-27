@@ -5,6 +5,7 @@ import '../models/note.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import 'note_list_menus.dart';
 
 class NoteListSection extends StatelessWidget {
   final List<Note> notes;
@@ -13,8 +14,12 @@ class NoteListSection extends StatelessWidget {
   final int totalPages;
   final int totalCount;
   final ValueChanged<Note> onNoteSelected;
-  final VoidCallback onCreateSyncNote;
-  final VoidCallback? onCreateLocalNote;
+
+  /// 동기화 노트/메모 생성. [memo]가 true면 메모로 만든다.
+  final void Function({bool memo}) onCreateSyncNote;
+
+  /// 로컬 노트/메모 생성. null이면 로컬 항목이 메뉴에서 숨는다.
+  final void Function({bool memo})? onCreateLocalNote;
   final ValueChanged<int> onPageChanged;
   final Future<void> Function(Note note)? onDeleteNote;
   final bool memoTabActive;
@@ -115,7 +120,7 @@ class NoteListSection extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _AddNoteButton(
+          AddNoteMenuButton(
             onCreateSync: onCreateSyncNote,
             onCreateLocal: onCreateLocalNote,
           ),
@@ -131,7 +136,7 @@ class NoteListSection extends StatelessWidget {
         : Icons.article_outlined;
     final primary = memoTabActive ? 'No memos yet' : 'No notes yet';
     final secondary = memoTabActive
-        ? 'Right-click a daily note to move it here'
+        ? 'Create one with + or move a daily note here'
         : 'Select a date and create one';
 
     return Center(
@@ -330,119 +335,16 @@ class _NoteListItemState extends State<_NoteListItem> {
   }
 
   void _showContextMenu(BuildContext context, Offset position) {
-    final c = context.colors;
-    final items = <PopupMenuEntry<String>>[];
-
-    // 로컬 노트 → 동기화, 동기화 노트 → 로컬로 전환할 수 있다.
-    if (widget.note.storageType == StorageType.local &&
-        widget.onConvertToSynced != null) {
-      items.add(PopupMenuItem(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        value: 'convert_to_synced',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_upload_outlined, size: 14, color: c.accent),
-            const SizedBox(width: 6),
-            Text('동기화 노트로 전환',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall!
-                    .copyWith(color: c.textPrimary)),
-          ],
-        ),
-      ));
-    }
-
-    if (widget.note.storageType == StorageType.synced &&
-        widget.onConvertToLocal != null) {
-      items.add(PopupMenuItem(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        value: 'convert_to_local',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_download_outlined, size: 14, color: c.localAccent),
-            const SizedBox(width: 6),
-            Text('로컬 노트로 전환',
-                style: Theme.of(context)
-                    .textTheme
-                    .labelSmall!
-                    .copyWith(color: c.textPrimary)),
-          ],
-        ),
-      ));
-    }
-
-    if (!widget.note.isMemo && widget.onMoveToMemo != null) {
-      items.add(PopupMenuItem(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        value: 'move_to_memo',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.sticky_note_2_outlined, size: 14, color: c.textSecondary),
-            const SizedBox(width: 6),
-            Text('메모로 이동',
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
-          ],
-        ),
-      ));
-    }
-
-    if (widget.note.isMemo && widget.onMoveToDailyNote != null) {
-      items.add(PopupMenuItem(
-        height: 32,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        value: 'move_to_daily',
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.calendar_today_outlined, size: 14, color: c.textSecondary),
-            const SizedBox(width: 6),
-            Text('daily로 이동',
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
-          ],
-        ),
-      ));
-    }
-
-    items.add(PopupMenuItem(
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      value: 'delete',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.delete_outline_rounded, size: 14, color: c.error),
-          const SizedBox(width: 6),
-          Text('삭제', style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.error)),
-        ],
-      ),
-    ));
-
-    showMenu<String>(
+    showNoteContextMenu(
       context: context,
-      position: RelativeRect.fromLTRB(
-          position.dx, position.dy, position.dx, position.dy),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-        side: BorderSide(color: c.border),
-      ),
-      color: c.surface,
-      menuPadding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 120),
-      items: items,
-    ).then((value) {
-      if (value == 'delete') widget.onDelete?.call();
-      if (value == 'move_to_memo') widget.onMoveToMemo?.call();
-      if (value == 'move_to_daily') widget.onMoveToDailyNote?.call();
-      if (value == 'convert_to_synced') widget.onConvertToSynced?.call();
-      if (value == 'convert_to_local') widget.onConvertToLocal?.call();
-    });
+      position: position,
+      note: widget.note,
+      onConvertToSynced: widget.onConvertToSynced,
+      onConvertToLocal: widget.onConvertToLocal,
+      onMoveToMemo: widget.onMoveToMemo,
+      onMoveToDaily: widget.onMoveToDailyNote,
+      onDelete: widget.onDelete,
+    );
   }
 
   Widget _buildTags(AppColorsExtension c, List<String> tags) {
@@ -499,65 +401,6 @@ class _TagChip extends StatelessWidget {
       child: Text(
         label,
         style: AppTextStyles.atto.copyWith(fontWeight: FontWeight.w500, color: c.accent),
-      ),
-    );
-  }
-}
-
-class _AddNoteButton extends StatelessWidget {
-  final VoidCallback onCreateSync;
-  final VoidCallback? onCreateLocal;
-
-  const _AddNoteButton({required this.onCreateSync, this.onCreateLocal});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return PopupMenuButton<String>(
-      onSelected: (value) {
-        if (value == 'sync') onCreateSync();
-        if (value == 'local') onCreateLocal?.call();
-      },
-      offset: const Offset(0, 28),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
-        side: BorderSide(color: c.border),
-      ),
-      color: c.surface,
-      itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'sync',
-          child: Row(
-            children: [
-              Icon(Icons.cloud_outlined, size: 14, color: c.accent),
-              const SizedBox(width: 8),
-              Text('동기화 노트',
-                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
-            ],
-          ),
-        ),
-        if (onCreateLocal != null)
-          PopupMenuItem(
-            value: 'local',
-            child: Row(
-              children: [
-                Icon(Icons.folder_outlined,
-                    size: 14, color: c.localAccent),
-                const SizedBox(width: 8),
-                Text('로컬 노트',
-                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textPrimary)),
-              ],
-            ),
-          ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          color: c.accentSubtle,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-        ),
-        child: Icon(Icons.add_rounded, size: 14, color: c.accent),
       ),
     );
   }

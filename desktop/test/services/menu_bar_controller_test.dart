@@ -90,12 +90,13 @@ Note _note({
 
 MenuBarController _controller(
   _MemStorage storage, {
+  _MemStorage? local,
   bool sync = true,
   void Function()? onChanged,
 }) {
   return MenuBarController(
     storage: () => storage,
-    localStorage: () => null,
+    localStorage: () => local,
     syncEnabled: () => sync,
     onChanged: onChanged ?? () {},
   );
@@ -259,6 +260,104 @@ void main() {
 
     expect(c.notesForSelectedDate.first.content, 'edited');
     c.dispose(); // cancel the still-pending debounce timer
+  });
+
+  test('createNote(local)은 동기화가 꺼져 있어도 로컬 스토리지에 만든다', () async {
+    final s = _MemStorage();
+    final local = _MemStorage();
+    final c = _controller(s, local: local, sync: false);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+
+    await c.createNote(memo: true, local: true);
+
+    expect(s.saveCalls, 0);
+    expect(local.saveCalls, 1);
+    expect(c.editingNote!.storageType, StorageType.local);
+    expect(c.editingNote!.isMemo, isTrue);
+    expect(c.editingNote!.isDefault, isFalse);
+    expect(c.memoTabActive, isTrue);
+  });
+
+  test('deleteNote removes the note and closes the editor overlay', () async {
+    final s = _MemStorage([_note(id: 'a', date: DateTime(2026, 7, 1))]);
+    var changes = 0;
+    final c = _controller(s, onChanged: () => changes++);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+    c.openNote(c.notesForSelectedDate.first);
+
+    await c.deleteNote(c.notesForSelectedDate.first);
+
+    expect(s.deleteCalls, 1);
+    expect(c.notesForSelectedDate, isEmpty);
+    expect(c.editingNote, isNull);
+    expect(changes, 1);
+  });
+
+  test('deleteNote is blocked for synced notes when sync is off', () async {
+    final s = _MemStorage([_note(id: 'a', date: DateTime(2026, 7, 1))]);
+    final c = _controller(s, sync: false);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+
+    await c.deleteNote(c.notesForSelectedDate.first);
+
+    expect(s.deleteCalls, 0);
+    expect(c.notesForSelectedDate.length, 1);
+    expect(c.notice, isNotNull);
+  });
+
+  test('convertNote moves a synced note to local (and back)', () async {
+    final s = _MemStorage([_note(id: 'a', date: DateTime(2026, 7, 1))]);
+    final local = _MemStorage();
+    var changes = 0;
+    final c = _controller(s, local: local, onChanged: () => changes++);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+
+    await c.convertNote(c.notesForSelectedDate.first);
+
+    expect(s.deleteCalls, 1);
+    expect(local.saveCalls, 1);
+    expect(c.notesForSelectedDate.single.storageType, StorageType.local);
+    expect(changes, 1);
+
+    await c.convertNote(c.notesForSelectedDate.first);
+
+    expect(local.deleteCalls, 1);
+    expect(s.saveCalls, 1);
+    expect(c.notesForSelectedDate.single.storageType, StorageType.synced);
+  });
+
+  test('convertNote is blocked when sync is off', () async {
+    final s = _MemStorage([_note(id: 'a', date: DateTime(2026, 7, 1))]);
+    final local = _MemStorage();
+    final c = _controller(s, local: local, sync: false);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+
+    await c.convertNote(c.notesForSelectedDate.first);
+
+    expect(s.deleteCalls, 0);
+    expect(local.saveCalls, 0);
+    expect(c.notice, isNotNull);
+  });
+
+  test('setMemo flips the flag, persists and rebinds the editing note',
+      () async {
+    final s = _MemStorage([_note(id: 'a', date: DateTime(2026, 7, 1))]);
+    final c = _controller(s);
+    await c.load();
+    c.selectDate(DateTime(2026, 7, 1));
+    c.openNote(c.notesForSelectedDate.first);
+
+    await c.setMemo(c.notesForSelectedDate.first, true);
+
+    expect(s.saveCalls, 1);
+    expect(c.notesForSelectedDate, isEmpty);
+    expect(c.memoNotes.single.isMemo, isTrue);
+    expect(c.editingNote!.isMemo, isTrue);
   });
 
   test('closeEditor clears the editing note', () async {

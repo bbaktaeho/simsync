@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/note.dart';
 import '../storage/note_storage.dart';
+import 'note_conversion.dart';
 import 'note_merge.dart';
 
 /// Owns the macOS menu bar popover's state and note data.
@@ -206,18 +207,24 @@ class MenuBarController extends ChangeNotifier {
   /// 현재 synced 스토리지 (없으면 null). 디스크 캐시 사용 여부 판단용.
   NoteStorage? get syncedStorage => _storage();
 
-  /// Creates a synced date note ([memo] = false) or memo ([memo] = true) for the
-  /// selected date, persists it, and opens it in the editor overlay. Requires
-  /// sync to be enabled — otherwise shows a transient notice.
-  Future<void> createNote({required bool memo}) async {
-    final storage = _storage();
+  /// 로컬 스토리지가 연결되어 있는지. 추가/전환 메뉴의 로컬 항목 노출 여부.
+  bool get hasLocalStorage => _localStorage() != null;
+
+  /// Creates a note ([memo] = false) or memo ([memo] = true) for the selected
+  /// date, persists it, and opens it in the editor overlay. [local] = true 면
+  /// 로컬 스토리지에 만들고 (동기화 불필요), 아니면 synced에 만든다 — synced 는
+  /// sync가 켜져 있어야 하며 아니면 transient notice를 띄운다.
+  Future<void> createNote({required bool memo, bool local = false}) async {
+    final storage = local ? _localStorage() : _storage();
     if (storage == null) return;
-    if (!_syncEnabled()) {
+    if (!local && !_syncEnabled()) {
       _showNotice('동기화가 꺼져 있어 추가할 수 없습니다');
       return;
     }
     final now = DateTime.now();
-    final isDefault = !memo && notesForSelectedDate.isEmpty;
+    // 날짜의 첫 synced 노트만 기본 노트가 된다 (메인 창과 같은 규칙 —
+    // 로컬 노트와 메모는 기본 노트가 되지 않는다).
+    final isDefault = !local && !memo && notesForSelectedDate.isEmpty;
     final note = Note(
       id: now.millisecondsSinceEpoch.toString(),
       noteDate: _selectedDate,
@@ -228,6 +235,7 @@ class MenuBarController extends ChangeNotifier {
       createdAt: now,
       updatedAt: now,
       isMemo: memo,
+      storageType: local ? StorageType.local : StorageType.synced,
     );
     try {
       await storage.saveNote(note);
@@ -236,8 +244,93 @@ class MenuBarController extends ChangeNotifier {
       return;
     }
     _notes = [..._notes, note];
-    if (memo) _memoTabActive = true;
+    _memoTabActive = memo;
     _editingNote = note;
+    notifyListeners();
+    _onChanged();
+  }
+
+  /// 노트를 스토리지에서 삭제한다. 동기화 노트는 GitHub 삭제가 필요하므로
+  /// sync가 켜져 있어야 한다. 삭제된 노트를 편집 중이었다면 오버레이를 닫는다.
+  Future<void> deleteNote(Note note) async {
+    if (note.storageType != StorageType.local && !_syncEnabled()) {
+      _showNotice('동기화가 꺼져 있어 삭제할 수 없습니다');
+      return;
+    }
+    final storage = storageFor(note);
+    if (storage == null) return;
+    // 제목 변경이 디바운스 저장 대기 중이면 파일 경로(제목 유래)가 어긋나
+    // 삭제가 조용히 빗나간다 — 먼저 flush해 rename을 확정한다.
+    await flushPendingSaves();
+    try {
+      await storage.deleteNote(note);
+    } catch (e) {
+      _showNotice('삭제 실패: $e');
+      return;
+    }
+    _notes = _notes.where((n) => n.id != note.id).toList();
+    if (_editingNote?.id == note.id) _editingNote = null;
+    notifyListeners();
+    _onChanged();
+  }
+
+  /// 노트를 로컬↔동기화 스토리지 간 전환한다 (방향은 현재 storageType 반대).
+  /// 메인 창과 같은 규칙: 양방향 모두 GitHub 쓰기/삭제가 필요하므로 sync가
+  /// 켜져 있어야 한다. 전환 전에 진행 중인 저장을 flush해 원본 스토리지로
+  /// 다시 쓰이는 레이스를 막는다.
+  Future<void> convertNote(Note note) async {
+    final synced = _storage();
+    final local = _localStorage();
+    if (synced == null || local == null) return;
+    if (!_syncEnabled()) {
+      _showNotice('동기화가 꺼져 있어 전환할 수 없습니다');
+      return;
+    }
+    await flushPendingSaves();
+    // flush 후 최신 내용으로 전환한다.
+    final current = _noteById(note.id) ?? note;
+
+    NoteConversionResult result;
+    try {
+      result = current.storageType == StorageType.local
+          ? await convertLocalNoteToSynced(
+              note: current, local: local, synced: synced)
+          : await convertSyncedNoteToLocal(
+              note: current, synced: synced, local: local);
+    } catch (e) {
+      _showNotice('전환 실패: $e');
+      return;
+    }
+    final idx = _notes.indexWhere((n) => n.id == result.note.id);
+    if (idx != -1) _notes[idx] = result.note;
+    if (_editingNote?.id == result.note.id) _editingNote = result.note;
+    final label =
+        result.note.storageType == StorageType.local ? '로컬' : '동기화';
+    _showNotice(result.failedAssets.isEmpty
+        ? '$label 노트로 전환했습니다'
+        : '$label 노트로 전환했습니다 (이미지 ${result.failedAssets.length}개 재첨부 필요)');
+    _onChanged();
+  }
+
+  /// 메모 ↔ daily 이동. 동기화 노트는 sync가 켜져 있어야 한다.
+  Future<void> setMemo(Note note, bool isMemo) async {
+    if (note.isMemo == isMemo) return;
+    if (note.storageType != StorageType.local && !_syncEnabled()) {
+      _showNotice('동기화가 꺼져 있어 이동할 수 없습니다');
+      return;
+    }
+    final storage = storageFor(note);
+    if (storage == null) return;
+    final updated = note.copyWith(isMemo: isMemo, updatedAt: DateTime.now());
+    try {
+      await storage.saveNote(updated);
+    } catch (e) {
+      _showNotice('이동 실패: $e');
+      return;
+    }
+    final idx = _notes.indexWhere((n) => n.id == updated.id);
+    if (idx != -1) _notes[idx] = updated;
+    if (_editingNote?.id == updated.id) _editingNote = updated;
     notifyListeners();
     _onChanged();
   }

@@ -57,6 +57,7 @@ Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 �
 |-----------|-----------|--------|
 | Client (Desktop) | Flutter (Dart) | `desktop/` - macOS/Windows/Linux |
 | Client (Mobile) | Flutter (Dart) | `mobile/` - Android/iOS |
+| CLI | Go (stdlib only) | `cli/` - 앱 실행/로그인/세션 상태/노트 스캐폴드(클론 기반). 1차는 macOS만 |
 | Auth (Desktop) | GitHub OAuth App | Device Flow (client_id만, 시크릿 불요) + local session restore |
 | Auth (Mobile) | GitHub OAuth App | Custom URL Scheme (`simsync://callback`) + app_links (아직 redirect flow) |
 | Synced Storage | GitHub Contents API | 로컬 git clone 없이 API로 markdown 파일 CRUD |
@@ -84,6 +85,7 @@ ls .agent/                          # 문서 카테고리
 - `.agent/` — agent 가이드와 작업 문서 (`guide.md`, `workflow.md`, `plan/`, `develop/`, `proposal/`, `rules/`)
 - `desktop/` — Flutter client (macOS/Windows/Linux)
 - `mobile/` — Flutter client (Android/iOS)
+- `cli/` — Go CLI (앱 실행, GitHub Device Flow 로그인, 세션 만료 확인)
 
 데스크톱과 모바일은 별도 Flutter 프로젝트이며 `lib/` 하위에 동일 모듈 구조(`auth/`, `models/`, `screens/`, `search/`, `services/`, `settings/`, `storage/`, `theme/`, `widgets/`)를 가진다. 비즈니스 로직은 복제, UI는 플랫폼별로 작성한다.
 
@@ -181,6 +183,21 @@ flutter build ios             # iOS release
 flutter test                  # run tests
 flutter analyze               # static analysis
 ```
+
+### CLI (Go)
+
+```bash
+cd cli
+go build -o simsync .         # 빌드 (바이너리는 gitignore)
+go test ./...                 # 테스트
+go vet ./...                  # 정적 분석
+gofmt -l .                    # 포맷 확인 (출력 없어야 함)
+```
+
+데스크톱과 같은 공개 client_id(Device Flow)를 내장한다. 포크는
+`SIMSYNC_GITHUB_CLIENT_ID` 환경변수로 오버라이드. 세션과 스토어 선택은 데스크톱
+앱과 파일로 공유한다: 세션은 앱의 `auth/session.json`(Application Support), 스토어는
+`~/.simsync/repos.json` 첫 엔트리. 만료 정책은 앱과 동일한 24시간.
 
 ## Workflow
 

@@ -40,3 +40,6 @@ desktop/linux/
 mobile/android/.gradle/
 mobile/ios/Pods/
 mobile/ios/.symlinks/
+
+# Go CLI
+cli/simsync
