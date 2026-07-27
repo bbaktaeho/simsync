@@ -79,6 +79,15 @@ func TestStoreCloneNoteSyncEndToEnd(t *testing.T) {
 	if !strings.Contains(helper, "auth git-credential") {
 		t.Errorf("credential.helper = %q", helper)
 	}
+	// 앱에 스토어가 없었으므로 repos.json 첫 엔트리로 기록된다 (앱이 다음
+	// 시작에 그대로 활성화). connectedAt은 앱 파서(DateTime.parse) 필수 필드.
+	shared, err := loadSharedStore()
+	if err != nil || shared == nil || shared.fullName() != "owner/repo" {
+		t.Fatalf("shared = %+v, err = %v", shared, err)
+	}
+	if shared.ConnectedAt == "" {
+		t.Error("connectedAt이 비면 앱 RepoCache 파싱이 실패한다")
+	}
 
 	// 노트 생성 → 커밋 → sync → 원격(bare)에 반영 확인.
 	out := captureStdout(t, func() error {
@@ -131,6 +140,80 @@ func TestStoreCloneExistingDirUpdatesConfigOnly(t *testing.T) {
 	}
 }
 
+// 앱에 연결된 스토어가 있으면: 인자 없는 clone은 그 스토어를 쓰고, 다른
+// repo 지정은 거부된다 — 스토어는 앱과 CLI가 항상 같아야 한다.
+func TestStoreCloneFollowsAndGuardsSharedStore(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
+	tempHome(t)
+	if err := setSharedStore(repoEntry{
+		Owner: "app", Repo: "connected", Branch: "main",
+		ConnectedAt: "2026-07-27T10:00:00.000",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// 다른 repo 지정 → 거부.
+	err := cmdStoreClone([]string{"other/repo", t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "app/connected") {
+		t.Fatalf("mismatch err = %v", err)
+	}
+
+	// 인자 없는 clone은 앱 스토어(app/connected)를 클론한다 — 로컬 bare로 검증.
+	bare := filepath.Join(t.TempDir(), "app-store.git")
+	if out, err := exec.Command("git", "init", "--bare", "-b", "main", bare).CombinedOutput(); err != nil {
+		t.Fatalf("init bare: %v\n%s", err, out)
+	}
+	seed := t.TempDir()
+	exec.Command("git", "clone", bare, seed).Run()
+	mustGit(t, seed, "config", "user.email", "t@t")
+	mustGit(t, seed, "config", "user.name", "t")
+	os.WriteFile(filepath.Join(seed, "README.md"), []byte("x"), 0o644)
+	mustGit(t, seed, "add", "-A")
+	mustGit(t, seed, "commit", "-m", "init")
+	mustGit(t, seed, "push", "origin", "HEAD:main")
+
+	requested := ""
+	orig := gitRemoteURL
+	gitRemoteURL = func(repo string) string { requested = repo; return bare }
+	defer func() { gitRemoteURL = orig }()
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	_ = captureStdout(t, func() error { return cmdStoreClone([]string{clone}) })
+	if requested != "app/connected" {
+		t.Errorf("cloned repo = %q, want app/connected", requested)
+	}
+	cfg, _ := loadConfig()
+	if cfg == nil || cfg.Repo != "app/connected" {
+		t.Errorf("config = %+v", cfg)
+	}
+}
+
+func TestStoreCloneWithoutSharedAndWithoutArg(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git 없음")
+	}
+	tempHome(t)
+	err := cmdStoreClone(nil)
+	if err == nil || !strings.Contains(err.Error(), "연결된 스토어가 없습니다") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// 앱 스토어가 바뀌면 기존 클론으로의 note/sync는 거부된다.
+func TestRequireConfigRejectsStoreMismatch(t *testing.T) {
+	tempHome(t)
+	saveConfig(&cliConfig{Repo: "old/store", ClonePath: t.TempDir()})
+	setSharedStore(repoEntry{Owner: "new", Repo: "store", Branch: "main",
+		ConnectedAt: "2026-07-27T10:00:00.000"})
+
+	_, err := requireConfig()
+	if err == nil || !strings.Contains(err.Error(), "다릅니다") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestGitCredentialGet(t *testing.T) {
 	tempHome(t)
 	saveSession(&AuthSession{
@@ -152,6 +235,33 @@ func TestGitCredentialGet(t *testing.T) {
 	}
 }
 
+// github.com https가 아닌 요청(악성 remote/submodule 등)에는 토큰을 내주지
+// 않고 조용히 종료한다 — 자동 보안 리뷰 지적 반영.
+func TestGitCredentialGetRefusesOtherHosts(t *testing.T) {
+	tempHome(t)
+	saveSession(&AuthSession{
+		AccessToken: "gho_secret",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	})
+
+	for _, stdin := range []string{
+		"protocol=https\nhost=evil.com\n\n",
+		"protocol=http\nhost=github.com\n\n",
+	} {
+		stdinR, stdinW, _ := os.Pipe()
+		stdinW.WriteString(stdin)
+		stdinW.Close()
+		origIn := os.Stdin
+		os.Stdin = stdinR
+
+		out := captureStdout(t, func() error { return cmdGitCredential([]string{"get"}) })
+		os.Stdin = origIn
+		if out != "" {
+			t.Errorf("stdin %q -> 자격 증명이 유출됨: %q", stdin, out)
+		}
+	}
+}
+
 func TestGitCredentialGetExpiredSession(t *testing.T) {
 	tempHome(t)
 	saveSession(&AuthSession{
@@ -159,6 +269,7 @@ func TestGitCredentialGetExpiredSession(t *testing.T) {
 		ExpiresAt:   time.Now().Add(-time.Hour),
 	})
 	stdinR, stdinW, _ := os.Pipe()
+	stdinW.WriteString("protocol=https\nhost=github.com\n\n")
 	stdinW.Close()
 	origIn := os.Stdin
 	os.Stdin = stdinR

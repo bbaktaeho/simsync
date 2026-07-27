@@ -92,4 +92,20 @@ simsync guide guidelines     # agent 작업 규칙 전문
 
 구현 노트: 인증은 클론 로컬 git 설정에 `simsync auth git-credential` helper를
 등록하는 gh 방식 — 토큰이 git 설정/URL에 남지 않고, 클론 안의 맨 git
-pull/push도 CLI 세션으로 동작한다.
+pull/push도 CLI 세션으로 동작한다. helper는 https + github.com 요청에만
+토큰을 내준다 (다른 host remote/submodule로의 유출 차단).
+
+## 추가 결정 (2026-07-27, 소유자): 앱과 상태 공유
+
+CLI와 데스크톱 앱은 같은 로컬 머신에서 "같은 상태 파일"을 공유한다 — 별도
+IPC 없이 (앱은 sandbox off, 두 파일 모두 시작 시 읽음):
+
+| 상태 | 공유 파일 | 규칙 |
+|------|-----------|------|
+| 세션 | `~/Library/Application Support/com.simsync.simsync/auth/session.json` | 앱 FileSessionStore와 동일 파일·스키마. 한쪽 로그인 = 양쪽 적용. CLI는 Dart 로컬 ISO8601 타임스탬프도 파싱, 쓸 때는 RFC3339(Dart 파싱 가능) |
+| 스토어 | `~/.simsync/repos.json` | 앱 RepoCache와 동일 파일. 첫 엔트리 = 활성 스토어. CLI `store clone`은 인자 없으면 이걸 쓰고, 다른 repo 지정은 거부, 앱에 없으면 클론 성공 후 첫 엔트리로 기록(connectedAt 필수 — 없으면 앱 파싱 실패) |
+
+- 로그인 2회 문제 해소, 스토어 불일치 원천 차단 (`requireConfig`가 클론↔공유
+  스토어 불일치도 거부).
+- 한계(문서화): 앱이 "실행 중"일 때 CLI가 바꾼 상태는 앱 재시작에 반영된다.
+  실시간 IPC는 필요해질 때 추가.

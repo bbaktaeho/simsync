@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.2.0"
+const version = "0.3.1"
 
 // AI agent가 1차 사용자다: 각 명령은 "무엇을 하는지"와 "언제 쓰는지(용도)"를
 // 함께 설명하고, exit code 계약을 명시한다. 인수 없이 실행하면 이 도움말이
@@ -17,10 +17,13 @@ const version = "0.2.0"
 const usage = `simsync - SimSync 노트 스토어 CLI (AI agent용)
 
 SimSync 데스크톱 앱과 같은 GitHub 노트 스토어를 터미널에서 다룬다.
+세션과 스토어 선택을 앱과 "공유"한다: 앱에 로그인돼 있으면 CLI 로그인이
+필요 없고, 앱에 연결된 저장소가 곧 CLI의 스토어다 (반대 방향도 같음 —
+CLI에서 로그인/스토어 연결하면 앱이 다음 시작에 그대로 사용한다).
 
 AI agent 권장 워크플로:
   1. simsync auth status            세션 확인 (없거나 만료면 auth login — 사람 승인 필요)
-  2. simsync store clone <o/r>      스토어 클론 (최초 1회; 클론의 AGENTS.md가 지침)
+  2. simsync store clone            앱에 연결된 스토어를 클론 (최초 1회)
   3. simsync guide note-format      노트 작성 규칙 확인
   4. simsync note new --title "…"   규칙대로 스캐폴드 생성 (마지막 줄이 파일 경로)
   5. (본문 작성 후 클론에서 git add/commit)
@@ -32,24 +35,32 @@ AI agent 권장 워크플로:
 
   auth login     GitHub Device Flow로 로그인해 세션을 만든다. 터미널에 일회용
                  코드와 URL이 표시되며, 사람이 브라우저에서 승인해야 완료된다.
-                 이미 로그인돼 있어도 새 세션으로 교체한다.
-                 용도: 세션이 없거나 만료됐을 때. AI agent는 코드를 사용자에게
-                 전달하고 승인을 기다린다.
+                 세션은 앱과 공유된다 — 앱에 이미 로그인돼 있으면 필요 없다
+                 (auth status로 먼저 확인). 실행하면 새 세션으로 교체된다.
+                 용도: 앱/CLI 모두 세션이 없거나 만료됐을 때. AI agent는 코드를
+                 사용자에게 전달하고 승인을 기다린다.
 
   auth status    세션 상태를 출력한다: 계정, scope, 발급/만료 시각(남은 시간),
                  GitHub API 라이브 토큰 검증.
                  exit 0 = 세션 유효, exit 1 = 미로그인/만료/무효 토큰.
                  용도: 어떤 작업이든 시작하기 전 첫 명령. exit code로 분기한다.
 
-  auth logout    저장된 세션 파일을 삭제한다.
+  auth logout    공유 세션 파일을 삭제한다 — 앱도 다음 시작에 로그아웃된다.
                  용도: 토큰 폐기, 계정 전환 전.
 
-  store clone <owner/repo> [dir]
-                 노트 스토어 repo를 클론하고 CLI 기본 스토어로 설정한다.
+  store clone [owner/repo] [dir]
+                 노트 스토어를 클론한다. 인자가 없으면 앱에 연결된 스토어를
+                 쓴다 (권장). 앱에 스토어가 없으면 owner/repo 지정으로 클론하며
+                 앱에도 같은 스토어가 연결된다. 앱 스토어와 다른 repo 지정은
+                 거부된다 — 스토어는 앱과 CLI가 항상 같아야 한다.
                  인증은 클론의 credential helper(simsync auth git-credential)로
-                 연결되어, 클론 안의 맨 git pull/push도 CLI 세션으로 동작한다.
+                 연결되어, 클론 안의 맨 git pull/push도 공유 세션으로 동작한다.
                  기본 위치: ~/.simsync/store/<owner>/<repo>
                  용도: 최초 1회. 클론을 열면 AGENTS.md/.agents/ 지침이 함께 온다.
+
+  store status   스토어 상태를 출력한다: 앱과 공유되는 활성 스토어, 클론
+                 경로/존재, 앱-클론 불일치 경고.
+                 용도: 작업 환경 확인. auth status 다음으로 실행하면 좋다.
 
   store sync     클론을 원격과 정합시킨다 (pull --rebase 후 push).
                  커밋되지 않은 변경이 있으면 실패한다 — 먼저 커밋하라는 뜻.
@@ -71,14 +82,19 @@ AI agent 권장 워크플로:
 환경변수:
   SIMSYNC_GITHUB_CLIENT_ID   포크에서 자체 OAuth App client_id 오버라이드
 
-파일: 세션 ~/.simsync/cli/session.json (0600), 설정 ~/.simsync/cli/config.json
-세션 만료 정책은 데스크톱 앱과 동일한 24시간. open/store/note 명령은 실행 시
-세션 만료를 자동 점검해 stderr로 경고한다 (만료됐거나 2시간 미만 남았을 때).`
+공유 파일 (데스크톱 앱과 같은 파일):
+  세션    ~/Library/Application Support/com.simsync.simsync/auth/session.json
+  스토어  ~/.simsync/repos.json (첫 엔트리가 활성 스토어)
+CLI 전용: ~/.simsync/cli/config.json (클론 위치)
+
+앱이 "실행 중"일 때 CLI가 세션/스토어를 바꾸면 앱은 다음 시작에 반영한다.
+세션 만료 정책은 앱과 동일한 24시간. open/store/note 명령은 실행 시 세션
+만료를 자동 점검해 stderr로 경고한다 (만료됐거나 2시간 미만 남았을 때).`
 
 const authUsage = `사용법: simsync auth <login|logout|status>
 
-  login    GitHub Device Flow 로그인 (브라우저 승인 필요)
-  logout   세션 삭제
+  login    GitHub Device Flow 로그인 (브라우저 승인 필요, 앱과 세션 공유)
+  logout   공유 세션 삭제 (앱도 다음 시작에 로그아웃)
   status   세션/만료/토큰 상태 확인 (유효하면 exit 0, 아니면 exit 1)`
 
 // cmdLaunch는 데스크톱 앱을 연다. macOS의 LaunchServices(open -a)를 쓰므로
@@ -173,8 +189,10 @@ func runStore(args []string) error {
 		return cmdStoreClone(args[1:])
 	case "sync":
 		return cmdStoreSync()
+	case "status":
+		return cmdStoreStatus()
 	default:
-		fmt.Fprintln(os.Stderr, "사용법: simsync store <clone|sync>")
+		fmt.Fprintln(os.Stderr, "사용법: simsync store <clone|status|sync>")
 		os.Exit(2)
 		return nil
 	}

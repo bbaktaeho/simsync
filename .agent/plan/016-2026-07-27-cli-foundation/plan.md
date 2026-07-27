@@ -52,8 +52,8 @@ status: active
   최소 폴링 5초, `slow_down` 시 +5초(또는 서버 지정값), `expired_token`/`access_denied` 처리,
   일시적 네트워크 오류·5xx·비JSON 응답은 스킵하고 계속 폴링 (device code 만료가 상한).
 - client_id 기본값은 데스크톱과 같은 공개 id, `SIMSYNC_GITHUB_CLIENT_ID` 환경변수로 오버라이드.
-- 세션 파일: `~/.simsync/cli/session.json`, 권한 0600.
-  스키마는 데스크톱 `AuthSession.toJson()`과 **동일 필드** (provider/accessToken/tokenType/scope/issuedAt/expiresAt/user{id,login,name,avatarUrl}) — 2차에서 앱 세션 공유로 갈 때 포맷 호환이 이미 확보된다.
+- 세션 파일: 앱과 공유 — `~/Library/Application Support/com.simsync.simsync/auth/session.json` (CLI 쓰기 0600).
+  스키마는 데스크톱 `AuthSession.toJson()`과 **동일 필드** — 같은 파일을 공유하므로 한쪽 로그인이 양쪽에 적용된다 (Dart 로컬 ISO8601 타임스탬프는 CLI가 유연 파싱).
 - `login`은 항상 새로 로그인해 세션을 덮어쓴다 (이미 로그인 상태여도 — 가장 단순하고 만료 갱신 목적과 일치).
 
 ### Go 구성

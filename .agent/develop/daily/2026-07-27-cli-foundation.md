@@ -60,6 +60,30 @@ related:
 - bare `simsync` → help 출력 (agent가 GUI를 실수로 띄우는 사고 방지), 앱 실행은
   `simsync open`. 버전 0.2.0.
 
+## 앱과 상태 공유 (v0.3.1, 같은 PR)
+
+소유자 요구: 로그인 1회, 스토어는 앱과 반드시 동일, CLI가 연결하면 앱도 가져갈 것.
+별도 IPC 없이 앱이 이미 파일로 갖고 있는 상태를 공유하는 것으로 해결 (Flutter 무변경):
+
+- 세션: 앱 FileSessionStore와 같은 파일
+  (`~/Library/Application Support/com.simsync.simsync/auth/session.json`, sandbox off 확인).
+  Dart 로컬 ISO8601 타임스탬프는 `parseFlexTime`으로 읽고, 쓸 때는 RFC3339 (Dart 파싱 가능).
+- 스토어: 앱 RepoCache와 같은 파일 (`~/.simsync/repos.json`), 첫 엔트리 = 활성.
+  `store clone` 인자 없으면 이걸 쓰고, 다른 repo 지정은 거부, 앱에 없으면 클론
+  성공 후 첫 엔트리로 기록 (connectedAt 필수 — 없으면 앱 파싱 전체 실패).
+  `requireConfig`는 클론↔공유 스토어 불일치도 거부 (note/sync 보호).
+- `store status` 추가, help 전면 갱신 (공유 규칙 명시), CLI 버전 0.3.1로 정렬.
+- 보안 리뷰 반영: credential helper는 https+github.com 요청에만 토큰 응답
+  (악성 remote/submodule로의 유출 차단), 그 외 무출력 종료로 다음 helper에 위임.
+
+## 검토 5회 기록 (소유자 지시)
+
+1. 요구사항 전수 대조 — 통신/로그인1회/스토어동일/역방향반영/도움말/이름/노트생성/가이드/클론방식 전부 매핑 확인.
+2. 보안 — helper host·protocol 검증(+테스트 2), 만료 세션 거부, 토큰 파일 0600, helper는 클론 로컬 설정에만, clone URL에 토큰 없음.
+3. 앱 계약 — repos.json/세션 필드 왕복에서 유실·파싱실패 없음(Dart fromJson 필수 필드 검증), Flutter 코드 무변경, 실행 중 동시수정 레이스는 LWW로 수용·문서화.
+4. 코드 품질 — gofmt/vet clean, 죽은 경로 참조 없음, 버전 정렬, branch 지정 클론.
+5. 흐름 실기 검증 — 실제 앱 세션으로 auth status, 실제 private 스토어 clone(공유 세션→helper→GitHub), note new frontmatter 데스크톱 일치, guide 내장 fallback, 만료/불일치/미설정 에러 경로(테스트).
+
 ## 검증 (2차분)
 
 - go test: 클론→note new→커밋→sync 엔드투엔드(로컬 bare repo), 스캐폴드

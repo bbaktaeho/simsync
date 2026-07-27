@@ -195,8 +195,9 @@ gofmt -l .                    # 포맷 확인 (출력 없어야 함)
 ```
 
 데스크톱과 같은 공개 client_id(Device Flow)를 내장한다. 포크는
-`SIMSYNC_GITHUB_CLIENT_ID` 환경변수로 오버라이드. 세션은
-`~/.simsync/cli/session.json`(0600)에 저장되며 만료 정책은 데스크톱과 동일한 24시간.
+`SIMSYNC_GITHUB_CLIENT_ID` 환경변수로 오버라이드. 세션과 스토어 선택은 데스크톱
+앱과 파일로 공유한다: 세션은 앱의 `auth/session.json`(Application Support), 스토어는
+`~/.simsync/repos.json` 첫 엔트리. 만료 정책은 앱과 동일한 24시간.
 
 ## Workflow
 

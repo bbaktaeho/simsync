@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 )
 
@@ -16,11 +17,10 @@ const sessionMaxAge = 24 * time.Hour
 // 만료가 이 시간 미만으로 남으면 상시 체크가 경고를 띄운다.
 const sessionWarnWindow = 2 * time.Hour
 
-// AuthUser / AuthSession은 데스크톱 auth_models.dart의 toJson()과 같은 필드를
-// 쓴다 — 2차에서 앱 세션 공유로 갈 때 포맷 호환을 미리 확보한다.
-// (타임스탬프만 다르다: Go는 RFC3339(타임존 포함), Dart는 로컬 ISO8601.
-//
-//	CLI가 앱 세션 파일을 직접 읽게 되는 시점에 커스텀 파싱을 붙인다.)
+// AuthUser / AuthSession은 데스크톱 auth_models.dart의 toJson()과 같은 필드다.
+// CLI는 앱과 "같은 세션 파일"을 읽고 쓴다 — 한쪽에서 로그인하면 양쪽에 적용된다.
+// 타임스탬프는 Go가 RFC3339로 쓰고(Dart DateTime.parse가 읽음), Dart가 쓴
+// 로컬 ISO8601(오프셋 없음)은 [parseFlexTime]으로 읽는다.
 type AuthUser struct {
 	ID        string  `json:"id"`
 	Login     string  `json:"login"`
@@ -42,10 +42,61 @@ func (s *AuthSession) expired(now time.Time) bool {
 	return !s.ExpiresAt.After(now)
 }
 
+// parseFlexTime은 Go(RFC3339)와 Dart(toIso8601String — 로컬 시각, 오프셋
+// 없음) 타임스탬프를 모두 읽는다. 앱이 만든 세션 파일 호환용.
+func parseFlexTime(s string) (time.Time, error) {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	return time.ParseInLocation("2006-01-02T15:04:05.999999999", s, time.Local)
+}
+
+// UnmarshalJSON은 타임스탬프만 유연 파싱하고 나머지는 그대로 받는다.
+func (s *AuthSession) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Provider    string   `json:"provider"`
+		AccessToken string   `json:"accessToken"`
+		TokenType   string   `json:"tokenType"`
+		Scope       string   `json:"scope"`
+		IssuedAt    string   `json:"issuedAt"`
+		ExpiresAt   string   `json:"expiresAt"`
+		User        AuthUser `json:"user"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	issuedAt, err := parseFlexTime(raw.IssuedAt)
+	if err != nil {
+		return err
+	}
+	expiresAt, err := parseFlexTime(raw.ExpiresAt)
+	if err != nil {
+		return err
+	}
+	*s = AuthSession{
+		Provider:    raw.Provider,
+		AccessToken: raw.AccessToken,
+		TokenType:   raw.TokenType,
+		Scope:       raw.Scope,
+		IssuedAt:    issuedAt,
+		ExpiresAt:   expiresAt,
+		User:        raw.User,
+	}
+	return nil
+}
+
+// sessionPath는 데스크톱 앱(FileSessionStore)이 쓰는 세션 파일과 같은 경로다.
+// 같은 파일을 공유하므로: 앱에 로그인돼 있으면 CLI는 로그인이 필요 없고,
+// CLI에서 로그인하면 앱이 다음 시작에 그 세션을 복원한다. (앱은 sandbox가
+// 꺼져 있어 평범한 Application Support 경로를 쓴다.)
 func sessionPath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
+	}
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Application Support",
+			"com.simsync.simsync", "auth", "session.json"), nil
 	}
 	return filepath.Join(home, ".simsync", "cli", "session.json"), nil
 }
