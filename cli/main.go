@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const version = "0.3.2"
+const version = "0.3.1"
 
 // AI agent가 1차 사용자다: 각 명령은 "무엇을 하는지"와 "언제 쓰는지(용도)"를
 // 함께 설명하고, exit code 계약을 명시한다. 인수 없이 실행하면 이 도움말이

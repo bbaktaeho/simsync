@@ -74,11 +74,7 @@ func TestStoreCloneNoteSyncEndToEnd(t *testing.T) {
 	if err != nil || cfg == nil || cfg.ClonePath != clone || cfg.Repo != "owner/repo" {
 		t.Fatalf("config = %+v, err = %v", cfg, err)
 	}
-	// credential helper가 클론 로컬 설정에 등록됐는지 확인.
-	helper := mustGit(t, clone, "config", "credential.helper")
-	if !strings.Contains(helper, "auth git-credential") {
-		t.Errorf("credential.helper = %q", helper)
-	}
+	assertHelperConfig(t, clone)
 	// 앱에 스토어가 없었으므로 repos.json 첫 엔트리로 기록된다 (앱이 다음
 	// 시작에 그대로 활성화). connectedAt은 앱 파서(DateTime.parse) 필수 필드.
 	shared, err := loadSharedStore()
@@ -133,10 +129,32 @@ func TestStoreCloneExistingDirUpdatesConfigOnly(t *testing.T) {
 	if cfg == nil || cfg.ClonePath != dir {
 		t.Fatalf("config = %+v", cfg)
 	}
-	// 재실행 시 credential helper가 (바이너리 이동 대비) 다시 기록된다.
-	helper := mustGit(t, dir, "config", "credential.helper")
-	if !strings.Contains(helper, "auth git-credential") {
-		t.Errorf("credential.helper = %q", helper)
+	// 재실행 시 credential helper가 (바이너리 이동 대비) 리셋 항목과 함께
+	// 다시 기록된다. --replace-all이므로 여러 번 실행해도 누적되지 않는다.
+	assertHelperConfig(t, dir)
+	_ = captureStdout(t, func() error {
+		return cmdStoreClone([]string{"owner/repo", dir})
+	})
+	assertHelperConfig(t, dir)
+}
+
+// assertHelperConfig는 클론의 **local** 설정이 [리셋(빈 값), SimSync helper]
+// 두 항목인지 확인한다. 빈 값이 없으면 상위 스코프의 osxkeychain이 먼저
+// 답해버린다. --local로 조회하는 이유: 스코프를 합쳐 보면 시스템 설정의
+// osxkeychain이 앞에 붙어 나오는데, 그건 뒤따르는 빈 값이 지우는 대상이다.
+func assertHelperConfig(t *testing.T, dir string) {
+	t.Helper()
+	// --get-all 대신 --list를 쓴다: 빈 값은 줄바꿈만 남아 TrimSpace에 지워지지만,
+	// --list는 `credential.helper=` 형태로 남아 순서까지 확인할 수 있다.
+	var helpers []string
+	for _, line := range strings.Split(mustGit(t, dir, "config", "--local", "--list"), "\n") {
+		if v, ok := strings.CutPrefix(line, "credential.helper="); ok {
+			helpers = append(helpers, v)
+		}
+	}
+	if len(helpers) != 2 || helpers[0] != "" ||
+		!strings.Contains(helpers[1], "auth git-credential") {
+		t.Errorf("credential.helper = %q", helpers)
 	}
 }
 
