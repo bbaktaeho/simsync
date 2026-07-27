@@ -194,6 +194,8 @@ go vet ./...                  # 정적 분석
 gofmt -l .                    # 포맷 확인 (출력 없어야 함)
 ```
 
+설치(PATH 등록)와 명령 사용법은 [cli/README.md](../cli/README.md) 참고.
+
 데스크톱과 같은 공개 client_id(Device Flow)를 내장한다. 포크는
 `SIMSYNC_GITHUB_CLIENT_ID` 환경변수로 오버라이드. 세션과 스토어 선택은 데스크톱
 앱과 파일로 공유한다: 세션은 앱의 `auth/session.json`(Application Support), 스토어는
