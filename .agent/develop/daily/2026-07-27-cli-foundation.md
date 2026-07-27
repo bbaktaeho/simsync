@@ -36,6 +36,15 @@ related:
 - 스모크: version/help/status(exit 1)/unknown(exit 2), 만료 세션 상태 출력과
   launch 경고, 실제 GitHub device code 발급까지 확인.
 
+## 개편: AI agent용 CLI (같은 PR)
+
+- 소유자 결정: CLI의 1차 사용자는 AI agent.
+- 인증 명령을 `auth` 하위로 재구성: `auth login` / `auth logout` / `auth status`
+  (gh CLI 관례 — agent들이 이미 아는 이름. 1차의 `login`/`status`는 미배포라 clean break).
+- help 전면 개편: 명령마다 동작 + 용도(agent가 언제 쓰는지) + exit code 계약 명시.
+- 노트 작성 워크플로(클론 기반/API 직접/하이브리드)는
+  `.agent/proposal/cli-note-workflow.md`로 제안 — 소유자 선택 대기.
+
 ## 2차 후보 (plan.md 참고)
 
 - `simsync memo "..."` 터미널 빠른 기록, repo 설정, 앱 세션 공유, note list/검색

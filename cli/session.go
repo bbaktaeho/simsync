@@ -110,7 +110,7 @@ func warnIfStale() {
 	}
 	now := time.Now()
 	if s.expired(now) {
-		fmt.Fprintf(os.Stderr, "[알림] 세션이 만료되었습니다 (%s). 'simsync login'으로 다시 로그인하세요.\n",
+		fmt.Fprintf(os.Stderr, "[알림] 세션이 만료되었습니다 (%s). 'simsync auth login'으로 다시 로그인하세요.\n",
 			formatTime(s.ExpiresAt))
 		return
 	}

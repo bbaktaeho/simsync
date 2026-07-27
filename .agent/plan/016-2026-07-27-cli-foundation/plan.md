@@ -11,7 +11,7 @@ status: active
 ## Confirmed requirements
 
 1. `simsync` — SimSync(데스크톱 앱)를 켠다.
-2. `simsync login` — GitHub OAuth Device Flow. 터미널에 one-time code와 URL이 그대로 표시되고, 승인까지 폴링한다 (gh auth login 스타일).
+2. `simsync auth login` — GitHub OAuth Device Flow. 터미널에 one-time code와 URL이 그대로 표시되고, 승인까지 폴링한다 (gh auth login 스타일).
 3. 로그인 세션이 언제 만료되는지 확인하는 기능 + 그것을 "항상" 확인하는 기능.
 4. 언어는 Go (소유자 명시 승인).
 
@@ -22,6 +22,9 @@ status: active
 - 세션 만료 정책은 데스크톱과 동일하게 24시간 (`SessionPolicy(maxAge: 24h)` 미러).
 - 1차는 macOS만 지원한다 (앱 자체가 macOS 중심).
 - CLI 출력 언어는 앱과 동일하게 한국어, 기술 식별자는 영어.
+- (개편) CLI의 1차 사용자는 AI agent다: 인증 명령은 `auth` 하위로 묶고(gh CLI 관례 —
+  `session status`보다 agent들이 이미 아는 이름), help는 명령마다 동작과 용도를 함께 설명한다.
+  노트 작성 워크플로는 [.agent/proposal/cli-note-workflow.md](../../proposal/cli-note-workflow.md) 참고.
 
 ## Proposed decisions
 
@@ -30,9 +33,9 @@ status: active
 | 명령 | 동작 |
 |------|------|
 | `simsync` | 데스크톱 앱 실행 (`open -a simsync`). 실행 전 세션 자동 체크 → 만료/임박 시 경고 |
-| `simsync login` | Device Flow: code/URL 표시 → 승인 폴링 → `/user` 조회 → 세션 저장. 성공 시 만료 시각 출력 |
-| `simsync logout` | 세션 파일 삭제 |
-| `simsync status` | 계정, scope, 발급/만료 시각, 남은 시간 + GitHub API 라이브 토큰 검증. 만료/미로그인 시 exit 1 (스크립트 연동: `simsync status \|\| simsync login`) |
+| `simsync auth login` | Device Flow: code/URL 표시 → 승인 폴링 → `/user` 조회 → 세션 저장. 성공 시 만료 시각 출력 |
+| `simsync auth logout` | 세션 파일 삭제 |
+| `simsync auth status` | 계정, scope, 발급/만료 시각, 남은 시간 + GitHub API 라이브 토큰 검증. 만료/미로그인 시 exit 1 (스크립트 연동: `simsync auth status \|\| simsync auth login`) |
 | `simsync version` | CLI 버전 |
 | `simsync help` | 사용법 |
 
