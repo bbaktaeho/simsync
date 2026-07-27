@@ -63,6 +63,10 @@ class GitHubTreeResult {
   GitHubTreeResult({required this.entries, required this.truncated});
 }
 
+/// [GitHubApiClient.commitFiles]가 커밋할 파일 하나.
+/// [mode]는 '100644'(일반 파일) 또는 '120000'(symlink — content가 링크 대상 경로).
+typedef CommitFileEntry = ({String path, String content, String mode});
+
 // --- Exceptions ---
 
 class GitHubApiException implements Exception {
@@ -335,6 +339,85 @@ class GitHubApiClient {
       );
     }).toList();
     return GitHubTreeResult(entries: entries, truncated: truncated);
+  }
+
+  /// [files]를 단일 커밋으로 [branch]에 추가/갱신하고 새 커밋 SHA를 돌려준다.
+  ///
+  /// Contents API 대신 Git Database API(트리 inline content)를 쓰는 이유:
+  /// (1) 여러 파일을 커밋 하나로 묶고, (2) mode 120000으로 symlink를 만들 수
+  /// 있다 — Contents API는 일반 파일만 만든다.
+  ///
+  /// ref 갱신은 fast-forward만 시도한다. 사이에 다른 커밋이 끼면(노트 저장
+  /// 경합) 422로 실패하며 [GitHubApiException]을 던진다 — 호출자가 재시도를
+  /// 판단한다.
+  Future<String> commitFiles({
+    required String branch,
+    required String message,
+    required List<CommitFileEntry> files,
+  }) async {
+    Map<String, dynamic> decode(http.Response r, int expected) {
+      if (r.statusCode != expected) {
+        throw GitHubApiException(r.statusCode, r.body);
+      }
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    }
+
+    final jsonHeaders = {..._headers, 'Content-Type': 'application/json'};
+
+    // 1. branch HEAD 커밋/트리 SHA 조회.
+    final branchJson = decode(
+      await _httpClient.get(
+        Uri.parse('$_baseUrl/repos/$_owner/$_repo/branches/$branch'),
+        headers: _headers,
+      ),
+      200,
+    );
+    final commit = branchJson['commit'] as Map<String, dynamic>;
+    final headSha = commit['sha'] as String;
+    final baseTreeSha = ((commit['commit'] as Map<String, dynamic>)['tree']
+        as Map<String, dynamic>)['sha'] as String;
+
+    // 2. base_tree 위에 파일들을 얹은 새 트리.
+    final treeJson = decode(
+      await _httpClient.post(
+        Uri.parse('$_baseUrl/repos/$_owner/$_repo/git/trees'),
+        headers: jsonHeaders,
+        body: jsonEncode({
+          'base_tree': baseTreeSha,
+          'tree': [
+            for (final f in files)
+              {'path': f.path, 'mode': f.mode, 'type': 'blob', 'content': f.content},
+          ],
+        }),
+      ),
+      201,
+    );
+
+    // 3. 커밋 생성.
+    final commitJson = decode(
+      await _httpClient.post(
+        Uri.parse('$_baseUrl/repos/$_owner/$_repo/git/commits'),
+        headers: jsonHeaders,
+        body: jsonEncode({
+          'message': message,
+          'tree': treeJson['sha'] as String,
+          'parents': [headSha],
+        }),
+      ),
+      201,
+    );
+    final newCommitSha = commitJson['sha'] as String;
+
+    // 4. branch ref를 새 커밋으로 이동 (fast-forward).
+    decode(
+      await _httpClient.patch(
+        Uri.parse('$_baseUrl/repos/$_owner/$_repo/git/refs/heads/$branch'),
+        headers: jsonHeaders,
+        body: jsonEncode({'sha': newCommitSha}),
+      ),
+      200,
+    );
+    return newCommitSha;
   }
 
   /// Checks whether a repo exists. Returns true on 200, false on 404.

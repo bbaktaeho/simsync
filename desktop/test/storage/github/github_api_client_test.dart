@@ -250,4 +250,110 @@ void main() {
       );
     });
   });
+
+  group('commitFiles', () {
+    test('runs branch→tree→commit→ref flow and supports symlink mode',
+        () async {
+      final calls = <String>[];
+      Map<String, dynamic>? postedTree;
+      Map<String, dynamic>? postedCommit;
+      Map<String, dynamic>? patchedRef;
+
+      final mock = MockClient((request) async {
+        final url = request.url.toString();
+        calls.add('${request.method} $url');
+        if (url.endsWith('/branches/main')) {
+          return http.Response(
+            jsonEncode({
+              'commit': {
+                'sha': 'head-sha',
+                'commit': {
+                  'tree': {'sha': 'base-tree-sha'},
+                },
+              },
+            }),
+            200,
+          );
+        }
+        if (url.endsWith('/git/trees')) {
+          postedTree = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(jsonEncode({'sha': 'new-tree-sha'}), 201);
+        }
+        if (url.endsWith('/git/commits')) {
+          postedCommit = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(jsonEncode({'sha': 'new-commit-sha'}), 201);
+        }
+        if (url.endsWith('/git/refs/heads/main')) {
+          patchedRef = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(jsonEncode({'ref': 'refs/heads/main'}), 200);
+        }
+        return http.Response('unexpected', 500);
+      });
+
+      final client = createClient(mock);
+      final sha = await client.commitFiles(
+        branch: 'main',
+        message: 'add harness',
+        files: const [
+          (path: 'AGENTS.md', content: '# hi', mode: '100644'),
+          (path: 'CLAUDE.md', content: 'AGENTS.md', mode: '120000'),
+        ],
+      );
+
+      expect(sha, 'new-commit-sha');
+      expect(calls, [
+        'GET https://api.github.com/repos/$owner/$repo/branches/main',
+        'POST https://api.github.com/repos/$owner/$repo/git/trees',
+        'POST https://api.github.com/repos/$owner/$repo/git/commits',
+        'PATCH https://api.github.com/repos/$owner/$repo/git/refs/heads/main',
+      ]);
+      expect(postedTree!['base_tree'], 'base-tree-sha');
+      final entries = postedTree!['tree'] as List<dynamic>;
+      expect(entries[1], {
+        'path': 'CLAUDE.md',
+        'mode': '120000',
+        'type': 'blob',
+        'content': 'AGENTS.md',
+      });
+      expect(postedCommit!['parents'], ['head-sha']);
+      expect(postedCommit!['tree'], 'new-tree-sha');
+      expect(patchedRef!['sha'], 'new-commit-sha');
+    });
+
+    test('throws when the ref update is rejected (non fast-forward)', () async {
+      final mock = MockClient((request) async {
+        final url = request.url.toString();
+        if (url.endsWith('/branches/main')) {
+          return http.Response(
+            jsonEncode({
+              'commit': {
+                'sha': 'head-sha',
+                'commit': {
+                  'tree': {'sha': 'base-tree-sha'},
+                },
+              },
+            }),
+            200,
+          );
+        }
+        if (url.endsWith('/git/trees')) {
+          return http.Response(jsonEncode({'sha': 't'}), 201);
+        }
+        if (url.endsWith('/git/commits')) {
+          return http.Response(jsonEncode({'sha': 'c'}), 201);
+        }
+        return http.Response('not fast forward', 422);
+      });
+
+      final client = createClient(mock);
+      expect(
+        () => client.commitFiles(
+          branch: 'main',
+          message: 'm',
+          files: const [(path: 'a.md', content: 'x', mode: '100644')],
+        ),
+        throwsA(isA<GitHubApiException>()),
+      );
+    });
+  });
 }

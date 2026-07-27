@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'auth/session_policy.dart';
 import 'auth/session_store.dart';
 import 'settings/app_settings.dart';
 import 'settings/app_settings_controller.dart';
+import 'services/agent_harness.dart';
 import 'services/note_service.dart';
 import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_cache.dart';
@@ -90,6 +92,11 @@ Future<StorageBundle> defaultStorageFactory(
     cache: cache,
   );
   await githubStorage.loadCache();
+
+  // 노트 스토어에 AI agent 지침 하네스를 보장한다 — 없으면 자동 생성, 신규
+  // repo는 생성 직후 이 경로를 지나므로 무조건 심긴다. fire-and-forget:
+  // 실패해도 앱 동작에 영향이 없고 다음 시작에서 재시도된다.
+  unawaited(ensureAgentHarness(client: apiClient, branch: branch));
 
   late final GitHubSyncEngine syncEngine;
   syncEngine = GitHubSyncEngine(

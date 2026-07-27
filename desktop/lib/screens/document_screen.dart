@@ -30,6 +30,7 @@ import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/editor_tab_bar.dart';
+import '../widgets/note_list_menus.dart';
 import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
 import '../widgets/search_filter_panel.dart';
@@ -600,17 +601,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
     });
   }
 
-  Future<void> _createNote() async {
+  /// 동기화 노트([memo]=false) 또는 동기화 메모([memo]=true)를 생성한다.
+  Future<void> _createNote({bool memo = false}) async {
     if (_selectedDate == null) return;
     if (!_syncEnabled) {
-      _showSyncDisabledMessage('동기화가 꺼져 있어 동기화 노트를 생성할 수 없습니다.');
+      _showSyncDisabledMessage(
+          '동기화가 꺼져 있어 동기화 ${memo ? '메모' : '노트'}를 생성할 수 없습니다.');
       return;
     }
-    final existingNotes = _notesForSelectedDate;
-    final isDefault = existingNotes.isEmpty;
+    // 날짜의 첫 노트만 기본 노트가 된다. 메모는 날짜 무관이므로 제외.
+    final isDefault = !memo && _notesForSelectedDate.isEmpty;
     final now = DateTime.now();
     final newNote = Note(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: now.millisecondsSinceEpoch.toString(),
       noteDate: _selectedDate!,
       title: '',
       content: '',
@@ -618,18 +621,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
       tags: [],
       createdAt: now,
       updatedAt: now,
+      isMemo: memo,
     );
     await _storage.saveNote(newNote);
-    setState(() {
-      _allNotes.add(newNote);
-      _memoTabActive = false;
-    });
-    _openNote(newNote);
-    _searchIndex.upsert(newNote);
-    _applySearchQuery(_searchQuery, resetPage: false);
+    _finishCreate(newNote);
   }
 
-  Future<void> _createLocalNote() async {
+  /// 로컬 노트([memo]=false) 또는 로컬 메모([memo]=true)를 생성한다.
+  Future<void> _createLocalNote({bool memo = false}) async {
     if (_selectedDate == null || widget.localStorage == null) return;
     final now = DateTime.now();
     final newNote = Note(
@@ -642,11 +641,18 @@ class _DocumentScreenState extends State<DocumentScreen> {
       createdAt: now,
       updatedAt: now,
       storageType: StorageType.local,
+      isMemo: memo,
     );
     await widget.localStorage!.saveNote(newNote);
+    _finishCreate(newNote);
+  }
+
+  /// 생성 공통 마무리: 리스트에 반영하고, 만든 종류의 탭(메모/daily)으로
+  /// 전환해 방금 만든 항목이 리스트에 보이게 한 뒤 에디터로 연다.
+  void _finishCreate(Note newNote) {
     setState(() {
       _allNotes.add(newNote);
-      _memoTabActive = false;
+      _memoTabActive = newNote.isMemo;
     });
     _openNote(newNote);
     _searchIndex.upsert(newNote);
@@ -677,57 +683,11 @@ class _DocumentScreenState extends State<DocumentScreen> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final c = ctx.colors;
-        return AlertDialog(
-          backgroundColor: c.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-            side: BorderSide(color: c.border),
-          ),
-          titlePadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, 14, AppDimensions.spacingLg, 0),
-          contentPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingLg, AppDimensions.spacingSm, AppDimensions.spacingLg, 0),
-          actionsPadding: const EdgeInsets.fromLTRB(AppDimensions.spacingMd, AppDimensions.spacingSm, AppDimensions.spacingMd, AppDimensions.spacingMd),
-          title: Text(
-            '노트 삭제',
-            style: Theme.of(ctx).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w600, color: c.textPrimary),
-          ),
-          content: Text(
-            "'${note.title.isEmpty ? 'Untitled' : note.title}' 노트를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
-            style: AppTextStyles.captionThin.copyWith(color: c.textSecondary),
-          ),
-          actions: [
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: c.textSecondary,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                minimumSize: const Size(0, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: AppTextStyles.captionMedium,
-              ),
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('취소'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: c.error,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                minimumSize: const Size(0, 36),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                textStyle: AppTextStyles.captionSemibold,
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('삭제'),
-            ),
-          ],
-        );
-      },
-    );
+    if (!await confirmNoteDelete(context, note)) return;
 
-    if (confirmed != true) return;
+    // 제목 변경이 디바운스 저장 대기 중이면 파일 경로(제목 유래)가 어긋나
+    // 삭제가 조용히 빗나간다 — 먼저 flush해 rename을 확정한다.
+    await _flushPendingSaves();
 
     try {
       await _storageFor(note).deleteNote(note);
