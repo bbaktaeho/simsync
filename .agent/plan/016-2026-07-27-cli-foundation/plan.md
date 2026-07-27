@@ -60,7 +60,7 @@ status: active
 
 - 위치: `cli/` (desktop/, mobile/ 와 나란히). 모듈 `github.com/bbaktaeho/simsync/cli`.
 - 의존성 없음 — stdlib만 (`flag` 수준도 불필요, 단순 서브커맨드 switch). cobra 등 프레임워크는 6개 명령에 과설계.
-- 파일: `main.go`(디스패치/도움말/상시 체크), `session.go`(모델·저장·만료), `login.go`(Device Flow + /user), `launch.go`(앱 실행). 테스트 `login_test.go`, `session_test.go` (httptest).
+- 파일: `main.go`(디스패치/도움말/앱 실행/상시 체크), `session.go`, `login.go`, `store.go`(클론/sync/credential helper), `note.go`(스캐폴드), `guide.go`(내장 가이드) + 각 테스트.
 - HTTP 클라이언트 타임아웃 30초.
 - 빌드: `cd cli && go build -o simsync .` / 설치: `go install`.
 
@@ -73,7 +73,7 @@ status: active
 
 ## Affected files
 
-- `cli/` (신규): go.mod, main.go, session.go, login.go, launch.go, 테스트 2개
+- `cli/` (신규): go.mod, main/session/login/store/note/guide.go, guides/*.md(내장 규칙), 테스트
 - `.gitignore`: `cli/simsync` 바이너리
 - `.agent/guide.md`: Tech Stack/레이아웃/Build & Run에 CLI 반영
 

@@ -3,7 +3,7 @@ title: CLI 노트 작성 워크플로 제안 (AI agent용)
 description: CLI로 노트를 생성하는 방식 비교 — 클론 기반 / API 직접 / 하이브리드, 가이드 노출 설계 포함
 type: proposal
 created: 2026-07-27
-status: draft
+status: active
 related:
   - .agent/plan/016-2026-07-27-cli-foundation/plan.md
 ---
@@ -83,10 +83,13 @@ simsync guide guidelines     # agent 작업 규칙 전문
 동기화만 책임지고 나머지는 git과 agent에 맡긴다. API 원샷은 cron 등 무상태
 자동화 수요가 실제로 생겼을 때 추가한다.
 
-## 열린 결정 (소유자)
+## 결정 (2026-07-27, 소유자)
 
-1. 노트 작성 방식: A / B / C 중 선택
-2. bare `simsync`의 동작: 현행 유지(앱 실행) vs help 출력으로 변경하고 앱 실행은
-   `simsync open`으로 이동 — agent가 탐색 중 무심코 GUI를 띄우는 사고 방지
-3. (부차) `note new`의 로컬 노트 지원 여부 — 클론은 synced 스토어만 다루므로
-   1차는 synced 전용이 자연스럽다
+1. 노트 작성 방식: **C 채택** — 클론 기반을 1차로 구현 (`store clone`/`store sync`/
+   `note new`/`guide`), API 원샷은 수요 발생 시 추가.
+2. bare `simsync`: **help 출력으로 변경**, 앱 실행은 `simsync open`으로 이동.
+3. `note new`는 synced 스토어(클론) 전용 — 로컬 노트는 범위 외.
+
+구현 노트: 인증은 클론 로컬 git 설정에 `simsync auth git-credential` helper를
+등록하는 gh 방식 — 토큰이 git 설정/URL에 남지 않고, 클론 안의 맨 git
+pull/push도 CLI 세션으로 동작한다.

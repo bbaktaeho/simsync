@@ -9,38 +9,61 @@ import (
 	"time"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 // AI agent가 1차 사용자다: 각 명령은 "무엇을 하는지"와 "언제 쓰는지(용도)"를
-// 함께 설명하고, exit code 계약을 명시한다.
+// 함께 설명하고, exit code 계약을 명시한다. 인수 없이 실행하면 이 도움말이
+// 나온다 (agent가 탐색 중 GUI 앱을 실수로 띄우지 않도록 — 앱 실행은 open).
 const usage = `simsync - SimSync 노트 스토어 CLI (AI agent용)
 
 SimSync 데스크톱 앱과 같은 GitHub 노트 스토어를 터미널에서 다룬다.
-AI agent 워크플로: 작업 전 'simsync auth status'로 세션을 확인하고,
-로그인이 필요하면 'simsync auth login'을 실행한 뒤 표시되는 일회용 코드의
-브라우저 승인을 사용자에게 요청한다.
 
-사용법:
-  simsync <명령> [하위명령]
+AI agent 권장 워크플로:
+  1. simsync auth status            세션 확인 (없거나 만료면 auth login — 사람 승인 필요)
+  2. simsync store clone <o/r>      스토어 클론 (최초 1회; 클론의 AGENTS.md가 지침)
+  3. simsync guide note-format      노트 작성 규칙 확인
+  4. simsync note new --title "…"   규칙대로 스캐폴드 생성 (마지막 줄이 파일 경로)
+  5. (본문 작성 후 클론에서 git add/commit)
+  6. simsync store sync             pull --rebase + push
 
 명령:
-  (없음)         SimSync 데스크톱 앱을 실행한다 (macOS).
-                 용도: 사람이 GUI로 노트를 보거나 편집하려 할 때.
+  open           SimSync 데스크톱 앱을 실행한다 (macOS).
+                 용도: 사람이 GUI로 노트를 보거나 편집하려 할 때만. agent 작업에는 불필요.
 
   auth login     GitHub Device Flow로 로그인해 세션을 만든다. 터미널에 일회용
                  코드와 URL이 표시되며, 사람이 브라우저에서 승인해야 완료된다.
                  이미 로그인돼 있어도 새 세션으로 교체한다.
-                 용도: 세션이 없거나 만료됐을 때. 브라우저 승인이 필요하므로
-                 AI agent는 코드를 사용자에게 전달하고 승인을 기다린다.
+                 용도: 세션이 없거나 만료됐을 때. AI agent는 코드를 사용자에게
+                 전달하고 승인을 기다린다.
 
   auth status    세션 상태를 출력한다: 계정, scope, 발급/만료 시각(남은 시간),
                  GitHub API 라이브 토큰 검증.
                  exit 0 = 세션 유효, exit 1 = 미로그인/만료/무효 토큰.
                  용도: 어떤 작업이든 시작하기 전 첫 명령. exit code로 분기한다.
-                 예: simsync auth status || (로그인 필요 안내)
 
   auth logout    저장된 세션 파일을 삭제한다.
                  용도: 토큰 폐기, 계정 전환 전.
+
+  store clone <owner/repo> [dir]
+                 노트 스토어 repo를 클론하고 CLI 기본 스토어로 설정한다.
+                 인증은 클론의 credential helper(simsync auth git-credential)로
+                 연결되어, 클론 안의 맨 git pull/push도 CLI 세션으로 동작한다.
+                 기본 위치: ~/.simsync/store/<owner>/<repo>
+                 용도: 최초 1회. 클론을 열면 AGENTS.md/.agents/ 지침이 함께 온다.
+
+  store sync     클론을 원격과 정합시킨다 (pull --rebase 후 push).
+                 커밋되지 않은 변경이 있으면 실패한다 — 먼저 커밋하라는 뜻.
+                 용도: 노트 커밋 후 마무리로 항상 실행. 앱은 폴링으로 곧 반영한다.
+
+  note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--tags a,b]
+                 클론 안에 노트 파일을 규칙대로 스캐폴드한다 (경로·frontmatter 자동).
+                 stdout 마지막 줄이 생성된 파일의 절대 경로다.
+                 용도: 노트 생성의 시작점. frontmatter는 손대지 말고 본문만 작성한다.
+
+  guide [overview|note-format|guidelines]
+                 노트 작성/작업 규칙을 출력한다. 클론의 .agents/가 있으면 그쪽을,
+                 없으면 CLI 내장본을 보여준다 (출처는 stderr에 표시).
+                 용도: note new 전에 note-format, 작업 전에 guidelines를 읽는다.
 
   version        CLI 버전을 출력한다.
   help           이 도움말을 출력한다.
@@ -48,9 +71,9 @@ AI agent 워크플로: 작업 전 'simsync auth status'로 세션을 확인하�
 환경변수:
   SIMSYNC_GITHUB_CLIENT_ID   포크에서 자체 OAuth App client_id 오버라이드
 
-세션 파일: ~/.simsync/cli/session.json (0600). 만료 정책은 데스크톱 앱과
-동일한 24시간. auth 이외의 명령은 실행 시 세션 만료를 자동 점검해 stderr로
-경고한다 (만료됐거나 2시간 미만 남았을 때).`
+파일: 세션 ~/.simsync/cli/session.json (0600), 설정 ~/.simsync/cli/config.json
+세션 만료 정책은 데스크톱 앱과 동일한 24시간. open/store/note 명령은 실행 시
+세션 만료를 자동 점검해 stderr로 경고한다 (만료됐거나 2시간 미만 남았을 때).`
 
 const authUsage = `사용법: simsync auth <login|logout|status>
 
@@ -130,8 +153,28 @@ func runAuth(args []string) error {
 		return cmdLogout()
 	case "status":
 		return cmdStatus()
+	case "git-credential":
+		// 내부용: store clone이 등록하는 git credential helper.
+		return cmdGitCredential(args[1:])
 	default:
 		fmt.Fprintln(os.Stderr, authUsage)
+		os.Exit(2)
+		return nil
+	}
+}
+
+func runStore(args []string) error {
+	sub := ""
+	if len(args) > 0 {
+		sub = args[0]
+	}
+	switch sub {
+	case "clone":
+		return cmdStoreClone(args[1:])
+	case "sync":
+		return cmdStoreSync()
+	default:
+		fmt.Fprintln(os.Stderr, "사용법: simsync store <clone|sync>")
 		os.Exit(2)
 		return nil
 	}
@@ -145,16 +188,23 @@ func main() {
 
 	var err error
 	switch cmd {
-	case "":
-		// 상시 만료 체크: 세션이 있고 만료됐거나 임박했으면 경고 후 진행.
+	case "", "help", "--help", "-h":
+		fmt.Println(usage)
+	case "open":
 		warnIfStale()
 		err = cmdLaunch()
 	case "auth":
 		err = runAuth(os.Args[2:])
+	case "store":
+		warnIfStale()
+		err = runStore(os.Args[2:])
+	case "note":
+		warnIfStale()
+		err = runNote(os.Args[2:])
+	case "guide":
+		err = cmdGuide(os.Args[2:])
 	case "version", "--version", "-v":
 		fmt.Println("simsync version " + version)
-	case "help", "--help", "-h":
-		fmt.Println(usage)
 	default:
 		fmt.Fprintf(os.Stderr, "알 수 없는 명령: %s\n\n%s\n", cmd, usage)
 		os.Exit(2)

@@ -42,8 +42,29 @@ related:
 - 인증 명령을 `auth` 하위로 재구성: `auth login` / `auth logout` / `auth status`
   (gh CLI 관례 — agent들이 이미 아는 이름. 1차의 `login`/`status`는 미배포라 clean break).
 - help 전면 개편: 명령마다 동작 + 용도(agent가 언제 쓰는지) + exit code 계약 명시.
-- 노트 작성 워크플로(클론 기반/API 직접/하이브리드)는
-  `.agent/proposal/cli-note-workflow.md`로 제안 — 소유자 선택 대기.
+- 노트 작성 워크플로 제안(`.agent/proposal/cli-note-workflow.md`) → 소유자 결정:
+  **클론 기반 우선(C)** + **bare `simsync`는 help 출력, 앱 실행은 `simsync open`**.
+
+## 클론 기반 노트 워크플로 구현 (v0.2.0, 같은 PR)
+
+- `store clone <owner/repo> [dir]`: 클론 + 설정 저장(`~/.simsync/cli/config.json`).
+  인증은 클론 로컬 git 설정에 `simsync auth git-credential` helper 등록 (gh 방식) —
+  토큰이 git 설정/URL에 남지 않고, 클론 안 맨 git pull/push도 CLI 세션으로 동작.
+  기존 클론 재실행 시 설정과 helper(바이너리 이동 대비)만 갱신.
+- `note new [--date] [--title] [--memo] [--tags]`: 데스크톱 GitHubNoteStorage와
+  동일 규칙으로 스캐폴드 (경로 sanitize, 밀리초 id, frontmatter, 날짜 첫 일일
+  노트만 is_default — 메모는 세지 않음). stdout 마지막 줄 = 파일 경로 (agent 계약).
+- `store sync`: dirty면 커밋 요구 후 실패, 아니면 pull --rebase + push.
+- `guide [overview|note-format|guidelines]`: 클론의 `.agents/` 우선, 없으면
+  go:embed 내장본(cli/guides/*.md — 하네스 템플릿과 동일 원문). 출처는 stderr.
+- bare `simsync` → help 출력 (agent가 GUI를 실수로 띄우는 사고 방지), 앱 실행은
+  `simsync open`. 버전 0.2.0.
+
+## 검증 (2차분)
+
+- go test: 클론→note new→커밋→sync 엔드투엔드(로컬 bare repo), 스캐폴드
+  frontmatter/기본노트 규칙/메모 예외, git-credential get(정상·만료 거부),
+  guide 내장/클론 우선, dirty sync 거부, 기존 클론 재설정.
 
 ## 2차 후보 (plan.md 참고)
 

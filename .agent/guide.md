@@ -57,7 +57,7 @@ Agent가 이 프로젝트에 효과적으로 기여하려면 아래 영역의 �
 |-----------|-----------|--------|
 | Client (Desktop) | Flutter (Dart) | `desktop/` - macOS/Windows/Linux |
 | Client (Mobile) | Flutter (Dart) | `mobile/` - Android/iOS |
-| CLI | Go (stdlib only) | `cli/` - 앱 실행/로그인/세션 상태. 1차는 macOS만 |
+| CLI | Go (stdlib only) | `cli/` - 앱 실행/로그인/세션 상태/노트 스캐폴드(클론 기반). 1차는 macOS만 |
 | Auth (Desktop) | GitHub OAuth App | Device Flow (client_id만, 시크릿 불요) + local session restore |
 | Auth (Mobile) | GitHub OAuth App | Custom URL Scheme (`simsync://callback`) + app_links (아직 redirect flow) |
 | Synced Storage | GitHub Contents API | 로컬 git clone 없이 API로 markdown 파일 CRUD |
