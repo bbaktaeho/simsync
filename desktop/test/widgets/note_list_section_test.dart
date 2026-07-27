@@ -29,6 +29,8 @@ Future<void> _pump(
   List<Note> notes, {
   Future<void> Function(Note)? onConvertToSynced,
   Future<void> Function(Note)? onConvertToLocal,
+  void Function({bool memo})? onCreateSyncNote,
+  void Function({bool memo})? onCreateLocalNote,
 }) async {
   await tester.pumpWidget(MaterialApp(
     theme: buildLightTheme(),
@@ -43,7 +45,8 @@ Future<void> _pump(
           totalPages: 1,
           totalCount: notes.length,
           onNoteSelected: (_) {},
-          onCreateSyncNote: () {},
+          onCreateSyncNote: onCreateSyncNote ?? ({bool memo = false}) {},
+          onCreateLocalNote: onCreateLocalNote,
           onPageChanged: (_) {},
           onConvertToSynced: onConvertToSynced,
           onConvertToLocal: onConvertToLocal,
@@ -120,6 +123,46 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('로컬 노트로 전환'), findsNothing);
+  });
+
+  testWidgets('추가 메뉴에서 메모를 곧바로 생성할 수 있다 (동기화/로컬)', (tester) async {
+    final created = <String>[];
+    await _pump(
+      tester,
+      const [],
+      onCreateSyncNote: ({bool memo = false}) =>
+          created.add(memo ? 'sync_memo' : 'sync'),
+      onCreateLocalNote: ({bool memo = false}) =>
+          created.add(memo ? 'local_memo' : 'local'),
+    );
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('동기화 노트'), findsOneWidget);
+    expect(find.text('로컬 노트'), findsOneWidget);
+    expect(find.text('로컬 메모'), findsOneWidget);
+
+    await tester.tap(find.text('동기화 메모'));
+    await tester.pumpAndSettle();
+    expect(created, ['sync_memo']);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('로컬 메모'));
+    await tester.pumpAndSettle();
+    expect(created, ['sync_memo', 'local_memo']);
+  });
+
+  testWidgets('로컬 콜백이 없으면 로컬 항목이 메뉴에서 숨는다', (tester) async {
+    await _pump(tester, const []);
+
+    await tester.tap(find.byIcon(Icons.add_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.text('동기화 노트'), findsOneWidget);
+    expect(find.text('동기화 메모'), findsOneWidget);
+    expect(find.text('로컬 노트'), findsNothing);
+    expect(find.text('로컬 메모'), findsNothing);
   });
 
   testWidgets('onConvertToSynced가 null이면 전환 항목이 없다', (tester) async {

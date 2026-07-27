@@ -16,6 +16,7 @@ import '../theme/app_text_styles.dart';
 import 'app_logo_mark.dart';
 import 'calendar_section.dart';
 import 'editor_panel.dart';
+import 'note_list_menus.dart';
 
 /// The compact popover shown from the macOS menu bar.
 ///
@@ -235,9 +236,13 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
             onTap: () => _c.setMemoTab(true),
           ),
           const Spacer(),
-          _AddButton(
-            onTap: () => _c.createNote(memo: _c.memoTabActive),
-            tooltip: _c.memoTabActive ? '메모 추가' : '노트 추가',
+          // 메인 창 리스트 헤더와 같은 추가 메뉴 — 동기화/로컬 × 노트/메모.
+          AddNoteMenuButton(
+            onCreateSync: ({bool memo = false}) => _c.createNote(memo: memo),
+            onCreateLocal: _c.hasLocalStorage
+                ? ({bool memo = false}) =>
+                    _c.createNote(memo: memo, local: true)
+                : null,
           ),
         ],
       ),
@@ -256,6 +261,8 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
           key: ValueKey(note.id),
           note: note,
           onTap: () => _c.openNote(note),
+          onSecondaryTapUp: (position) =>
+              _showNoteMenu(context, note, position),
         );
       },
     );
@@ -393,6 +400,30 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
     );
   }
 
+  /// 노트 우클릭 메뉴 — 메인 창 사이드바와 같은 항목(전환/이동/삭제)을
+  /// 컨트롤러 액션에 연결한다. 로컬 스토리지가 없으면 전환 항목이 숨는다.
+  void _showNoteMenu(BuildContext context, Note note, Offset position) {
+    final hasLocal = _c.hasLocalStorage;
+    showNoteContextMenu(
+      context: context,
+      position: position,
+      note: note,
+      onConvertToSynced:
+          hasLocal ? () => unawaited(_c.convertNote(note)) : null,
+      onConvertToLocal:
+          hasLocal ? () => unawaited(_c.convertNote(note)) : null,
+      onMoveToMemo: () => unawaited(_c.setMemo(note, true)),
+      onMoveToDaily: () => unawaited(_c.setMemo(note, false)),
+      onDelete: () => unawaited(_confirmAndDelete(note)),
+    );
+  }
+
+  Future<void> _confirmAndDelete(Note note) async {
+    if (!mounted) return;
+    if (!await confirmNoteDelete(context, note)) return;
+    await _c.deleteNote(note);
+  }
+
   Future<void> _showAddMenu(DateTime date, Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final memo = await showMenu<bool>(
@@ -480,30 +511,19 @@ class _TabChip extends StatelessWidget {
   }
 }
 
-class _AddButton extends StatelessWidget {
-  const _AddButton({required this.onTap, required this.tooltip});
-
-  final VoidCallback onTap;
-  final String tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return IconButton(
-      icon: Icon(Icons.add_rounded, size: 18, color: c.textSecondary),
-      onPressed: onTap,
-      tooltip: tooltip,
-      splashRadius: 16,
-      visualDensity: VisualDensity.compact,
-    );
-  }
-}
-
 class _NoteRow extends StatefulWidget {
-  const _NoteRow({super.key, required this.note, required this.onTap});
+  const _NoteRow({
+    super.key,
+    required this.note,
+    required this.onTap,
+    required this.onSecondaryTapUp,
+  });
 
   final Note note;
   final VoidCallback onTap;
+
+  /// 우클릭 시 전역 좌표를 넘긴다 (컨텍스트 메뉴 표시용).
+  final ValueChanged<Offset> onSecondaryTapUp;
 
   @override
   State<_NoteRow> createState() => _NoteRowState();
@@ -530,6 +550,8 @@ class _NoteRowState extends State<_NoteRow> {
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
         onTap: widget.onTap,
+        onSecondaryTapUp: (details) =>
+            widget.onSecondaryTapUp(details.globalPosition),
         child: Container(
           margin: const EdgeInsets.symmetric(
             horizontal: AppDimensions.spacingSm,
