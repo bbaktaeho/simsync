@@ -61,8 +61,11 @@ class EditorPanel extends StatefulWidget {
   final Note? note;
   final ValueChanged<Note>? onNoteChanged;
   final DateTime? selectedDate;
-  final VoidCallback? onCreateNote;
-  final VoidCallback? onCreateLocalNote;
+  /// 동기화 노트/메모 생성. [memo]가 true면 메모로 만든다.
+  final void Function({bool memo})? onCreateNote;
+
+  /// 로컬 노트/메모 생성. null이면 로컬 버튼이 숨는다.
+  final void Function({bool memo})? onCreateLocalNote;
   final bool isReadOnly;
   final String? readOnlyReason;
   final double contentScale;
@@ -681,13 +684,15 @@ class EditorPanelState extends State<EditorPanel> {
               style: AppTextStyles.caption.copyWith(color: c.textMuted),
             ),
             const SizedBox(height: AppDimensions.spacingXl),
+            // 위: 날짜에 매인 노트, 아래: 날짜 무관 메모. 같은 버튼 위젯을
+            // 써서 두 줄의 크기가 같다 (라벨 길이도 동일).
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 _CreateNoteButton(
                   label: '동기화 노트',
                   icon: Icons.cloud_outlined,
-                  onTap: widget.onCreateNote,
+                  onTap: () => widget.onCreateNote?.call(memo: false),
                 ),
                 if (widget.onCreateLocalNote != null) ...[
                   const SizedBox(width: AppDimensions.spacingSm),
@@ -695,7 +700,27 @@ class EditorPanelState extends State<EditorPanel> {
                     label: '로컬 노트',
                     icon: Icons.folder_outlined,
                     useLocalAccent: true,
-                    onTap: widget.onCreateLocalNote,
+                    onTap: () => widget.onCreateLocalNote?.call(memo: false),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: AppDimensions.spacingSm),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _CreateNoteButton(
+                  label: '동기화 메모',
+                  icon: Icons.sticky_note_2_outlined,
+                  onTap: () => widget.onCreateNote?.call(memo: true),
+                ),
+                if (widget.onCreateLocalNote != null) ...[
+                  const SizedBox(width: AppDimensions.spacingSm),
+                  _CreateNoteButton(
+                    label: '로컬 메모',
+                    icon: Icons.sticky_note_2_outlined,
+                    useLocalAccent: true,
+                    onTap: () => widget.onCreateLocalNote?.call(memo: true),
                   ),
                 ],
               ],
