@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/note.dart';
 import '../search/note_search_index.dart';
 import '../search/note_search_query.dart';
@@ -21,6 +22,7 @@ import '../services/review_controller.dart';
 import '../services/review_outline.dart';
 import '../services/review_paths.dart';
 import '../services/review_service.dart';
+import '../services/update_checker.dart';
 import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
 import '../storage/note_storage.dart';
@@ -35,6 +37,7 @@ import '../widgets/note_list_section.dart';
 import '../widgets/note_search_section.dart';
 import '../widgets/search_filter_panel.dart';
 import '../widgets/search_results_panel.dart';
+import '../widgets/update_button.dart';
 import '../widgets/weekly_view_panel.dart';
 import 'settings_screen.dart';
 
@@ -156,6 +159,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
   // Owns weekly/monthly review generation state so it survives the weekly panel
   // being closed or another note being opened (background generation).
   final ReviewController _reviewController = ReviewController();
+  // GitHub 릴리즈를 10분마다 확인해 새 버전이 있으면 타이틀바에 알린다.
+  final UpdateChecker _updateChecker = UpdateChecker();
   NoteSearchQuery _searchQuery = const NoteSearchQuery();
   List<SearchResult> _searchResults = [];
   Timer? _searchDebounce;
@@ -177,6 +182,8 @@ class _DocumentScreenState extends State<DocumentScreen> {
     widget.openSettingsSignal?.addListener(_onOpenSettingsSignal);
     widget.settingsController.addListener(_handleSettingsChanged);
     HardwareKeyboard.instance.addHandler(_handleHardwareKeyEvent);
+    _updateChecker.addListener(_handleSettingsChanged);
+    _updateChecker.start();
   }
 
   @override
@@ -223,8 +230,21 @@ class _DocumentScreenState extends State<DocumentScreen> {
     widget.openSettingsSignal?.removeListener(_onOpenSettingsSignal);
     widget.settingsController.removeListener(_handleSettingsChanged);
     HardwareKeyboard.instance.removeHandler(_handleHardwareKeyEvent);
+    _updateChecker.removeListener(_handleSettingsChanged);
+    _updateChecker.dispose();
     _reviewController.dispose();
     super.dispose();
+  }
+
+  /// 릴리즈 페이지를 브라우저로 연다. 앱이 자동 설치까지 하지는 않으므로
+  /// (서명·공증 없는 DMG 배포) 사용자가 거기서 새 버전을 받는다.
+  void _openReleasePage() {
+    final url = _updateChecker.releaseUrl;
+    if (url == null || url.isEmpty) return;
+    unawaited(
+      launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication)
+          .catchError((_) => false),
+    );
   }
 
   void _onOpenSettingsSignal() {
@@ -1583,6 +1603,14 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
           ),
           const Spacer(),
+          if (_updateChecker.hasUpdate) ...[
+            UpdateButton(
+              version: _updateChecker.availableTag!,
+              onOpen: _openReleasePage,
+              onDismiss: _updateChecker.dismiss,
+            ),
+            const SizedBox(width: AppDimensions.spacingSm),
+          ],
           _ThemeToggleButton(settings: widget.settingsController),
           const SizedBox(width: AppDimensions.spacingXs),
           IconButton(
