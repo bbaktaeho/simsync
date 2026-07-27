@@ -53,7 +53,39 @@ related:
   으로 클론 없는 상태에서 두 명령 모두 차단 + 디렉토리 미생성 확인,
   store status는 보고만 하는지 확인.
 
+## 추가 수정: credential helper 격리 + PATH 이름 등록
+
+소유자 질문("바이너리 경로 이동이 이슈인가")을 검증하다 더 큰 문제를 발견했다.
+
+**발견**: macOS Xcode git은 시스템 스코프에 `credential.helper = osxkeychain`을
+박아둔다(`/Applications/Xcode.app/.../git-core/gitconfig`). git은 system →
+global → local 순으로 helper를 시도하므로, keychain에 github.com 자격 증명이
+있으면 거기서 답이 나오고 **우리 local helper는 호출조차 되지 않는다**.
+`GIT_TRACE`로 확인: `git credential-osxkeychain get` 하나만 실행됨.
+
+즉 "클론 안의 맨 git pull/push도 CLI 세션으로 동작한다"는 기존 주장이 이런
+환경에서는 사실이 아니었다 (다른 신원으로 조용히 인증됨).
+
+**수정 1 — helper 목록 리셋**: 클론 local 설정에 빈 값을 먼저 넣어 상위
+스코프 목록을 지운 뒤 SimSync helper를 등록한다. 신규 클론은
+`--config credential.helper=` + `--config credential.helper=<spec>`, 기존 클론은
+`--replace-all` + `--add`. 리셋은 해당 클론에만 적용된다.
+부수효과도 바람직하다: 세션 만료 시 다른 토큰으로 넘어가지 않고 명확히 실패.
+
+**수정 2 — PATH에 있으면 이름으로 등록**: `exec.LookPath("simsync")`가 성공하면
+`!simsync auth git-credential`로 기록한다. PATH 안에서 바이너리를 옮기거나
+교체해도 클론 설정을 고칠 필요가 없다. 못 찾으면 절대 경로 폴백(이 경우에만
+"옮기면 store clone 재실행" 주의가 적용).
+
+**검증**: 테스트에서 local 설정이 `["", helper]` 두 항목인지 확인
+(`--get-all`은 빈 값이 TrimSpace에 지워져 `--list`로 파싱). 실기로 실제 스토어
+클론을 갱신해 `GIT_TRACE` 상 SimSync helper가 실행되고 `username=x-access-token`
+이 나오는 것까지 확인.
+
 ## 릴리즈 범위
 
-CLI 전용 0.3.2. 데스크톱 앱은 0.3.1에서 변경 없음 (`desktop/pubspec.yaml`은
-0.3.1+6 유지). 릴리즈에는 편의를 위해 0.3.1과 동일한 DMG를 함께 첨부한다.
+소유자 요청으로 **v0.3.1 하나로 통합**한다 (릴리즈가 너무 많아짐). v0.3.2는
+삭제하고, 이 문서의 모든 CLI 수정을 v0.3.1에 포함시킨다. CLI 내부 버전도
+0.3.1로 되돌려 태그와 일치시킨다. 데스크톱 앱은 변경 없음(pubspec 0.3.1+6).
+릴리즈 노트의 앱 설치 안내는 adhoc 서명(=Gatekeeper가 반드시 차단, `spctl`
+rejected 확인)에 맞춰 `xattr -cr`를 조건부 각주가 아닌 필수 단계로 고쳤다.

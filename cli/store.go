@@ -190,6 +190,41 @@ func setSharedStore(entry repoEntry) error {
 	return os.WriteFile(path, raw, 0o644)
 }
 
+// credentialHelperSpec은 클론에 등록할 credential helper 명령을 만든다.
+//
+// PATH에서 simsync를 찾을 수 있으면 이름만 쓴다 — 바이너리를 PATH 안에서
+// 옮기거나 새 버전으로 교체해도 클론 설정을 고칠 필요가 없다. 못 찾으면
+// (PATH에 설치하지 않고 직접 실행한 경우) 현재 실행 파일의 절대 경로로
+// 폴백한다. 이때는 바이너리를 옮기면 store clone을 다시 실행해야 한다.
+func credentialHelperSpec() (string, error) {
+	if _, err := exec.LookPath("simsync"); err == nil {
+		return "!simsync auth git-credential", nil
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return "!" + exe + " auth git-credential", nil
+}
+
+// setCredentialHelper는 [dir] 클론의 local 설정에 helper를 등록한다.
+//
+// 빈 값을 먼저 넣어 상위 스코프의 helper 목록을 리셋하는 것이 핵심이다.
+// macOS의 Xcode git은 시스템 설정에 `credential.helper = osxkeychain`을 박아
+// 두는데, git은 system → global → local 순으로 helper를 시도하므로 keychain에
+// github.com 자격 증명이 있으면 거기서 답이 나오고 우리 helper까지 오지 않는다
+// (= SimSync 세션이 아닌 다른 신원으로 인증됨). 리셋은 이 클론에만 적용되므로
+// 사용자의 다른 저장소에는 영향이 없다.
+func setCredentialHelper(dir, spec string) error {
+	if out, err := runGit(dir, "config", "--replace-all", "credential.helper", ""); err != nil {
+		return fmt.Errorf("credential helper 초기화 실패: %s", out)
+	}
+	if out, err := runGit(dir, "config", "--add", "credential.helper", spec); err != nil {
+		return fmt.Errorf("credential helper 등록 실패: %s", out)
+	}
+	return nil
+}
+
 var repoRe = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
 
 // 테스트에서 로컬 bare repo(file://)로 바꿔치기한다.
@@ -261,17 +296,16 @@ func cmdStoreClone(args []string) error {
 		return err
 	}
 
-	exe, err := os.Executable()
+	helper, err := credentialHelperSpec()
 	if err != nil {
 		return err
 	}
-	helper := "!" + exe + " auth git-credential"
 
 	// 이미 클론된 디렉토리면 설정과 credential helper만 갱신한다 (재클론 강요
 	// 없음 — helper는 바이너리 경로가 바뀌었을 수 있어 항상 다시 쓴다).
 	if _, statErr := os.Stat(filepath.Join(dir, ".git")); statErr == nil {
-		if out, err := runGit(dir, "config", "credential.helper", helper); err != nil {
-			return fmt.Errorf("credential helper 갱신 실패: %s", out)
+		if err := setCredentialHelper(dir, helper); err != nil {
+			return err
 		}
 		if err := saveConfig(&cliConfig{Repo: repo, ClonePath: dir}); err != nil {
 			return err
@@ -284,8 +318,11 @@ func cmdStoreClone(args []string) error {
 	}
 
 	// --config는 초기 fetch부터 적용되고 클론의 로컬 설정으로 저장된다.
+	// 빈 값을 먼저 줘 상위 스코프 helper(osxkeychain 등)를 리셋한다 —
+	// [setCredentialHelper] 주석 참고.
 	cmd := exec.Command("git", "clone",
 		"--branch", entry.Branch,
+		"--config", "credential.helper=",
 		"--config", "credential.helper="+helper,
 		gitRemoteURL(repo), dir)
 	cmd.Stdout = os.Stdout

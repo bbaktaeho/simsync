@@ -71,10 +71,30 @@ cd /tmp && simsync help   # 다른 디렉토리에서도 동작하는지
 `command not found`가 나면 바이너리가 PATH 밖에 있다는 뜻이다. `echo $PATH`로
 나열된 디렉토리를 확인하고 그중 한 곳으로 옮긴다.
 
-> **바이너리를 옮겼다면 `simsync store clone`을 다시 실행한다.**
-> `store clone`은 git credential helper로 CLI 바이너리의 **절대 경로**를 클론
-> 설정에 기록한다. 경로가 바뀌면 클론 안의 git 인증이 깨지므로, 설치 위치를
-> 확정한 뒤 clone 하거나 옮긴 뒤 다시 clone 한다 (재클론 없이 설정만 갱신된다).
+> **PATH에 설치했다면** `store clone`이 credential helper를 `simsync`라는
+> 이름으로 등록하므로, 이후 바이너리를 PATH 안에서 옮기거나 새 버전으로
+> 바꿔도 그대로 동작한다.
+>
+> **PATH 밖에서 직접 실행했다면** 절대 경로가 기록되므로, 바이너리를 옮긴 뒤
+> `simsync store clone`을 한 번 다시 실행한다 (재클론 없이 설정만 갱신된다).
+
+### 클론의 git 인증 격리
+
+`store clone`은 클론의 **local** 설정에 credential helper 목록을 리셋(빈 값)한
+뒤 SimSync helper를 등록한다. macOS의 Xcode git은 시스템 설정에
+`credential.helper = osxkeychain`을 박아두는데, git은 system → global → local
+순으로 helper를 시도하므로 리셋이 없으면 keychain이 먼저 답해 **SimSync 세션이
+아닌 다른 신원으로 인증된다**. 리셋은 이 클론에만 적용되므로 다른 저장소에는
+영향이 없다.
+
+확인:
+
+```bash
+cd <클론 경로>
+printf 'protocol=https\nhost=github.com\n\n' | GIT_TRACE=1 git credential fill
+# → run_command: 'simsync auth git-credential get'
+# → username=x-access-token
+```
 
 ## 시작하기
 
