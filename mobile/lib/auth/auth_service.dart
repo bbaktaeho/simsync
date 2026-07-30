@@ -43,7 +43,21 @@ class DefaultAuthService implements AuthService {
       return null;
     }
 
-    return session;
+    // Sliding window: a successful restore pushes expiry out by the full
+    // policy window, so regular use never hits it — only a device idle for
+    // the whole window has to sign in again. Renewal is restore-time only;
+    // the periodic in-app check validates but does not extend.
+    final renewed = AuthSession(
+      provider: session.provider,
+      accessToken: session.accessToken,
+      tokenType: session.tokenType,
+      scope: session.scope,
+      issuedAt: session.issuedAt,
+      expiresAt: _policy.calculateExpiry(_nowProvider()),
+      user: session.user,
+    );
+    await _store.write(renewed);
+    return renewed;
   }
 
   @override

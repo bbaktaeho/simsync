@@ -79,6 +79,10 @@ void main() {
 
     expect(session, isNotNull);
     expect(store.clearCalls, 0);
+    // Sliding window: a successful restore renews the stored expiry from now.
+    expect(session!.expiresAt, DateTime.utc(2026, 3, 11, 10));
+    expect(session.issuedAt, DateTime.utc(2026, 3, 10, 9));
+    expect(store.savedSession!.expiresAt, DateTime.utc(2026, 3, 11, 10));
   });
 
   test('DefaultAuthService clears expired session on restore', () async {

@@ -88,7 +88,8 @@ AI agent 권장 워크플로:
 CLI 전용: ~/.simsync/cli/config.json (클론 위치)
 
 앱이 "실행 중"일 때 CLI가 세션/스토어를 바꾸면 앱은 다음 시작에 반영한다.
-세션 만료 정책은 앱과 동일한 24시간. open/store/note 명령은 실행 시 세션
+세션 만료 정책은 앱과 동일한 30일. 앱이 세션 복원에 성공할 때마다 만료가
+now+30일로 연장된다(sliding window). open/store/note 명령은 실행 시 세션
 만료를 자동 점검해 stderr로 경고한다 (만료됐거나 2시간 미만 남았을 때).`
 
 const authUsage = `사용법: simsync auth <login|logout|status>
