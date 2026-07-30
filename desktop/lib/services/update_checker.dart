@@ -4,11 +4,11 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
-/// 이 앱의 버전. **릴리즈 태그(`v0.3.1`)의 숫자 부분과 항상 같게 유지한다** —
+/// 이 앱의 버전. **릴리즈 태그(`vX.Y.Z`)의 숫자 부분과 항상 같게 유지한다** —
 /// 업데이트 감지가 이 값과 최신 태그를 비교하기 때문이다.
 /// `pubspec.yaml`의 version과 일치해야 하며, 어긋나면
 /// `test/services/update_checker_test.dart`가 실패한다.
-const String appVersion = '0.3.1';
+const String appVersion = '0.3.2';
 
 /// 릴리즈 목록 조회 URL. 모든 릴리즈가 prerelease라 `/releases/latest`는 404를
 /// 낸다 — 목록에서 최신(생성 역순 첫 항목)을 직접 고른다.
