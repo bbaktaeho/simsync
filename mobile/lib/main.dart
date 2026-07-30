@@ -514,7 +514,7 @@ AuthService createDefaultAuthService() {
   return DefaultAuthService(
     provider: _oauthProvider,
     store: FileSessionStore(directoryProvider: getApplicationSupportDirectory),
-    policy: const SessionPolicy(maxAge: Duration(hours: 24)),
+    policy: const SessionPolicy(maxAge: Duration(days: 30)),
     nowProvider: DateTime.now,
   );
 }

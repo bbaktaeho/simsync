@@ -156,6 +156,8 @@ func TestExpiredAndFormatDuration(t *testing.T) {
 		41 * time.Minute:              "41분",
 		23*time.Hour + 41*time.Minute: "23시간 41분",
 		-(3 * time.Hour):              "3시간 0분",
+		30 * 24 * time.Hour:           "30일",
+		29*24*time.Hour + 13*time.Hour + 41*time.Minute: "29일 13시간",
 	}
 	for d, want := range cases {
 		if got := formatDuration(d); got != want {
