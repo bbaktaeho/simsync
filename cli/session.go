@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-// 데스크톱 SessionPolicy(maxAge: 24h)와 동일한 만료 정책.
-const sessionMaxAge = 24 * time.Hour
+// 데스크톱 SessionPolicy(maxAge: 30일)와 동일한 만료 정책. 앱은 세션 복원에
+// 성공할 때마다 만료를 now+30일로 연장한다(sliding window). CLI 로그인은
+// 같은 창으로 발급하고, 연장은 앱 쪽에서 일어난다.
+const sessionMaxAge = 30 * 24 * time.Hour
 
 // 만료가 이 시간 미만으로 남으면 상시 체크가 경고를 띄운다.
 const sessionWarnWindow = 2 * time.Hour
@@ -174,7 +176,8 @@ func formatTime(t time.Time) string {
 	return t.Local().Format("2006-01-02 15:04")
 }
 
-// formatDuration은 "23시간 41분", "41분", "1분 미만" 형태로 표시한다.
+// formatDuration은 "30일", "29일 13시간", "23시간 41분", "41분", "1분 미만"
+// 형태로 표시한다.
 func formatDuration(d time.Duration) string {
 	if d < 0 {
 		d = -d
@@ -184,6 +187,12 @@ func formatDuration(d time.Duration) string {
 	}
 	h := int(d.Hours())
 	m := int(d.Minutes()) % 60
+	if days := h / 24; days > 0 {
+		if h%24 == 0 {
+			return fmt.Sprintf("%d일", days)
+		}
+		return fmt.Sprintf("%d일 %d시간", days, h%24)
+	}
 	if h == 0 {
 		return fmt.Sprintf("%d분", m)
 	}
