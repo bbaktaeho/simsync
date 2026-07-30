@@ -68,8 +68,10 @@ AI agent 권장 워크플로:
 
   note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--tags a,b]
                  클론 안에 노트 파일을 규칙대로 스캐폴드한다 (경로·frontmatter 자동).
-                 stdout 마지막 줄이 생성된 파일의 절대 경로다.
-                 용도: 노트 생성의 시작점. frontmatter는 손대지 말고 본문만 작성한다.
+                 본문 작성 규칙 요약을 함께 출력한다. stdout 마지막 줄이 생성된
+                 파일의 절대 경로다.
+                 용도: 노트 생성의 시작점. frontmatter는 손대지 말고 본문만
+                 작성하며, 출력된 본문 작성 규칙을 따른다.
 
   guide [overview|note-format|guidelines]
                  노트 작성/작업 규칙을 출력한다. 클론의 .agents/가 있으면 그쪽을,

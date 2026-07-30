@@ -115,6 +115,14 @@ func cmdNoteNew(args []string) error {
 	}
 
 	fmt.Println("노트 스캐폴드를 만들었습니다. frontmatter는 수정하지 말고 본문만 작성하세요.")
+	fmt.Println()
+	fmt.Println("본문 작성 규칙 (템플릿 예시: simsync guide note-format):")
+	fmt.Println("  - 본문은 ## 헤더로 시작하고, 주제가 바뀌면 헤더로 섹션을 나눈다")
+	fmt.Println("  - 나열은 \"- \" 리스트로 쓴다")
+	fmt.Println("  - 키워드나 핵심 값은 `백틱`으로 강조한다")
+	fmt.Println("  - 명령어, 코드, 로그는 코드블록(```)에 넣는다")
+	fmt.Println("  - 같은 꼴의 항목이 반복되는 정돈된 내용은 표로 정리한다")
+	fmt.Println()
 	fmt.Println("작성 후: 클론에서 git add/commit → 'simsync store sync'")
 	fmt.Println(path)
 	return nil
