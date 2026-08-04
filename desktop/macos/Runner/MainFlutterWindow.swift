@@ -13,6 +13,10 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Where should the tray popover appear? Computed natively — see
+    // TrayAnchorChannel below and MenuBarManager._popoverAnchor (Dart).
+    TrayAnchorChannel.register(flutterViewController.engine.binaryMessenger)
+
     // The menu bar popover runs in a desktop_multi_window sub-window. That
     // sub-window is a plain titled NSWindow, and that class is why every
     // previous full-screen attempt failed: `.nonactivatingPanel` is honored
@@ -90,6 +94,48 @@ enum PopoverPanel {
       bridge.handle(call, result: result)
     }
     bridges.append(bridge)
+  }
+}
+
+/// Main-engine channel answering "where should the tray popover appear?".
+///
+/// Why native: the Dart side has no trustworthy source for this on
+/// multi-monitor setups. tray_manager's getBounds flips y against
+/// NSScreen.main (the key window's screen — it drifts with focus), and
+/// screen_retriever's cursor point flips against yet another reference, so
+/// with a second monitor or after a resolution change the popover used to
+/// land on the wrong display or at the bottom of the screen. Here the
+/// clicked display is identified from the live pointer location and the
+/// anchor is derived from that display's own metrics (PopoverAnchor.swift),
+/// in the primary-anchored top-left space window_manager's setPosition
+/// expects — so the round-trip is exact by construction.
+enum TrayAnchorChannel {
+  static func register(_ messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "simsync/tray", binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "popoverAnchor" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let screens = NSScreen.screens.map {
+        ScreenGeometry(frame: $0.frame, visibleFrame: $0.visibleFrame)
+      }
+      guard !screens.isEmpty else {
+        result(nil)
+        return
+      }
+      let args = call.arguments as? [String: Any]
+      let iconRight = (args?["iconRight"] as? NSNumber)
+        .map { CGFloat(truncating: $0) }
+      let width = CGFloat(truncating: (args?["width"] as? NSNumber) ?? 332)
+      let anchor = PopoverAnchor.compute(
+        mouse: NSEvent.mouseLocation,
+        screens: screens,
+        iconRight: iconRight,
+        width: width)
+      result(["x": anchor.x, "y": anchor.y])
+    }
   }
 }
 
