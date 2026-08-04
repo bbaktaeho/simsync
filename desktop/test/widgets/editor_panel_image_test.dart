@@ -298,6 +298,37 @@ void main() {
         'abc\n\n<img src="assets/img-test.png" width="1" height="1">\n\ndef');
   });
 
+  testWidgets('첨부 후 캐럿은 태그 다음 줄 머리에 있다', (tester) async {
+    // 태그 줄의 라인 박스는 이미지 높이만큼 예약되므로 캐럿을 태그 줄 끝에
+    // 두면 이미지 밴드 하단에 그려지고, 이어서 타이핑하면 태그 줄이 깨진다.
+    final key = GlobalKey<EditorPanelState>();
+    await tester.pumpWidget(MaterialApp(
+      theme: buildLightTheme(),
+      home: Scaffold(
+        body: EditorPanel(
+          key: key,
+          note: note('abc\ndef'),
+          onNoteChanged: (_) {},
+          onLoadImage: (src) async => _png,
+          onAttachImage: (bytes, ext) async => 'assets/img-test.$ext',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    field.controller!.selection = const TextSelection.collapsed(offset: 1);
+    await tester.runAsync(() async {
+      await key.currentState!.attachImageBytes(_png, 'png');
+      await Future<void>.delayed(const Duration(seconds: 2));
+    });
+    await tester.pump();
+    const beforeCaret =
+        'abc\n\n<img src="assets/img-test.png" width="1" height="1">\n';
+    expect(field.controller!.text, '$beforeCaret\ndef');
+    expect(field.controller!.selection.baseOffset, beforeCaret.length,
+        reason: '캐럿은 태그 줄이 아니라 그 다음 줄 머리에 있어야 한다');
+  });
+
   testWidgets('onAttachImage 실패 시 태그를 삽입하지 않고 스낵바를 띄운다',
       (tester) async {
     final key = GlobalKey<EditorPanelState>();

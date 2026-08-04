@@ -377,8 +377,12 @@ class EditorPanelState extends State<EditorPanel> {
     final insertion = '$prefix$tag$suffix';
     _contentController.value = TextEditingValue(
       text: text.replaceRange(insertAt, insertAt, insertion),
+      // 캐럿은 태그 줄이 아니라 그 다음 줄 머리에 둔다. 태그 줄의 라인 박스는
+      // 이미지 높이만큼 예약되어 캐럿이 이미지 밴드 하단에 그려지고, 그대로
+      // 타이핑하면 태그 줄이 깨진다. 태그 뒤 개행은 모든 분기에서 보장된다
+      // (suffix가 ''인 분기는 기존 '\n\n'을 재사용).
       selection: TextSelection.collapsed(
-          offset: insertAt + prefix.length + tag.length),
+          offset: insertAt + prefix.length + tag.length + 1),
     );
     _onContentChanged();
   }
