@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:simsync/models/note.dart';
+import 'package:simsync/services/markdown_editing.dart';
 import 'package:simsync/theme/app_theme.dart';
 import 'package:simsync/widgets/editor_panel.dart';
 import 'package:simsync/widgets/inline_image_view.dart';
@@ -235,8 +237,11 @@ void main() {
     });
     await tester.pump();
     expect(uploaded, _png);
+    // 문서 끝 삽입은 빈 줄을 하나 남긴다. 개행이 하나뿐이면 태그 줄이 마지막
+    // 실제 줄이 되어, 그 뒤 고스트 줄이 태그 줄의 예약 글리프(이미지 높이)를
+    // 물려받아 캐럿이 이미지 한참 아래에 그려진다.
     expect(saved!.content,
-        '<img src="assets/img-test.png" width="1" height="1">\n');
+        '<img src="assets/img-test.png" width="1" height="1">\n\n');
   });
 
   testWidgets('줄 중간에서 첨부해도 줄을 쪼개지 않고 앞뒤 빈 줄과 함께 삽입된다',
@@ -402,4 +407,107 @@ void main() {
     final field = tester.widget<TextField>(find.byType(TextField).last);
     expect(field.controller!.text, isNot(contains('<img')));
   });
+
+  // ── 리사이즈 ──
+
+  Finder resizeHandle() => find.descendant(
+        of: find.byType(InlineImageView),
+        matching: find.byWidgetPredicate((w) =>
+            w is Container &&
+            w.constraints?.maxWidth == 14 &&
+            w.constraints?.maxHeight == 14),
+      );
+
+  RenderEditable editableOf(WidgetTester tester) => tester
+      .state<EditableTextState>(find.descendant(
+          of: find.byWidgetPredicate((w) =>
+              w is TextField &&
+              w.decoration?.hintText == 'Start writing in markdown...'),
+          matching: find.byType(EditableText)))
+      .renderEditable;
+
+  /// 이미지 태그 줄이 예약한 밴드(줄 박스) 높이.
+  double bandHeight(WidgetTester tester, int start, int end) {
+    final boxes = editableOf(tester).getBoxesForSelection(
+        TextSelection(baseOffset: start, extentOffset: end));
+    if (boxes.isEmpty) return -1;
+    var top = double.infinity, bottom = double.negativeInfinity;
+    for (final b in boxes) {
+      if (b.top < top) top = b.top;
+      if (b.bottom > bottom) bottom = b.bottom;
+    }
+    return bottom - top;
+  }
+
+  testWidgets('리사이즈 드래그 도중에도 줄 높이 예약이 이미지를 따라온다',
+      (tester) async {
+    // 미리보기를 위젯 안에만 들고 있으면 줄 높이 예약(태그 속성으로 계산)이
+    // 그대로라, 늘리는 동안 아래 본문이 전혀 밀리지 않다가 드롭하는 순간
+    // 한 번에 밀린다.
+    await pump(tester, note('$img\n\nbelow'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    field.controller!.selection = const TextSelection.collapsed(offset: 0);
+    await tester.pumpAndSettle();
+    expect(resizeHandle(), findsOneWidget);
+
+    final startTag = field.controller!.text.split('\n').first;
+    final startBand = bandHeight(tester, 0, img.length);
+    final bands = <double>[];
+    final g = await tester.startGesture(tester.getCenter(resizeHandle()));
+    for (var i = 0; i < 4; i++) {
+      await g.moveBy(const Offset(30, 0));
+      await tester.pump();
+      final line = field.controller!.text.split('\n').first;
+      final band = bandHeight(tester, 0, line.length);
+      bands.add(band);
+      // 밴드와 오버레이 박스는 같은 태그 속성에서 나오므로 항상 붙어 있다.
+      expect(band,
+          closeTo(tester.getSize(find.byType(InlineImageView)).height + 12, 1.5));
+    }
+
+    // 드롭 전에 이미 반영되어야 한다 — 여기가 이 회귀의 핵심이다.
+    expect(field.controller!.text.split('\n').first, isNot(startTag),
+        reason: '드래그 도중 태그가 갱신되어야 한다 (드롭까지 미루면 안 된다)');
+    // 첫 프레임은 터치 slop을 소비하느라 변화가 없을 수 있다.
+    expect(bands.last, greaterThan(startBand),
+        reason: '드롭하기 전에 이미 예약이 커져 있어야 한다');
+    expect(bands.last, greaterThan(bands.first),
+        reason: '드래그 내내 이어서 커져야 한다');
+
+    await g.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('세로로 긴 이미지는 높이 상한에서 멈춘다', (tester) async {
+    // 줄 높이 예약은 이미지 높이를 그대로 글리프 fontSize로 환산하므로,
+    // 상한이 없으면 폭 한계까지 늘렸을 때 fontSize가 수천까지 올라간다.
+    const tall = '<img src="assets/a.png" width="60" height="300">';
+    await pump(tester, note('$tall\n\nbelow'));
+    await tester.pumpAndSettle();
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    field.controller!.selection = const TextSelection.collapsed(offset: 0);
+    await tester.pumpAndSettle();
+
+    final g = await tester.startGesture(tester.getCenter(resizeHandle()));
+    for (var i = 0; i < 12; i++) {
+      await g.moveBy(const Offset(150, 0));
+      await tester.pump();
+    }
+    await g.up();
+    await tester.pumpAndSettle();
+
+    final region = findImageRegions(field.controller!.text).single;
+    expect(region.height, lessThanOrEqualTo(InlineImageView.maxHeight));
+    expect(region.width, lessThanOrEqualTo(InlineImageView.maxWidth));
+    // 비율은 유지된다 (60x300 = 1:5).
+    expect(region.height / region.width, closeTo(5, 0.1));
+  });
+
+  testWidgets('width가 0인 손상된 태그도 레이아웃이 깨지지 않는다', (tester) async {
+    await pump(tester, note('<img src="assets/a.png" width="0" height="80">\nt'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
 }

@@ -366,8 +366,13 @@ class EditorPanelState extends State<EditorPanel> {
             ? '\n'
             : '\n\n';
     final after = text.substring(insertAt);
+    // 문서 끝에 삽입할 때 개행을 하나만 붙이면 태그 줄이 문서의 마지막 실제
+    // 줄이 되고, 그 뒤의 빈 마지막 줄(고스트 줄)이 태그 줄의 최대 글리프 —
+    // 즉 이미지 높이만큼 예약된 글리프 — 를 물려받아 이미지 높이만큼 커진다.
+    // 그 줄에 놓인 캐럿은 이미지 한참 아래에 그려지고, 글자를 하나 치면
+    // 그제서야 제자리로 올라온다. 빈 줄을 하나 확보해 그 상황을 만들지 않는다.
     final suffix = after.isEmpty
-        ? '\n'
+        ? '\n\n'
         : after.startsWith('\n\n')
             ? ''
             : after.startsWith('\n')
@@ -1231,10 +1236,16 @@ class EditorPanelState extends State<EditorPanel> {
         offset: r.start.clamp(0, _contentController.text.length));
   }
 
-  // 리사이즈 결과를 태그의 width/height 속성으로 재기록한다.
+  // 리사이즈 결과를 태그의 width/height 속성으로 재기록한다. 드래그 중 매
+  // 프레임 호출되므로 [r]의 end는 직전 프레임 기준이라 이미 어긋나 있을 수
+  // 있다 — 줄 끝을 현재 텍스트에서 다시 찾아 그 줄만 통째로 교체한다.
   void _resizeImage(ImageRegion r, int w, int h) {
     if (widget.isReadOnly || widget.note == null) return;
-    _replaceRange(r.start, r.end, serializeImageTag(r.src, w, h));
+    final text = _contentController.text;
+    final s = r.start.clamp(0, text.length);
+    var e = text.indexOf('\n', s);
+    if (e == -1) e = text.length;
+    _replaceRange(s, e, serializeImageTag(r.src, w, h));
   }
 
   // 태그 줄 전체(뒤따르는 개행 포함)를 삭제한다. 파일 정리는 하지 않는다
