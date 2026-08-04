@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform, exit;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -49,10 +49,16 @@ class MenuBarManager with TrayListener, WindowListener {
   /// editor toolbar needs ~386px), then shrinks back to [popoverSize].
   static const Size popoverEditSize = Size(420, 520);
 
-  // Fallback top inset when the tray bounds are unavailable; normally the
-  // popover hangs from the tray icon's bottom edge (menu bar height varies:
-  // ~24pt on plain displays, ~32-38pt on notched/scaled ones).
+  // Fallback top inset when the native anchor channel is unavailable; normally
+  // the popover hangs from the clicked display's menu bar bottom (bar height
+  // varies: ~24pt on plain displays, ~32-38pt on notched/scaled ones).
   static const double _menuBarInset = 26;
+
+  /// Native popover-anchor computation (PopoverAnchor.swift, registered in
+  /// MainFlutterWindow.swift). Positioning is resolved natively because no
+  /// plugin reports trustworthy multi-monitor coordinates — see
+  /// [_popoverAnchor].
+  static const MethodChannel _trayChannel = MethodChannel('simsync/tray');
 
   static final bool _underTest =
       Platform.environment.containsKey('FLUTTER_TEST');
@@ -152,18 +158,7 @@ class MenuBarManager with TrayListener, WindowListener {
   Future<void> _openPopover() async {
     if (!isSupported) return;
 
-    final bounds = await trayManager.getBounds();
-    double dx = 8;
-    double dy = _menuBarInset;
-    if (bounds != null) {
-      // Right-align the popover to the icon so it stays on-screen, and hang it
-      // from the icon's bottom edge (= the actual menu bar height, which
-      // differs per display instead of being a fixed inset).
-      dx = bounds.left + bounds.width - popoverSize.width;
-      if (dx < 8) dx = 8;
-      if (bounds.bottom > 0) dy = bounds.bottom;
-    }
-    final Offset position = Offset(dx, dy);
+    final Offset position = await _popoverAnchor();
 
     if (_popover == null) {
       if (_creatingPopover) return;
@@ -199,6 +194,36 @@ class MenuBarManager with TrayListener, WindowListener {
       _popover = null;
       await _openPopover();
     }
+  }
+
+  /// Top-left for the popover at browse size, in window_manager's coordinate
+  /// space (top-left origin anchored to the primary display).
+  ///
+  /// Computed natively from the pointer location at click time: tray_manager's
+  /// getBounds y is NOT trusted — its native side flips y against NSScreen.main
+  /// (the key window's screen), so with the main window on another display or
+  /// after a resolution change the popover used to land on the wrong display
+  /// or at the bottom of the screen. getBounds' raw x has no such flip and is
+  /// passed along so the popover still right-aligns exactly to the icon; the
+  /// native side clamps it into the clicked display (the old Dart-side
+  /// `dx < 8` clamp dragged displays left of the primary — negative global
+  /// x — onto the primary).
+  Future<Offset> _popoverAnchor() async {
+    final bounds = await trayManager.getBounds();
+    final double? iconRight =
+        bounds == null ? null : bounds.left + bounds.width;
+    try {
+      final reply = await _trayChannel.invokeMethod<Map>('popoverAnchor', {
+        'iconRight': iconRight,
+        'width': popoverSize.width,
+      });
+      final x = (reply?['x'] as num?)?.toDouble();
+      final y = (reply?['y'] as num?)?.toDouble();
+      if (x != null && y != null) return Offset(x, y);
+    } catch (_) {
+      // Channel unavailable (shouldn't happen on macOS): fall through.
+    }
+    return const Offset(8, _menuBarInset);
   }
 
   /// Pushes a remote-change notification to the popover (if it exists) so an

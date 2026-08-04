@@ -161,6 +161,7 @@ class MarkdownEditingController extends TextEditingController {
       final lineStart = offset;
       final lineEnd = offset + line.length;
       final active = hasActive && selStart <= lineEnd && selEnd >= lineStart;
+      final lineSpanStart = spans.length;
 
       if (_fence.hasMatch(line)) {
         // Fence lines stay full-height (so the caret can land on them) but go
@@ -206,8 +207,23 @@ class MarkdownEditingController extends TextEditingController {
         final collapseNewline = detailsCollapsedStarts.contains(lineStart) ||
             tableSepStarts.contains(lineStart) ||
             (detailsTagStarts.contains(lineStart) && !active);
+        // 활성 줄이 공백으로 끝나면 '\n'은 줄 마지막 span의 스타일을 따른다.
+        // SkParagraph는 줄 끝 공백과 '\n'이 fontSize가 다른 run으로 갈리면 그
+        // 공백의 캐럿 전진을 무시해, 헤더/인용문/코드 줄에서 스페이스 직후
+        // 캐럿이 제자리에 남는다 (마지막 줄에서는 정상이라 "가끔"으로 보이는
+        // 버그). 캐럿은 활성 줄에만 있으므로 비활성 줄은 base 그대로 둬 렌더
+        // 높이에 영향을 주지 않는다.
+        var newlineStyle = base;
+        if (active &&
+            (line.endsWith(' ') || line.endsWith('\t')) &&
+            spans.length > lineSpanStart) {
+          final last = spans[spans.length - 1];
+          if (last is TextSpan && last.style != null) {
+            newlineStyle = last.style!;
+          }
+        }
         spans.add(TextSpan(
-            text: '\n', style: collapseNewline ? _collapsed(base) : base));
+            text: '\n', style: collapseNewline ? _collapsed(base) : newlineStyle));
       }
       offset = lineEnd + 1; // + the '\n'
     }

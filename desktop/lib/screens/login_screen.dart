@@ -352,11 +352,18 @@ class _DeviceCodeDialogState extends State<_DeviceCodeDialog> {
             const SizedBox(height: AppDimensions.spacingMd),
             Row(
               children: [
+                // 두 버튼은 폭(Expanded)과 스타일(테마)이 같고, 라벨을 한 줄로
+                // 묶어 높이도 같게 유지한다 — 라벨 길이 차이로 한쪽만 줄바꿈되면
+                // 나란한 두 버튼의 높이가 어긋난다.
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _copyCode,
                     icon: const Icon(Icons.copy_rounded, size: 16),
-                    label: Text(_copied ? 'Copied' : 'Copy code'),
+                    label: Text(
+                      _copied ? 'Copied' : 'Copy code',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppDimensions.spacingSm),
@@ -364,7 +371,11 @@ class _DeviceCodeDialogState extends State<_DeviceCodeDialog> {
                   child: ElevatedButton.icon(
                     onPressed: _openGitHub,
                     icon: const Icon(Icons.open_in_browser_rounded, size: 16),
-                    label: const Text('Open GitHub'),
+                    label: const Text(
+                      'Open GitHub',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ],

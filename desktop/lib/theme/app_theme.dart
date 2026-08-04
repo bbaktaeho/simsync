@@ -129,6 +129,23 @@ ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
         ),
       ),
     ),
+    // ElevatedButton과 같은 padding/shape/textStyle을 공유한다. 테마가 없으면
+    // Material 기본값(더 좁은 padding, 더 작은 폰트)이 적용돼 두 버튼을 나란히
+    // 놓았을 때 라벨 줄바꿈 지점이 달라지고 높이가 어긋난다.
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: c.accent,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        side: BorderSide(color: c.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
+        textStyle: GoogleFonts.inter(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+        ),
+      ),
+    ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: c.accent,
