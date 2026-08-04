@@ -75,6 +75,22 @@ void main() {
         reason: '새 줄 캐럿이 이전 줄과 겹치면 안 된다');
   });
 
+  testWidgets('아래 줄이 있는 헤더의 줄 끝 스페이스 뒤 캐럿은 전진한다', (tester) async {
+    // 줄 끝 공백과 '\n'이 fontSize가 다른 run으로 갈리면 SkParagraph가 공백의
+    // 캐럿 전진을 무시한다 — 헤더 작성 중 스페이스 직후 캐럿이 제자리에 남던
+    // 버그. 마지막 줄이 아닌 헤더 줄에서만 재현되므로 body 줄을 아래에 둔다.
+    final re = await pumpEditor(tester, '# title \nbody');
+    // 스페이스 직후 실사용 상태: 포커스 + 캐럿을 공백 뒤(offset 8)에 둔다.
+    await tester.showKeyboard(contentField());
+    final field = tester.widget<TextField>(contentField());
+    field.controller!.selection = const TextSelection.collapsed(offset: 8);
+    await tester.pump();
+    final beforeSpace = caretAt(re, 7);
+    final afterSpace = caretAt(re, 8);
+    expect(afterSpace.left, greaterThan(beforeSpace.left + 5),
+        reason: '줄 끝 공백 뒤 캐럿이 공백 앞과 같은 x에 남으면 안 된다');
+  });
+
   testWidgets('닫힌 details 다음 줄의 캐럿은 접힌 높이를 반영한다', (tester) async {
     const content =
         '<details>\n<summary>t</summary>\n  hidden\n</details>\nafter';
