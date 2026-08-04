@@ -99,6 +99,84 @@ func TestNoteNewMemoDoesNotTakeDefault(t *testing.T) {
 	}
 }
 
+// 로컬 노트는 클론이 아니라 앱의 로컬 스토어에 만들어지고, 동기화 노트와 같은
+// 레이아웃을 쓰되 기본 노트가 되지 않는다 (앱 규칙).
+func TestNoteNewLocal(t *testing.T) {
+	tempHome(t)
+	base := t.TempDir()
+	t.Setenv("SIMSYNC_LOCAL_NOTE_PATH", base)
+
+	// 클론 설정이 없어도 로컬 노트는 만들 수 있어야 한다.
+	if err := cmdNoteNew([]string{
+		"--local", "--date", "2026-08-05", "--title", "로컬메모장",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(base, "notes", "2026-08", "05", "로컬메모장.md")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(raw)
+	if !strings.Contains(content, "is_memo: false\n") {
+		t.Errorf("frontmatter:\n%s", content)
+	}
+	// 로컬 노트는 그 날짜의 첫 노트여도 기본 노트가 아니다.
+	if !strings.Contains(content, "is_default: false\n") {
+		t.Errorf("로컬 노트는 기본 노트가 되면 안 된다:\n%s", content)
+	}
+
+	// 로컬 메모도 만들 수 있다.
+	if err := cmdNoteNew([]string{"--local", "--date", "2026-08-05", "--memo"}); err != nil {
+		t.Fatal(err)
+	}
+	files, _ := filepath.Glob(filepath.Join(base, "notes", "2026-08", "05", "*.md"))
+	if len(files) != 2 {
+		t.Fatalf("files = %v", files)
+	}
+}
+
+// --path는 앱 설정보다 우선한다 (스토어를 옮겨 쓰는 경우).
+func TestNoteNewLocalExplicitPath(t *testing.T) {
+	tempHome(t)
+	t.Setenv("SIMSYNC_LOCAL_NOTE_PATH", t.TempDir()) // 무시되어야 한다
+	explicit := t.TempDir()
+
+	if err := cmdNoteNew([]string{
+		"--local", "--path", explicit, "--date", "2026-08-05", "--title", "지정",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(
+		filepath.Join(explicit, "notes", "2026-08", "05", "지정.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// --path만 주면 어디에 쓰라는 것인지 모호하다 — 동기화 노트 경로는 클론이 정한다.
+func TestNoteNewPathRequiresLocal(t *testing.T) {
+	tempHome(t)
+	err := cmdNoteNew([]string{"--path", t.TempDir(), "--title", "x"})
+	if err == nil || !strings.Contains(err.Error(), "--local") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+// 로컬 스토어 루트는 앱 설정을 따라가야 한다 (같은 디렉토리를 봐야 서로의
+// 노트가 보인다). 환경변수는 그 위의 오버라이드다.
+func TestLocalStoreBaseEnvOverride(t *testing.T) {
+	tempHome(t)
+	t.Setenv("SIMSYNC_LOCAL_NOTE_PATH", "/tmp/custom-store")
+	got, err := localStoreBase()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "/tmp/custom-store" {
+		t.Errorf("base = %q", got)
+	}
+}
+
 func TestSanitizeTitle(t *testing.T) {
 	if got := sanitizeTitle(`a/b\c:d*e?f"g<h>i|j`); got != "abcdefghij" {
 		t.Errorf("sanitized = %q", got)

@@ -6,10 +6,46 @@ SimSync 노트 스토어를 터미널에서 다루는 CLI. 1차 사용자는 AI 
 ```
 simsync auth login|logout|status     GitHub Device Flow 로그인 / 세션·만료 확인 (exit 0/1)
 simsync store clone|status|sync      앱과 같은 스토어 클론 / 상태 / pull·push
-simsync note new                     규칙대로 노트 스캐폴드 (frontmatter 자동)
+simsync note new [--memo] [--local]  규칙대로 노트 스캐폴드 (frontmatter 자동)
 simsync guide [note-format|guidelines]  노트 작성/작업 규칙 출력
 simsync open                         데스크톱 앱 실행
 simsync help                         전체 도움말 (명령별 용도·exit code 계약)
+```
+
+## 노트 종류
+
+앱과 같은 세 가지를 모두 만들 수 있다. 파일 형식과 경로 레이아웃
+(`notes/YYYY-MM/DD/{제목}.md`)은 셋 다 동일하고, **어디에 저장되는지만** 다르다.
+
+| 명령 | 무엇 | 저장 위치 |
+|------|------|-----------|
+| `note new --title "회의록"` | 동기화 일일 노트 | 클론 (커밋 후 `store sync`) |
+| `note new --memo` | 동기화 메모 | 클론 (날짜에 매이지 않음) |
+| `note new --local [--memo]` | 로컬 노트/메모 | 앱의 로컬 노트 디렉토리 (동기화 안 함) |
+
+로컬 노트는 클론이 없어도 만들 수 있고 git 작업이 필요 없다. 저장 위치는 앱
+설정을 그대로 따르므로 앱과 CLI가 같은 노트를 본다 — `store status`로 확인한다.
+`SIMSYNC_LOCAL_NOTE_PATH` 또는 `--path`로 오버라이드할 수 있다.
+
+앱 규칙대로 그 날짜의 첫 **동기화** 일일 노트만 기본 노트(`is_default: true`)가
+된다. 메모와 로컬 노트는 기본 노트가 되지 않는다.
+
+## 아직 없는 기능
+
+**위클리/먼슬리 리뷰 (곧 구현 예정).** 데스크톱 앱에만 있다. 리뷰는 1차
+아웃라인 → 2차 리뷰 2단계이고 각 단계가 다른 지침을 쓰는데, 2차 지침만
+스토어(`settings/settings.json`)에 있고 1차 지침은 앱 코드에 있어 CLI가 알 수
+없다. 지침 전체를 스토어에 두고 CLI가 읽는 방안을
+[.agent/proposal/cli-review-instructions.md](../.agent/proposal/cli-review-instructions.md)
+에 정리해두었다.
+
+이미 앱이 만든 리뷰 파일은 클론에서 그대로 읽을 수 있다:
+
+```
+notes/{YYYY-MM}/{N}주차/weekly-outline.md    1차 (체크박스 목록)
+notes/{YYYY-MM}/{N}주차/weekly-review.md     2차 (최종 글)
+notes/{YYYY-MM}/monthly-outline.md
+notes/{YYYY-MM}/monthly-review.md
 ```
 
 ## 설치 — 어느 경로에서든 `simsync`로 실행되게 하기
