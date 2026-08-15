@@ -16,6 +16,10 @@ enum EditorOverlayAnchor {
 
   /// 밴드 왼쪽 끝에 세로 중앙 정렬 (details 접기 chevron).
   leadingChevron,
+
+  /// 문자 범위 박스 안에 가로/세로 중앙 정렬 (체크박스). 숨겨진 글자가
+  /// 차지하던 자리에 정확히 겹친다.
+  charBox,
 }
 
 /// 문자 범위에 고정되는 오버레이 항목 하나. [id]는 같은 레이어 안에서 유일해야
@@ -99,11 +103,16 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
         if (boxes.isNotEmpty) {
           var top = double.infinity;
           var bottom = double.negativeInfinity;
+          var left = double.infinity;
+          var right = double.negativeInfinity;
           for (final b in boxes) {
             top = math.min(top, b.top);
             bottom = math.max(bottom, b.bottom);
+            left = math.min(left, b.left);
+            right = math.max(right, b.right);
           }
-          band = Rect.fromLTRB(0, top, size.width, bottom);
+          // 가로 범위는 charBox만 쓴다 (band/imageBand는 폭 전체를 채운다).
+          band = Rect.fromLTRB(left, top, right, bottom);
         }
       }
 
@@ -133,6 +142,15 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
           positionChild(
             item.id,
             Offset(0, band.top + (band.height - childSize.height) / 2),
+          );
+        case EditorOverlayAnchor.charBox:
+          final childSize = layoutChild(item.id, BoxConstraints.loose(size));
+          positionChild(
+            item.id,
+            Offset(
+              leftInset + band.left + (band.width - childSize.width) / 2,
+              band.top + (band.height - childSize.height) / 2,
+            ),
           );
       }
     }

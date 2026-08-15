@@ -196,6 +196,104 @@ TextEditingValue? _exitUnterminatedCodeFence(
   );
 }
 
+// ── 리스트 들여쓰기 (Tab / Shift+Tab) ────────────────────────────────────────
+
+/// 한 단계 들여쓰기 폭. `- ` 항목의 하위 목록은 2칸 들여쓴다 (CommonMark에서
+/// 상위 마커의 콘텐츠 열과 맞는 폭이며, 4칸을 넘지 않아 코드 블록이 되지 않는다).
+const String _listIndentUnit = '  ';
+
+/// 캐럿(또는 선택 영역)이 걸친 줄의 들여쓰기를 한 단계 넣거나([outdent]면) 뺀다.
+/// 캐럿이 줄 어디에 있든 줄 머리를 고치므로, 직접 왼쪽으로 옮겨 공백을 칠
+/// 필요가 없다.
+///
+/// 첫 줄이 리스트 항목이 아니면 null — 호출부는 기본 Tab 동작(포커스 이동)에
+/// 맡긴다. 뺄 들여쓰기가 없으면 입력값을 그대로 돌려준다 (키는 소비하되 변화
+/// 없음).
+TextEditingValue? indentListSelection(
+  TextEditingValue value, {
+  required bool outdent,
+}) {
+  final selection = value.selection;
+  if (!selection.isValid) return null;
+  final text = value.text;
+  final selStart = selection.start.clamp(0, text.length);
+  final selEnd = selection.end.clamp(selStart, text.length);
+
+  final firstStart = _lineStartOf(text, selStart);
+  if (_matchMarker(text.substring(firstStart, _lineEndOf(text, firstStart))) ==
+      null) {
+    return null;
+  }
+
+  // 선택이 걸친 줄들의 시작 오프셋. 다음 줄 머리에서 끝나는 선택은 그 줄을
+  // 포함하지 않는다 (에디터 관행).
+  final lineStarts = <int>[firstStart];
+  var lineEnd = _lineEndOf(text, firstStart);
+  while (lineEnd + 1 < selEnd) {
+    final next = lineEnd + 1;
+    lineStarts.add(next);
+    lineEnd = _lineEndOf(text, next);
+  }
+
+  // 뒤에서 앞으로 고쳐야 앞 줄 오프셋이 밀리지 않는다.
+  final deltas = List<int>.filled(lineStarts.length, 0);
+  var out = text;
+  for (var i = lineStarts.length - 1; i >= 0; i--) {
+    final start = lineStarts[i];
+    if (outdent) {
+      final remove =
+          _outdentWidth(text.substring(start, _lineEndOf(text, start)));
+      if (remove == 0) continue;
+      deltas[i] = -remove;
+      out = out.replaceRange(start, start + remove, '');
+    } else {
+      deltas[i] = _listIndentUnit.length;
+      out = out.replaceRange(start, start, _listIndentUnit);
+    }
+  }
+  if (out == text) return value;
+
+  return TextEditingValue(
+    text: out,
+    selection: TextSelection(
+      baseOffset: _shiftOffset(
+          selection.baseOffset.clamp(0, text.length), lineStarts, deltas),
+      extentOffset: _shiftOffset(
+          selection.extentOffset.clamp(0, text.length), lineStarts, deltas),
+    ),
+  );
+}
+
+/// 줄 머리에서 뺄 수 있는 들여쓰기 폭 (탭 1칸 또는 공백 최대 [_listIndentUnit]칸).
+int _outdentWidth(String line) {
+  if (line.startsWith('\t')) return 1;
+  var n = 0;
+  while (n < _listIndentUnit.length && n < line.length && line[n] == ' ') {
+    n++;
+  }
+  return n;
+}
+
+/// 줄 머리 삽입/삭제 후의 캐럿 위치. 지워진 들여쓰기 안에 있던 캐럿은 줄
+/// 머리로 당겨진다.
+int _shiftOffset(int offset, List<int> lineStarts, List<int> deltas) {
+  var moved = offset;
+  for (var i = 0; i < lineStarts.length; i++) {
+    final delta = deltas[i];
+    final start = lineStarts[i];
+    if (delta > 0) {
+      if (offset >= start) moved += delta;
+    } else if (delta < 0) {
+      if (offset >= start - delta) {
+        moved += delta;
+      } else if (offset > start) {
+        moved -= offset - start;
+      }
+    }
+  }
+  return moved;
+}
+
 // ── Ordered list renumbering ────────────────────────────────────────────────
 
 final RegExp _orderedLineRe = RegExp(r'^(\s*)(\d+)([.)])(\s.*)$');
@@ -736,3 +834,52 @@ List<ImageRegion> findImageRegions(String text) {
 /// 이미지 태그 직렬화. [_imgLineRe] 파서와 왕복 대칭.
 String serializeImageTag(String src, int width, int height) =>
     '<img src="$src" width="$width" height="$height">';
+
+// ── 체크박스 (작업 목록) ─────────────────────────────────────────────────────
+
+/// `- [ ] 할 일` 작업 항목 줄. 그룹: 1=들여쓰기+불릿+공백, 2=`[`, 3=마크,
+/// 4=`]`, 5=닫는 대괄호 뒤(공백으로 시작).
+///
+/// 렌더러(`MarkdownEditingController`)와 클릭 오버레이가 같은 판정을 쓰도록
+/// 패턴은 여기 하나만 둔다.
+final RegExp checkboxLineRe = RegExp(r'^(\s*[-*+] )(\[)([ xX])(\])( .*)$');
+
+/// 작업 항목 줄에서 찾은 체크박스 하나. 범위는 대괄호 세 글자(`[x]`)다 —
+/// 그 자리에 오버레이가 실제 체크박스를 그리고 클릭도 받는다.
+class CheckboxRegion {
+  const CheckboxRegion({required this.start, required this.checked});
+
+  /// `[` 의 문자 오프셋 (inclusive).
+  final int start;
+
+  final bool checked;
+
+  /// 체크 상태 문자(`x` 또는 공백)의 오프셋.
+  int get markOffset => start + 1;
+
+  /// `]` 다음 오프셋 (exclusive).
+  int get end => start + 3;
+}
+
+/// 모든 체크박스를 찾는다. fence 내부는 무시.
+List<CheckboxRegion> findCheckboxRegions(String text) {
+  if (text.isEmpty) return const [];
+  final result = <CheckboxRegion>[];
+  var offset = 0;
+  var inFence = false;
+  for (final line in text.split('\n')) {
+    if (_fenceRe.hasMatch(line)) {
+      inFence = !inFence;
+    } else if (!inFence) {
+      final m = checkboxLineRe.firstMatch(line);
+      if (m != null) {
+        result.add(CheckboxRegion(
+          start: offset + m.group(1)!.length,
+          checked: m.group(3)!.toLowerCase() == 'x',
+        ));
+      }
+    }
+    offset += line.length + 1;
+  }
+  return result;
+}
