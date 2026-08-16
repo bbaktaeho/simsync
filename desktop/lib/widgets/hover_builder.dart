@@ -24,9 +24,9 @@ class _HoverBuilderState extends State<HoverBuilder> {
 
   @override
   Widget build(BuildContext context) => MouseRegion(
-        cursor: widget.cursor,
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: widget.builder(context, _hovered),
-      );
+    cursor: widget.cursor,
+    onEnter: (_) => setState(() => _hovered = true),
+    onExit: (_) => setState(() => _hovered = false),
+    child: widget.builder(context, _hovered),
+  );
 }

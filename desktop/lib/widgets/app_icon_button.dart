@@ -50,8 +50,8 @@ class AppIconButton extends StatelessWidget {
             color: hovered && enabled
                 ? c.surfaceHover
                 : bordered
-                    ? c.surfaceLight
-                    : Colors.transparent,
+                ? c.surfaceLight
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             border: bordered ? Border.all(color: c.border) : null,
           ),
