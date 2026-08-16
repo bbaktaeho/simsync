@@ -272,7 +272,7 @@ class _ToolbarButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius:
-                BorderRadius.circular(AppDimensions.borderRadius),
+                BorderRadius.circular(AppDimensions.radiusStandard),
             border: Border.all(color: c.borderSubtle),
             boxShadow: AppShadows.card,
           ),

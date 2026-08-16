@@ -219,7 +219,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimensions.borderRadiusLg),
+          top: Radius.circular(AppDimensions.radiusComfortable),
         ),
       ),
       builder: (ctx) => SafeArea(
@@ -309,7 +309,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           side: BorderSide(color: c.border),
         ),
         title: Text(
@@ -536,7 +536,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(
-                  AppDimensions.borderRadiusSm,
+                  AppDimensions.radiusMicro,
                 ),
                 border: Border.all(color: c.border),
               ),
@@ -691,7 +691,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 decoration: BoxDecoration(
                   color: isSelected ? c.calendarSelected : Colors.transparent,
                   borderRadius: BorderRadius.circular(
-                    AppDimensions.borderRadiusSm,
+                    AppDimensions.radiusMicro,
                   ),
                 ),
                 child: Column(
@@ -705,7 +705,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       decoration: BoxDecoration(
                         color: isToday ? c.accentSubtle : Colors.transparent,
                         borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
+                          AppDimensions.radiusStandard,
                         ),
                         border: isToday
                             ? Border.all(
@@ -773,7 +773,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             decoration: BoxDecoration(
               color: c.calendarSelected,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -872,7 +872,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 vertical: AppDimensions.spacingSm,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                 side: BorderSide(color: c.accent.withValues(alpha: 0.3)),
               ),
             ),
@@ -978,7 +978,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         padding: const EdgeInsets.only(right: AppDimensions.spacingLg),
         decoration: BoxDecoration(
           color: c.error.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         ),
         child: Icon(Icons.delete_outline_rounded, color: c.error),
       ),
@@ -990,7 +990,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           padding: const EdgeInsets.all(AppDimensions.spacingMd),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
             border: Border.all(color: c.borderSubtle),
           ),
           child: Column(
@@ -1019,7 +1019,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ? c.localAccent.withValues(alpha: 0.15)
                           : c.accentSubtle,
                       borderRadius: BorderRadius.circular(
-                        AppDimensions.borderRadiusSm,
+                        AppDimensions.radiusMicro,
                       ),
                     ),
                     child: Text(
@@ -1066,7 +1066,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         '#$tag',

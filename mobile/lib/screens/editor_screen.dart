@@ -173,7 +173,7 @@ class _EditorScreenState extends State<EditorScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           side: BorderSide(color: c.border),
         ),
         title: Text(
@@ -340,7 +340,7 @@ class _EditorScreenState extends State<EditorScreen>
           icon: Icon(Icons.more_vert_rounded, color: c.textSecondary),
           color: c.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             side: BorderSide(color: c.border),
           ),
           onSelected: (value) {
@@ -592,7 +592,7 @@ class _EditorScreenState extends State<EditorScreen>
                   decoration: BoxDecoration(
                     color: c.accentSubtle,
                     borderRadius: BorderRadius.circular(
-                      AppDimensions.borderRadius,
+                      AppDimensions.radiusStandard,
                     ),
                     border: Border.all(color: c.accent.withValues(alpha: 0.3)),
                   ),
@@ -640,7 +640,7 @@ class _ToolbarButton extends StatelessWidget {
         alignment: Alignment.center,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         ),
         child: icon != null
             ? Icon(icon, size: 18, color: colors.textSecondary)

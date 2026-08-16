@@ -94,18 +94,20 @@ class CalendarWidget extends StatelessWidget {
         horizontal: AppDimensions.spacingMd,
       ),
       child: Row(
-        children: weekdays
-            .map(
-              (day) => Expanded(
-                child: Center(
-                  child: Text(
-                    day,
-                    style: AppTextStyles.microSemibold.copyWith(color: c.textMuted),
+        children: [
+          for (var i = 0; i < weekdays.length; i++)
+            Expanded(
+              child: Center(
+                child: Text(
+                  weekdays[i],
+                  style: AppTextStyles.microSemibold.copyWith(
+                    // 0=일, 6=토
+                    color: i == 0 || i == 6 ? c.calendarWeekend : c.textMuted,
                   ),
                 ),
               ),
-            )
-            .toList(),
+            ),
+        ],
       ),
     );
   }
@@ -142,6 +144,7 @@ class CalendarWidget extends StatelessWidget {
           isSelected: false,
           hasNotes: false,
           isDimmed: true,
+          isWeekend: _isWeekend(date),
           onTap: () => onDateSelected(date),
         ),
       );
@@ -163,6 +166,7 @@ class CalendarWidget extends StatelessWidget {
           isSelected: isSelected,
           hasNotes: hasNotes,
           isDimmed: false,
+          isWeekend: _isWeekend(date),
           onTap: () => onDateSelected(date),
         ),
       );
@@ -179,6 +183,7 @@ class CalendarWidget extends StatelessWidget {
           isSelected: false,
           hasNotes: false,
           isDimmed: true,
+          isWeekend: _isWeekend(date),
           onTap: () => onDateSelected(date),
         ),
       );
@@ -206,6 +211,9 @@ class CalendarWidget extends StatelessWidget {
   }
 }
 
+bool _isWeekend(DateTime d) =>
+    d.weekday == DateTime.saturday || d.weekday == DateTime.sunday;
+
 // ── Individual calendar cell ──
 
 class _CalendarCell extends StatelessWidget {
@@ -214,6 +222,7 @@ class _CalendarCell extends StatelessWidget {
   final bool isSelected;
   final bool hasNotes;
   final bool isDimmed;
+  final bool isWeekend;
   final VoidCallback onTap;
 
   const _CalendarCell({
@@ -222,6 +231,7 @@ class _CalendarCell extends StatelessWidget {
     required this.isSelected,
     required this.hasNotes,
     required this.isDimmed,
+    required this.isWeekend,
     required this.onTap,
   });
 
@@ -239,12 +249,17 @@ class _CalendarCell extends StatelessWidget {
     }
 
     Color textColor;
-    if (isDimmed) {
-      textColor = c.textMuted;
-    } else if (isSelected) {
+    if (isSelected) {
       textColor = c.textOnAccent;
     } else if (isToday) {
       textColor = c.calendarToday;
+    } else if (isWeekend) {
+      // 인접 월 주말은 같은 색을 흐리게 — 이번 달이 주인공.
+      textColor = isDimmed
+          ? c.calendarWeekend.withValues(alpha: 0.45)
+          : c.calendarWeekend;
+    } else if (isDimmed) {
+      textColor = c.textMuted;
     } else {
       textColor = c.textPrimary;
     }

@@ -95,21 +95,43 @@ class SimSyncApp extends StatefulWidget {
 }
 
 class SimSyncAppState extends State<SimSyncApp> {
+  /// `MaterialApp.themeMode`를 구동한다. MaterialApp보다 위에 둬야 설정을
+  /// 바꿨을 때 앱 전체가 다시 칠해진다. 값은 _AppShell이 설정에서 밀어준다.
+  final ValueNotifier<ThemeMode> _themeMode = ValueNotifier(ThemeMode.system);
+
+  @override
+  void dispose() {
+    _themeMode.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'SimSync',
-      debugShowCheckedModeBanner: false,
-      theme: buildLightTheme(),
-      home: _AppShell(
-        authService: widget.authService,
-        storageFactory: widget.storageFactory ?? _defaultStorageFactory,
-        repoCache: widget.repoCache ?? RepoCache(),
-        sessionCheckInterval: widget.sessionCheckInterval,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: _themeMode,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'SimSync',
+        debugShowCheckedModeBanner: false,
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: mode,
+        home: _AppShell(
+          authService: widget.authService,
+          storageFactory: widget.storageFactory ?? _defaultStorageFactory,
+          repoCache: widget.repoCache ?? RepoCache(),
+          sessionCheckInterval: widget.sessionCheckInterval,
+          themeModeNotifier: _themeMode,
+        ),
       ),
     );
   }
 }
+
+ThemeMode flutterThemeMode(AppThemeMode mode) => switch (mode) {
+      AppThemeMode.light => ThemeMode.light,
+      AppThemeMode.dark => ThemeMode.dark,
+      AppThemeMode.system => ThemeMode.system,
+    };
 
 /// Root shell that manages auth state (login <-> home screen).
 class _AppShell extends StatefulWidget {
@@ -118,6 +140,7 @@ class _AppShell extends StatefulWidget {
     required this.storageFactory,
     required this.repoCache,
     required this.sessionCheckInterval,
+    required this.themeModeNotifier,
   });
 
   final AuthService authService;
@@ -125,11 +148,20 @@ class _AppShell extends StatefulWidget {
   final RepoCache repoCache;
   final Duration sessionCheckInterval;
 
+  /// MaterialApp 위의 테마 모드. 설정이 바뀔 때마다 여기로 밀어 올린다.
+  final ValueNotifier<ThemeMode> themeModeNotifier;
+
   @override
   State<_AppShell> createState() => _AppShellState();
 }
 
 class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
+  /// 저장된 테마 설정을 MaterialApp 레벨 notifier로 올린다.
+  void _syncThemeMode() {
+    widget.themeModeNotifier.value =
+        flutterThemeMode(_settingsController.value.themeMode);
+  }
+
   _AuthStatus _status = _AuthStatus.restoring;
   late AppSettingsController _settingsController;
 
@@ -168,6 +200,7 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
     _deepLinkSub?.cancel();
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
+    _settingsController.removeListener(_syncThemeMode);
     _settingsController.dispose();
     _refreshSignal.dispose();
     super.dispose();
@@ -230,6 +263,8 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
     final localPath = '${dir.path}/SimSync';
     _settingsController = AppSettingsController(defaultLocalNotePath: localPath);
     await _settingsController.load();
+    _settingsController.addListener(_syncThemeMode);
+    _syncThemeMode();
     await _restoreSession();
   }
 

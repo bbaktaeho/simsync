@@ -86,7 +86,7 @@ class _SearchResultCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: c.surface,
           borderRadius:
-              BorderRadius.circular(AppDimensions.cardBorderRadius),
+              BorderRadius.circular(AppDimensions.radiusComfortable),
           border: Border.all(color: c.border),
         ),
         child: Column(
@@ -203,7 +203,7 @@ class _ContextLines extends StatelessWidget {
       padding: const EdgeInsets.all(AppDimensions.spacingSm),
       decoration: BoxDecoration(
         color: context.colors.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -294,7 +294,7 @@ class _StorageBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

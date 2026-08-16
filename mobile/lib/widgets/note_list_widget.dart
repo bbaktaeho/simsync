@@ -79,7 +79,7 @@ class NoteListWidget extends StatelessWidget {
       padding: const EdgeInsets.only(right: AppDimensions.spacingLg),
       decoration: BoxDecoration(
         color: c.error.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
       ),
       child: Icon(Icons.delete_outline_rounded, color: c.error, size: 24),
     );
@@ -94,7 +94,7 @@ class NoteListWidget extends StatelessWidget {
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
           borderRadius:
-              BorderRadius.circular(AppDimensions.borderRadiusLg),
+              BorderRadius.circular(AppDimensions.radiusComfortable),
           side: BorderSide(color: c.border),
         ),
         title: Text(
@@ -155,7 +155,7 @@ class _NoteCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: c.surface,
           borderRadius:
-              BorderRadius.circular(AppDimensions.cardBorderRadius),
+              BorderRadius.circular(AppDimensions.radiusComfortable),
           border: Border.all(color: c.border),
         ),
         child: Column(
@@ -251,7 +251,7 @@ class _StorageBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

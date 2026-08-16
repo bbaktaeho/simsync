@@ -12,6 +12,7 @@ class AppSettingsController extends ChangeNotifier {
   static const String syncIntervalSecondsKey = 'sync_interval_seconds';
   static const String syncEnabledKey = 'sync_enabled';
   static const String searchContextLinesKey = 'search_context_lines';
+  static const String themeModeKey = 'theme_mode';
 
   AppSettingsController({required String defaultLocalNotePath})
     : _defaultLocalNotePath = defaultLocalNotePath,
@@ -47,8 +48,23 @@ class AppSettingsController extends ChangeNotifier {
         AppSettings.minSearchContextLines,
         AppSettings.maxSearchContextLines,
       ),
+      themeMode: _parseThemeMode(prefs.getString(themeModeKey)),
     );
     notifyListeners();
+  }
+
+  static AppThemeMode _parseThemeMode(String? raw) => switch (raw) {
+        'light' => AppThemeMode.light,
+        'dark' => AppThemeMode.dark,
+        _ => AppThemeMode.system,
+      };
+
+  Future<void> setThemeMode(AppThemeMode mode) async {
+    if (_value.themeMode == mode) return;
+    _value = _value.copyWith(themeMode: mode);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(themeModeKey, mode.name);
   }
 
   Future<void> setContentScale(double value) async {

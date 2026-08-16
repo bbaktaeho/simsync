@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen>
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius:
-                BorderRadius.circular(AppDimensions.borderRadiusLg),
+                BorderRadius.circular(AppDimensions.radiusComfortable),
             border: Border.all(color: c.border),
             boxShadow: AppShadows.card,
           ),
@@ -133,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen>
           height: 48,
           decoration: BoxDecoration(
             color: c.accentMuted,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           ),
           child: Icon(
             Icons.edit_note_rounded,
@@ -174,7 +174,7 @@ class _LoginScreenState extends State<LoginScreen>
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.border),
       ),
       child: Row(
