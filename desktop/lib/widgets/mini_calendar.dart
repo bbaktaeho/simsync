@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
+import 'app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 
@@ -46,7 +47,7 @@ class MiniCalendar extends StatelessWidget {
       children: [
         Row(
           children: [
-            _NavButton(icon: Icons.chevron_left_rounded, onTap: onPrevMonth),
+            AppIconButton(icon: Icons.chevron_left_rounded, onTap: onPrevMonth),
             Expanded(
               child: Text(
                 DateFormat('yyyy년 M월').format(first),
@@ -56,7 +57,7 @@ class MiniCalendar extends StatelessWidget {
                 ),
               ),
             ),
-            _NavButton(icon: Icons.chevron_right_rounded, onTap: onNextMonth),
+            AppIconButton(icon: Icons.chevron_right_rounded, onTap: onNextMonth),
           ],
         ),
         const SizedBox(height: AppDimensions.spacingXs),
@@ -68,7 +69,10 @@ class MiniCalendar extends StatelessWidget {
                   child: Text(
                     _weekdays[i],
                     style: AppTextStyles.micro.copyWith(
-                      color: i == 0 ? c.error : c.textMuted,
+                      // 0=일, 6=토
+                      color: i == 0 || i == 6
+                          ? c.calendarWeekend
+                          : c.textMuted,
                     ),
                   ),
                 ),
@@ -115,11 +119,14 @@ class MiniCalendar extends StatelessWidget {
     final inRange = s != null && e != null && date.isAfter(s) && date.isBefore(e);
     final isToday = date == today;
 
+    final isWeekend = date.weekday == DateTime.saturday ||
+        date.weekday == DateTime.sunday;
+
     Color? bg;
-    Color fg = c.textPrimary;
+    Color fg = isWeekend ? c.calendarWeekend : c.textPrimary;
     if (isEndpoint) {
       bg = c.accent;
-      fg = Colors.white;
+      fg = c.textOnAccent;
     } else if (inRange) {
       bg = c.accentSubtle;
       fg = c.accentMuted;
@@ -150,26 +157,6 @@ class MiniCalendar extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
-      child: Padding(
-        padding: const EdgeInsets.all(4),
-        child: Icon(icon, size: 18, color: c.textSecondary),
       ),
     );
   }

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../services/markdown_editing.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
+import '../theme/app_theme.dart';
 
 /// A rendered, horizontally-scrollable markdown table shown inline in the editor
 /// over its (hidden) markdown source.
@@ -167,7 +169,7 @@ class _InlineTableViewState extends State<InlineTableView> {
           decoration: BoxDecoration(
             color: c.surface,
             border: Border.all(color: c.border),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           ),
           clipBehavior: Clip.antiAlias,
           child: Scrollbar(
@@ -318,11 +320,8 @@ class _InlineTableViewState extends State<InlineTableView> {
             textAlign: _textAlign(data.aligns[k]),
             style: style,
             cursorColor: c.accent,
-            decoration: const InputDecoration(
-              isCollapsed: true,
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
-            ),
+            // 셀 배경은 표 위젯이 그린다 — 입력칸 자체 테두리/채움은 끈다.
+            decoration: bareInputDecoration,
             onChanged: (text) => widget.onCellChanged(r, k, text),
             onSubmitted: (_) => _cellFocus.unfocus(), // Enter exits the cell
           )
@@ -377,19 +376,24 @@ class _CornerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: color,
-        shape: const CircleBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
         elevation: 1,
         child: InkWell(
-          customBorder: const CircleBorder(),
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+          ),
           onTap: onTap,
           child: SizedBox(
             width: 24,
             height: 24,
-            child: Icon(icon, size: 16, color: Colors.white),
+            child: Icon(icon, size: 16, color: c.textOnAccent),
           ),
         ),
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../services/markdown_editing.dart';
+import '../theme/app_dimensions.dart';
 
 /// Kind of block decoration painted behind the (still-editable) TextField.
 enum EditorBlockKind { code, rule, quote, detailsGuide }
@@ -180,7 +181,7 @@ class EditorBlockDecorationPainter extends CustomPainter {
         case EditorBlockKind.code:
           final rect =
               Rect.fromLTRB(leftInset, top - 4, size.width, bottom + 4);
-          final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
+          final rrect = RRect.fromRectAndRadius(rect, Radius.circular(AppDimensions.radiusStandard));
           canvas.drawRRect(rrect, fill);
           canvas.drawRRect(rrect, stroke);
         case EditorBlockKind.rule:

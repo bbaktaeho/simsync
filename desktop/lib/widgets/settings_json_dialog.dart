@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../settings/app_settings_controller.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_theme.dart';
 import '../theme/app_text_styles.dart';
 
 /// Views and edits the portable settings as JSON. The same JSON is what syncs to
@@ -143,10 +144,7 @@ class _SettingsJsonDialogState extends State<SettingsJsonDialog> {
                     textAlignVertical: TextAlignVertical.top,
                     style: AppTextStyles.codeMonoBlock(1.0)
                         .copyWith(color: c.textPrimary),
-                    decoration: const InputDecoration(
-                      isCollapsed: true,
-                      border: InputBorder.none,
-                    ),
+                    decoration: bareInputDecoration,
                   ),
                 ),
               ),
@@ -172,10 +170,6 @@ class _SettingsJsonDialogState extends State<SettingsJsonDialog> {
                   const SizedBox(width: AppDimensions.spacingSm),
                   FilledButton(
                     onPressed: _applying ? null : _apply,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: c.accent,
-                      foregroundColor: Colors.white,
-                    ),
                     child: const Text('적용'),
                   ),
                 ],

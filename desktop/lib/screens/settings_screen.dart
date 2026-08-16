@@ -14,6 +14,7 @@ import '../settings/shortcut_binding.dart';
 import '../widgets/settings_json_dialog.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
+import '../widgets/app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -92,14 +93,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     final settings = widget.settingsController.value;
-    _weeklyInstructionController =
-        TextEditingController(text: settings.weeklyInstruction);
-    _monthlyInstructionController =
-        TextEditingController(text: settings.monthlyInstruction);
-    _claudeCliPathController =
-        TextEditingController(text: settings.claudeCliPath);
-    _codexCliPathController =
-        TextEditingController(text: settings.codexCliPath);
+    _weeklyInstructionController = TextEditingController(
+      text: settings.weeklyInstruction,
+    );
+    _monthlyInstructionController = TextEditingController(
+      text: settings.monthlyInstruction,
+    );
+    _claudeCliPathController = TextEditingController(
+      text: settings.claudeCliPath,
+    );
+    _codexCliPathController = TextEditingController(
+      text: settings.codexCliPath,
+    );
     _apiKeyController = TextEditingController(text: settings.anthropicApiKey);
     _modelController = TextEditingController(text: settings.anthropicModel);
     _loadCachedRepos();
@@ -299,14 +304,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Settings',
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
+          Text('Settings', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Workspace and editor preferences',
-            style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
+            style: Theme.of(context).textTheme.labelSmall!.copyWith(
+              color: c.textSecondary,
+              height: 1.5,
+            ),
           ),
           Expanded(
             child: SingleChildScrollView(
@@ -370,8 +375,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton.icon(
             onPressed: () =>
                 SettingsJsonDialog.show(context, widget.settingsController),
-            icon: Icon(Icons.data_object_rounded,
-                size: 15, color: c.textSecondary),
+            icon: Icon(
+              Icons.data_object_rounded,
+              size: 15,
+              color: c.textSecondary,
+            ),
             label: const Text('JSON으로 편집'),
             style: TextButton.styleFrom(
               foregroundColor: c.textSecondary,
@@ -380,17 +388,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               textStyle: Theme.of(context).textTheme.labelMedium,
             ),
           ),
-          const SizedBox(height: AppDimensions.spacingXs),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              foregroundColor: c.textSecondary,
-              padding: EdgeInsets.zero,
-              alignment: Alignment.centerLeft,
-            ),
-            child: Text(
-              'Done',
-              style: Theme.of(context).textTheme.labelMedium,
+          const SizedBox(height: AppDimensions.spacingMd),
+          // 창을 닫는 주 동작. 보조 동작(JSON 편집)과 같은 회색 텍스트로 두면
+          // 무엇이 주 동작인지 읽히지 않는다. 라벨도 주변 한국어와 맞춘다.
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('완료'),
             ),
           ),
         ],
@@ -444,8 +449,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Expanded(
                       child: Text(
                         settings.aiEnabled ? 'Enabled' : 'Disabled',
-                        style: AppTextStyles.captionBold
-                            .copyWith(color: c.textPrimary),
+                        style: AppTextStyles.captionBold.copyWith(
+                          color: c.textPrimary,
+                        ),
                       ),
                     ),
                     Switch.adaptive(
@@ -524,8 +530,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _weeklyInstructionController,
               minLines: 3,
               maxLines: 8,
-              style: AppTextStyles.caption
-                  .copyWith(color: c.textPrimary, height: 1.5),
+              style: AppTextStyles.caption.copyWith(
+                color: c.textPrimary,
+                height: 1.5,
+              ),
               decoration: const InputDecoration(
                 hintText: '이번 주에 한 일을 정리해 주세요...',
               ),
@@ -553,8 +561,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: _monthlyInstructionController,
               minLines: 3,
               maxLines: 8,
-              style: AppTextStyles.caption
-                  .copyWith(color: c.textPrimary, height: 1.5),
+              style: AppTextStyles.caption.copyWith(
+                color: c.textPrimary,
+                height: 1.5,
+              ),
               decoration: const InputDecoration(
                 hintText: '이번 달의 성과와 다음 달 목표를 정리해 주세요...',
               ),
@@ -579,10 +589,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Text(
         'console.anthropic.com에서 발급한 API 키(sk-ant-...)를 입력하세요. '
         '결제 설정이 필요하며 Claude.ai 구독과 별개로 사용량만큼 과금됩니다.',
-        style: Theme.of(context)
-            .textTheme
-            .labelSmall!
-            .copyWith(color: c.textSecondary, height: 1.5),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
       ),
       const SizedBox(height: AppDimensions.spacingSm),
       Row(
@@ -593,7 +602,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               obscureText: true,
               autocorrect: false,
               enableSuggestions: false,
-              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              style: AppTextStyles.codeMono(
+                size: 12,
+              ).copyWith(color: c.textPrimary),
               decoration: const InputDecoration(hintText: 'sk-ant-...'),
               onChanged: (value) {
                 widget.settingsController.setAnthropicApiKey(value);
@@ -614,16 +625,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       Text(
         '기본값은 ${AppSettings.defaultAnthropicModel} 입니다. 모델 id를 바꿔 '
         '비용과 품질을 조절할 수 있습니다.',
-        style: Theme.of(context)
-            .textTheme
-            .labelSmall!
-            .copyWith(color: c.textSecondary, height: 1.5),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
       ),
       const SizedBox(height: AppDimensions.spacingSm),
       TextField(
         controller: _modelController,
         style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
-        decoration: const InputDecoration(hintText: AppSettings.defaultAnthropicModel),
+        decoration: const InputDecoration(
+          hintText: AppSettings.defaultAnthropicModel,
+        ),
         onChanged: (value) =>
             widget.settingsController.setAnthropicModel(value),
       ),
@@ -636,10 +648,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         'Claude Code CLI(claude --print)로 리뷰를 생성합니다. CLI가 구독 계정으로 '
         '로그인되어 있으면 구독을 사용합니다. 비워두면 일반 설치 경로를 자동으로 찾고, '
         'macOS GUI 앱에서 찾지 못하면 절대 경로를 입력하세요 (예: /opt/homebrew/bin/claude).',
-        style: Theme.of(context)
-            .textTheme
-            .labelSmall!
-            .copyWith(color: c.textSecondary, height: 1.5),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
       ),
       const SizedBox(height: AppDimensions.spacingSm),
       Row(
@@ -647,7 +658,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Expanded(
             child: TextField(
               controller: _claudeCliPathController,
-              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              style: AppTextStyles.codeMono(
+                size: 12,
+              ).copyWith(color: c.textPrimary),
               decoration: const InputDecoration(hintText: 'claude'),
               onChanged: (value) {
                 widget.settingsController.setClaudeCliPath(value);
@@ -672,10 +685,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         '로그인되어 있어야 하며(codex login), 모델은 CLI 기본값을 사용합니다. '
         '비워두면 일반 설치 경로를 자동으로 찾고, 찾지 못하면 절대 경로를 입력하세요 '
         '(예: /opt/homebrew/bin/codex).',
-        style: Theme.of(context)
-            .textTheme
-            .labelSmall!
-            .copyWith(color: c.textSecondary, height: 1.5),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.5),
       ),
       const SizedBox(height: AppDimensions.spacingSm),
       Row(
@@ -683,7 +695,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Expanded(
             child: TextField(
               controller: _codexCliPathController,
-              style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+              style: AppTextStyles.codeMono(
+                size: 12,
+              ).copyWith(color: c.textPrimary),
               decoration: const InputDecoration(hintText: 'codex'),
               onChanged: (value) {
                 widget.settingsController.setCodexCliPath(value);
@@ -706,9 +720,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final String message;
     switch (settings.aiProvider) {
       case AppSettings.providerApi:
-        message = ok
-            ? 'API 키가 확인되었습니다.'
-            : 'API 키를 확인하지 못했습니다. 키와 네트워크를 확인하세요.';
+        message = ok ? 'API 키가 확인되었습니다.' : 'API 키를 확인하지 못했습니다. 키와 네트워크를 확인하세요.';
       case AppSettings.providerCodex:
         message = ok
             ? 'Codex CLI를 찾았습니다. 로그인 문제는 생성 시점에 표시됩니다.'
@@ -733,7 +745,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Expanded(
             child: Text(
               message,
-              style: AppTextStyles.micro.copyWith(color: ok ? c.success : c.error),
+              style: AppTextStyles.micro.copyWith(
+                color: ok ? c.success : c.error,
+              ),
             ),
           ),
         ],
@@ -756,7 +770,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       selectedColor: c.accent,
       side: BorderSide(color: selected ? c.accent : c.border),
       labelStyle: AppTextStyles.captionSemibold.copyWith(
-        color: selected ? Colors.white : c.textSecondary,
+        color: selected ? c.textOnAccent : c.textSecondary,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       shape: RoundedRectangleBorder(
@@ -773,13 +787,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     var ok = false;
     try {
       if (settings.aiProvider == AppSettings.providerApi) {
-        ok = await _anthropicService.validateKey(apiKey: _apiKeyController.text);
+        ok = await _anthropicService.validateKey(
+          apiKey: _apiKeyController.text,
+        );
       } else if (settings.aiProvider == AppSettings.providerCodex) {
         ok = await _codexService.isAvailable(
-            cliPath: _codexCliPathController.text);
+          cliPath: _codexCliPathController.text,
+        );
       } else {
         ok = await _claudeService.isAvailable(
-            cliPath: _claudeCliPathController.text);
+          cliPath: _claudeCliPathController.text,
+        );
       }
     } catch (_) {
       ok = false;
@@ -821,7 +839,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: Text(
                     settings.syncEnabled ? 'Enabled' : 'Disabled',
-                    style: AppTextStyles.captionBold.copyWith(color: c.textPrimary),
+                    style: AppTextStyles.captionBold.copyWith(
+                      color: c.textPrimary,
+                    ),
                   ),
                 ),
                 Switch.adaptive(
@@ -851,7 +871,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 else if (recentRepos.isEmpty)
                   Text(
                     'No recent repositories',
-                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textMuted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall!.copyWith(color: c.textMuted),
                   )
                 else
                   Wrap(
@@ -914,7 +936,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: AppDimensions.spacingSm),
                   Text(
                     _repoError!,
-                    style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.error),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall!.copyWith(color: c.error),
                   ),
                 ],
               ],
@@ -940,8 +964,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: AppDimensions.spacingLg),
           _DetailCard(
             title: 'Appearance',
-            description:
-                '라이트/다크 또는 시스템 설정을 따릅니다. 메뉴바 팝오버에도 함께 적용됩니다.',
+            description: '라이트/다크 또는 시스템 설정을 따릅니다. 메뉴바 팝오버에도 함께 적용됩니다.',
             child: Wrap(
               spacing: AppDimensions.spacingSm,
               children: [
@@ -949,15 +972,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   c,
                   label: 'System',
                   selected: settings.themeMode == AppThemeMode.system,
-                  onSelected: () => widget.settingsController
-                      .setThemeMode(AppThemeMode.system),
+                  onSelected: () => widget.settingsController.setThemeMode(
+                    AppThemeMode.system,
+                  ),
                 ),
                 _providerChip(
                   c,
                   label: 'Light',
                   selected: settings.themeMode == AppThemeMode.light,
-                  onSelected: () =>
-                      widget.settingsController.setThemeMode(AppThemeMode.light),
+                  onSelected: () => widget.settingsController.setThemeMode(
+                    AppThemeMode.light,
+                  ),
                 ),
                 _providerChip(
                   c,
@@ -979,17 +1004,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Row(
                   children: [
-                    _IconStepButton(
+                    AppIconButton(
+                      bordered: true,
                       icon: Icons.remove_rounded,
                       onTap: widget.settingsController.decreaseContentScale,
                     ),
                     const SizedBox(width: AppDimensions.spacingMd),
                     Text(
                       '${(settings.contentScale * 100).round()}%',
-                      style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
+                      style: AppTextStyles.sectionHeading.copyWith(
+                        color: c.textPrimary,
+                      ),
                     ),
                     const SizedBox(width: AppDimensions.spacingMd),
-                    _IconStepButton(
+                    AppIconButton(
+                      bordered: true,
                       icon: Icons.add_rounded,
                       onTap: widget.settingsController.increaseContentScale,
                     ),
@@ -1005,7 +1034,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 Text(
                   'Shortcuts: cmd + +, cmd + -, cmd + wheel, trackpad pinch',
-                  style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.labelSmall!.copyWith(color: c.textSecondary),
                 ),
                 const SizedBox(height: AppDimensions.spacingLg),
                 _ZoomPreviewCard(contentScale: settings.contentScale),
@@ -1019,7 +1050,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Number of lines shown above and below each search match.',
             child: Row(
               children: [
-                _IconStepButton(
+                AppIconButton(
+                  bordered: true,
                   icon: Icons.remove_rounded,
                   onTap: () => widget.settingsController.setSearchContextLines(
                     settings.searchContextLines - 1,
@@ -1028,10 +1060,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(width: AppDimensions.spacingMd),
                 Text(
                   '${settings.searchContextLines}',
-                  style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
+                  style: AppTextStyles.sectionHeading.copyWith(
+                    color: c.textPrimary,
+                  ),
                 ),
                 const SizedBox(width: AppDimensions.spacingMd),
-                _IconStepButton(
+                AppIconButton(
+                  bordered: true,
                   icon: Icons.add_rounded,
                   onTap: () => widget.settingsController.setSearchContextLines(
                     settings.searchContextLines + 1,
@@ -1101,15 +1136,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'View and customise the key combinations used across the app.',
           ),
           const SizedBox(height: AppDimensions.spacingLg),
-          ...bindings.map((binding) => Padding(
-                padding: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
-                child: _ShortcutCard(
-                  binding: binding,
-                  onEdit: binding.isFixed
-                      ? null
-                      : () => _showShortcutCaptureDialog(binding),
-                ),
-              )),
+          ...bindings.map(
+            (binding) => Padding(
+              padding: const EdgeInsets.only(bottom: AppDimensions.spacingSm),
+              child: _ShortcutCard(
+                binding: binding,
+                onEdit: binding.isFixed
+                    ? null
+                    : () => _showShortcutCaptureDialog(binding),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1127,12 +1164,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             return AlertDialog(
               backgroundColor: c.surface,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
+                borderRadius: BorderRadius.circular(
+                  AppDimensions.radiusComfortable,
+                ),
                 side: BorderSide(color: c.border),
               ),
               title: Text(
                 '${binding.action.label} 단축키 변경',
-                style: Theme.of(context).textTheme.labelLarge!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary),
+                style: Theme.of(context).textTheme.labelLarge!.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary,
+                ),
               ),
               content: SizedBox(
                 width: 320,
@@ -1141,7 +1183,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: [
                     Text(
                       '새 키 조합을 입력하세요',
-                      style: AppTextStyles.caption.copyWith(color: c.textSecondary),
+                      style: AppTextStyles.caption.copyWith(
+                        color: c.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: AppDimensions.spacingLg),
                     Focus(
@@ -1173,7 +1217,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         decoration: BoxDecoration(
                           color: c.surfaceLight,
-                          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.radiusStandard,
+                          ),
                           border: Border.all(color: c.accent),
                         ),
                         alignment: Alignment.center,
@@ -1192,10 +1238,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  child: Text(
-                    '취소',
-                    style: TextStyle(color: c.textMuted),
-                  ),
+                  child: Text('취소', style: TextStyle(color: c.textMuted)),
                 ),
                 FilledButton(
                   onPressed: captured == null
@@ -1281,7 +1324,9 @@ class _NavigationItem extends StatelessWidget {
               height: 32,
               decoration: BoxDecoration(
                 color: c.surface,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+                borderRadius: BorderRadius.circular(
+                  AppDimensions.radiusStandard,
+                ),
                 border: Border.all(
                   color: isSelected
                       ? c.accent.withValues(alpha: 0.18)
@@ -1301,12 +1346,17 @@ class _NavigationItem extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: AppTextStyles.captionBold.copyWith(color: isSelected ? c.textPrimary : c.textSecondary),
+                    style: AppTextStyles.captionBold.copyWith(
+                      color: isSelected ? c.textPrimary : c.textSecondary,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     description,
-                    style: AppTextStyles.micro.copyWith(color: c.textMuted, height: 1.4),
+                    style: AppTextStyles.micro.copyWith(
+                      color: c.textMuted,
+                      height: 1.4,
+                    ),
                   ),
                 ],
               ),
@@ -1337,7 +1387,10 @@ class _PaneHeader extends StatelessWidget {
         const SizedBox(height: AppDimensions.spacingSm),
         Text(
           description,
-          style: AppTextStyles.caption.copyWith(color: c.textSecondary, height: 1.6),
+          style: AppTextStyles.caption.copyWith(
+            color: c.textSecondary,
+            height: 1.6,
+          ),
         ),
       ],
     );
@@ -1380,12 +1433,17 @@ class _DetailCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(height: AppDimensions.spacingXs),
                     Text(
                       description,
-                      style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary, height: 1.6),
+                      style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                        color: c.textSecondary,
+                        height: 1.6,
+                      ),
                     ),
                   ],
                 ),
@@ -1419,14 +1477,22 @@ class _ActionButton extends StatelessWidget {
         foregroundColor: c.textPrimary,
         side: BorderSide(color: c.borderSubtle),
         backgroundColor: c.surface,
-        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: AppDimensions.spacingSm),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusStandard)),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingLg,
+          vertical: AppDimensions.spacingSm,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelMedium!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary),
+        style: Theme.of(context).textTheme.labelMedium!.copyWith(
+          fontWeight: FontWeight.w700,
+          color: c.textPrimary,
+        ),
       ),
     );
   }
@@ -1450,7 +1516,10 @@ class _PathPreview extends StatelessWidget {
       ),
       child: SelectableText(
         path,
-        style: AppTextStyles.codeMono(size: 12, height: 1.6).copyWith(color: c.textPrimary),
+        style: AppTextStyles.codeMono(
+          size: 12,
+          height: 1.6,
+        ).copyWith(color: c.textPrimary),
       ),
     );
   }
@@ -1477,18 +1546,25 @@ class _CurrentRepoCard extends StatelessWidget {
         children: [
           Text(
             'Current source',
-            style: AppTextStyles.microBold.copyWith(letterSpacing: 0.4, color: c.textMuted),
+            style: AppTextStyles.microBold.copyWith(
+              letterSpacing: 0.4,
+              color: c.textMuted,
+            ),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             activeRepo?.fullName ?? 'Not connected',
-            style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium!.copyWith(color: c.textPrimary),
           ),
           if (activeRepo != null) ...[
             const SizedBox(height: 2),
             Text(
               'Branch ${activeRepo!.branch}',
-              style: AppTextStyles.codeMono(size: 11).copyWith(color: c.textSecondary),
+              style: AppTextStyles.codeMono(
+                size: 11,
+              ).copyWith(color: c.textSecondary),
             ),
           ],
         ],
@@ -1507,7 +1583,10 @@ class _SectionLabel extends StatelessWidget {
     final c = context.colors;
     return Text(
       label,
-      style: AppTextStyles.microBold.copyWith(letterSpacing: 0.5, color: c.textMuted),
+      style: AppTextStyles.microBold.copyWith(
+        letterSpacing: 0.5,
+        color: c.textMuted,
+      ),
     );
   }
 }
@@ -1531,7 +1610,10 @@ class _RepoChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
       child: AnimatedContainer(
         duration: AppDimensions.animFast,
-        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingMd,
+          vertical: 10,
+        ),
         decoration: BoxDecoration(
           color: isActive ? c.accentSubtle : c.surface,
           borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
@@ -1539,36 +1621,10 @@ class _RepoChip extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: AppTextStyles.codeMono(size: 12).copyWith(
-            color: isActive ? c.accent : c.textPrimary,
-          ),
+          style: AppTextStyles.codeMono(
+            size: 12,
+          ).copyWith(color: isActive ? c.accent : c.textPrimary),
         ),
-      ),
-    );
-  }
-}
-
-class _IconStepButton extends StatelessWidget {
-  const _IconStepButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-          border: Border.all(color: c.border),
-        ),
-        child: Icon(icon, size: 16, color: c.textSecondary),
       ),
     );
   }
@@ -1599,20 +1655,28 @@ class _ShortcutCard extends StatelessWidget {
               children: [
                 Text(
                   binding.action.label,
-                  style: AppTextStyles.captionBold.copyWith(color: c.textPrimary),
+                  style: AppTextStyles.captionBold.copyWith(
+                    color: c.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: AppDimensions.spacingXs),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.spacingSm,
+                    vertical: AppDimensions.spacingXs,
+                  ),
                   decoration: BoxDecoration(
                     color: c.surface,
-                    borderRadius: BorderRadius.circular(AppDimensions.radiusSubtle),
+                    borderRadius: BorderRadius.circular(
+                      AppDimensions.radiusSubtle,
+                    ),
                     border: Border.all(color: c.borderSubtle),
                   ),
                   child: Text(
                     binding.displayLabel,
-                    style: AppTextStyles.codeMono(size: 12).copyWith(color: c.textPrimary),
+                    style: AppTextStyles.codeMono(
+                      size: 12,
+                    ).copyWith(color: c.textPrimary),
                   ),
                 ),
               ],
@@ -1624,10 +1688,7 @@ class _ShortcutCard extends StatelessWidget {
               style: AppTextStyles.micro.copyWith(color: c.textMuted),
             )
           else
-            _ActionButton(
-              label: 'Edit',
-              onTap: onEdit,
-            ),
+            _ActionButton(label: 'Edit', onTap: onEdit),
         ],
       ),
     );
@@ -1664,12 +1725,16 @@ class _ZoomPreviewCard extends StatelessWidget {
           const SizedBox(height: AppDimensions.spacingMd),
           Text(
             'Daily Note',
-            style: AppTextStyles.scaledHeadline(contentScale).copyWith(color: c.textPrimary),
+            style: AppTextStyles.scaledHeadline(
+              contentScale,
+            ).copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           Text(
             'A compact preview makes zoom changes feel immediate even before you close settings.',
-            style: AppTextStyles.scaledCaption(contentScale).copyWith(color: c.textSecondary),
+            style: AppTextStyles.scaledCaption(
+              contentScale,
+            ).copyWith(color: c.textSecondary),
           ),
         ],
       ),

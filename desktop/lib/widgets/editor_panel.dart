@@ -18,6 +18,8 @@ import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
 import 'editor_overlay_layout.dart';
+import 'app_icon_button.dart';
+import 'hover_builder.dart';
 import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
@@ -797,49 +799,57 @@ class EditorPanelState extends State<EditorPanel> {
           ),
           const SizedBox(width: AppDimensions.spacingMd),
           if (!widget.isReadOnly) ...[
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.format_bold_rounded,
               tooltip: 'Bold',
               onTap: () => _wrapSelection('**'),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.format_italic_rounded,
               tooltip: 'Italic',
               onTap: () => _wrapSelection('*'),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.title_rounded,
               tooltip: 'Heading',
               onTap: () => _toggleLinePrefix('# '),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.format_list_bulleted_rounded,
               tooltip: 'Bullet list',
               onTap: () => _toggleLinePrefix('- '),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.checklist_rounded,
               tooltip: 'Checklist',
               onTap: () => _toggleLinePrefix('- [ ] '),
             ),
             const SizedBox(width: AppDimensions.spacingMd),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.table_chart_outlined,
               tooltip: '표 삽입 / 편집',
               onTap: () => unawaited(_insertTable()),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.image_outlined,
               tooltip: '이미지 첨부',
               onTap: () => unawaited(_attachImageFromPicker()),
             ),
             const SizedBox(width: AppDimensions.spacingXs),
-            _ToolbarIconButton(
+            AppIconButton(
+              bordered: true,
               icon: Icons.format_list_numbered_rounded,
               tooltip: 'Renumber list',
               onTap: _renumberList,
@@ -1561,53 +1571,6 @@ class EditorPanelState extends State<EditorPanel> {
   }
 }
 
-/// Compact hover icon button used for editor toolbar actions.
-class _ToolbarIconButton extends StatefulWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  const _ToolbarIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  @override
-  State<_ToolbarIconButton> createState() => _ToolbarIconButtonState();
-}
-
-class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Tooltip(
-      message: widget.tooltip,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: AppDimensions.animFast,
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: _isHovered ? c.surfaceHover : c.surfaceLight,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-              border: Border.all(color: c.border),
-            ),
-            child: Icon(widget.icon, size: 16, color: c.textSecondary),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// details 블록 summary 줄 왼쪽의 접기/펼치기 버튼.
 /// 채워진 삼각형 + 본문보다 진한 색으로 접기 지점을 뚜렷하게 보여준다.
 class _DetailsToggleButton extends StatelessWidget {
@@ -1665,7 +1628,7 @@ class _CheckboxToggle extends StatelessWidget {
             decoration: BoxDecoration(
               color: checked ? c.accent : Colors.transparent,
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               border: Border.all(
                 color: checked ? c.accent : c.textMuted,
                 width: 1.2,
@@ -1682,7 +1645,7 @@ class _CheckboxToggle extends StatelessWidget {
   }
 }
 
-class _CreateNoteButton extends StatefulWidget {
+class _CreateNoteButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool useLocalAccent;
@@ -1696,46 +1659,37 @@ class _CreateNoteButton extends StatefulWidget {
   });
 
   @override
-  State<_CreateNoteButton> createState() => _CreateNoteButtonState();
-}
-
-class _CreateNoteButtonState extends State<_CreateNoteButton> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final accentColor = widget.useLocalAccent ? c.localAccent : c.accent;
+    final accentColor = useLocalAccent ? c.localAccent : c.accent;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+    return HoverBuilder(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: AppDimensions.spacingLg,
             vertical: AppDimensions.spacingSm,
           ),
           decoration: BoxDecoration(
-            color: _isHovered ? c.surfaceHover : c.surfaceLight,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            color: hovered ? c.surfaceHover : c.surfaceLight,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             border: Border.all(
-              color: _isHovered ? accentColor.withValues(alpha: 0.3) : c.border,
+              color: hovered ? accentColor.withValues(alpha: 0.3) : c.border,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                widget.icon,
+                icon,
                 size: 14,
-                color: _isHovered ? accentColor : c.textSecondary,
+                color: hovered ? accentColor : c.textSecondary,
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                widget.label,
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500, color: _isHovered ? accentColor : c.textSecondary),
+                label,
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500, color: hovered ? accentColor : c.textSecondary),
               ),
             ],
           ),
@@ -1759,7 +1713,7 @@ class _EditorTagChip extends StatelessWidget {
       padding: const EdgeInsets.only(left: AppDimensions.spacingSm, right: 2, top: 2, bottom: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         border: Border.all(color: c.accent.withValues(alpha: 0.2)),
       ),
       child: Row(

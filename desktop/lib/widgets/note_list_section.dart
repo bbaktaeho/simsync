@@ -3,8 +3,10 @@ import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
+import 'app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import 'hover_builder.dart';
 import 'note_list_menus.dart';
 
 class NoteListSection extends StatelessWidget {
@@ -112,7 +114,7 @@ class NoteListSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: c.surfaceHover,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               '$totalCount',
@@ -194,7 +196,7 @@ class NoteListSection extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _PaginationButton(
+          AppIconButton(
             icon: Icons.chevron_left_rounded,
             enabled: currentPage > 0,
             onTap: () => onPageChanged(currentPage - 1),
@@ -205,7 +207,7 @@ class NoteListSection extends StatelessWidget {
             style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
-          _PaginationButton(
+          AppIconButton(
             icon: Icons.chevron_right_rounded,
             enabled: currentPage < totalPages - 1,
             onTap: () => onPageChanged(currentPage + 1),
@@ -216,7 +218,7 @@ class NoteListSection extends StatelessWidget {
   }
 }
 
-class _NoteListItem extends StatefulWidget {
+class _NoteListItem extends StatelessWidget {
   final Note note;
   final bool isSelected;
   final VoidCallback onTap;
@@ -238,38 +240,28 @@ class _NoteListItem extends StatefulWidget {
   });
 
   @override
-  State<_NoteListItem> createState() => _NoteListItemState();
-}
-
-class _NoteListItemState extends State<_NoteListItem> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    final isLocal = widget.note.storageType == StorageType.local;
+    final isLocal = note.storageType == StorageType.local;
     final itemAccent = isLocal ? c.localAccent : c.accent;
+    final dateStr = DateFormat('HH:mm').format(note.updatedAt);
 
-    final bgColor = widget.isSelected
-        ? (isLocal
-            ? itemAccent.withValues(alpha: 0.10)
-            : c.surfaceHover)
-        : _isHovered
+    return HoverBuilder(
+      builder: (context, hovered) {
+        final bgColor = isSelected
             ? (isLocal
-                ? itemAccent.withValues(alpha: 0.06)
-                : c.surfaceLight)
-            : (isLocal
-                ? itemAccent.withValues(alpha: 0.03)
-                : Colors.transparent);
-
-    final dateStr = DateFormat('HH:mm').format(widget.note.updatedAt);
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+                ? itemAccent.withValues(alpha: 0.10)
+                : c.surfaceHover)
+            : hovered
+                ? (isLocal
+                    ? itemAccent.withValues(alpha: 0.06)
+                    : c.surfaceLight)
+                : (isLocal
+                    ? itemAccent.withValues(alpha: 0.03)
+                    : Colors.transparent);
+        return GestureDetector(
+        onTap: onTap,
         onSecondaryTapUp: (details) =>
             _showContextMenu(context, details.globalPosition),
         child: Container(
@@ -280,8 +272,8 @@ class _NoteListItemState extends State<_NoteListItem> {
           ),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-            border: widget.isSelected
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+            border: isSelected
                 ? Border.all(color: itemAccent.withValues(alpha: 0.3))
                 : isLocal
                     ? Border.all(color: itemAccent.withValues(alpha: 0.08))
@@ -289,7 +281,7 @@ class _NoteListItemState extends State<_NoteListItem> {
           ),
           child: Row(
             children: [
-              if (widget.isSelected)
+              if (isSelected)
                 Container(
                   width: 3,
                   height: 28,
@@ -304,8 +296,8 @@ class _NoteListItemState extends State<_NoteListItem> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.note.title.isEmpty ? 'Untitled' : widget.note.title,
-                      style: AppTextStyles.captionMedium.copyWith(color: widget.isSelected ? c.textPrimary : c.textSecondary),
+                      note.title.isEmpty ? 'Untitled' : note.title,
+                      style: AppTextStyles.captionMedium.copyWith(color: isSelected ? c.textPrimary : c.textSecondary),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -326,11 +318,12 @@ class _NoteListItemState extends State<_NoteListItem> {
                   ],
                 ),
               ),
-              if (widget.note.tags.isNotEmpty) _buildTags(c, widget.note.tags),
+              if (note.tags.isNotEmpty) _buildTags(c, note.tags),
             ],
           ),
         ),
-      ),
+      );
+      },
     );
   }
 
@@ -338,12 +331,12 @@ class _NoteListItemState extends State<_NoteListItem> {
     showNoteContextMenu(
       context: context,
       position: position,
-      note: widget.note,
-      onConvertToSynced: widget.onConvertToSynced,
-      onConvertToLocal: widget.onConvertToLocal,
-      onMoveToMemo: widget.onMoveToMemo,
-      onMoveToDaily: widget.onMoveToDailyNote,
-      onDelete: widget.onDelete,
+      note: note,
+      onConvertToSynced: onConvertToSynced,
+      onConvertToLocal: onConvertToLocal,
+      onMoveToMemo: onMoveToMemo,
+      onMoveToDaily: onMoveToDailyNote,
+      onDelete: onDelete,
     );
   }
 
@@ -374,7 +367,7 @@ class _NoteListItemState extends State<_NoteListItem> {
       textStyle: AppTextStyles.microMedium.copyWith(color: c.textPrimary),
       decoration: BoxDecoration(
         color: c.surfaceHover,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         border: Border.all(color: c.border),
       ),
       child: tagRow,
@@ -406,37 +399,7 @@ class _TagChip extends StatelessWidget {
   }
 }
 
-class _PaginationButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _PaginationButton({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(
-          icon,
-          size: 16,
-          color: enabled ? c.textSecondary : c.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _TabItem extends StatefulWidget {
+class _TabItem extends StatelessWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
@@ -448,27 +411,13 @@ class _TabItem extends StatefulWidget {
   });
 
   @override
-  State<_TabItem> createState() => _TabItemState();
-}
-
-class _TabItemState extends State<_TabItem> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final color = widget.isActive
-        ? c.accent
-        : _isHovered
-            ? c.textPrimary
-            : c.textMuted;
 
-    return MouseRegion(
+    return HoverBuilder(
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: AppDimensions.spacingXs),
@@ -477,9 +426,13 @@ class _TabItemState extends State<_TabItem> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                widget.label,
+                label,
                 style: AppTextStyles.microSemibold.copyWith(
-                  color: color,
+                  color: isActive
+                      ? c.accent
+                      : hovered
+                          ? c.textPrimary
+                          : c.textMuted,
                   letterSpacing: 0.5,
                 ),
               ),
@@ -488,7 +441,7 @@ class _TabItemState extends State<_TabItem> {
                 width: 18,
                 height: 2,
                 decoration: BoxDecoration(
-                  color: widget.isActive ? c.accent : Colors.transparent,
+                  color: isActive ? c.accent : Colors.transparent,
                   borderRadius: BorderRadius.circular(1),
                 ),
               ),

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../search/note_search_query.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_theme.dart';
 import '../theme/app_text_styles.dart';
 import 'mini_calendar.dart';
 
@@ -322,9 +323,7 @@ class _DateInput extends StatelessWidget {
                 LengthLimitingTextInputFormatter(10),
               ],
               style: AppTextStyles.micro.copyWith(color: c.textPrimary),
-              decoration: InputDecoration(
-                isCollapsed: true,
-                border: InputBorder.none,
+              decoration: bareInputDecoration.copyWith(
                 hintText: hint,
                 hintStyle: AppTextStyles.micro.copyWith(color: c.textMuted),
               ),
@@ -366,13 +365,13 @@ class _TagChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+                Icon(Icons.check_rounded, size: 12, color: c.textOnAccent),
                 const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: AppTextStyles.micro.copyWith(
-                  color: selected ? Colors.white : c.textSecondary,
+                  color: selected ? c.textOnAccent : c.textSecondary,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),

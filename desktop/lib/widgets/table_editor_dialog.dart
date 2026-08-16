@@ -265,13 +265,6 @@ class _TableEditorDialogState extends State<TableEditorDialog> {
                   ),
                   const SizedBox(width: AppDimensions.spacingSm),
                   FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: c.accent,
-                      foregroundColor: Colors.white,
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      textStyle: AppTextStyles.captionSemibold,
-                    ),
                     onPressed: _save,
                     child: Text(widget.initial == null ? '삽입' : '저장'),
                   ),

@@ -149,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen>
       padding: const EdgeInsets.all(AppDimensions.spacingXxl),
       decoration: BoxDecoration(
         color: c.surface,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         border: Border.all(color: c.border),
         boxShadow: AppShadows.card,
       ),
@@ -202,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen>
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.border),
       ),
       child: Row(
@@ -311,7 +311,7 @@ class _DeviceCodeDialogState extends State<_DeviceCodeDialog> {
     return Dialog(
       backgroundColor: c.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         side: BorderSide(color: c.border),
       ),
       child: Container(
@@ -337,7 +337,7 @@ class _DeviceCodeDialogState extends State<_DeviceCodeDialog> {
               decoration: BoxDecoration(
                 color: c.surfaceLight,
                 borderRadius:
-                    BorderRadius.circular(AppDimensions.borderRadius),
+                    BorderRadius.circular(AppDimensions.radiusStandard),
                 border: Border.all(color: c.border),
               ),
               child: SelectableText(

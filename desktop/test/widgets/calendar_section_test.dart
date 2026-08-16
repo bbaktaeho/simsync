@@ -34,22 +34,23 @@ Future<void> _pumpCalendar(
 }
 
 void main() {
-  // July 2026: the 1st is a Wednesday, so the first week carries 2 leading days
-  // from June (29, 30). July has 31 days, so the last week carries 2 trailing
-  // days from August (1, 2). The grid is always 7 wide with no empty gaps.
+  // 주 시작은 일요일. July 2026: 1일이 수요일이라 첫 주는 6월 28·29·30을
+  // 선행으로 채운다. 7월은 31일이라 마지막 주는 8월 1일 하나만 끌어온다.
+  // 그리드는 항상 7칸 폭이고 빈칸이 없다.
 
   testWidgets('fills the first/last weeks with adjacent-month days', (
     tester,
   ) async {
     await _pumpCalendar(tester, displayedMonth: DateTime(2026, 7));
 
-    // June 30 (leading) + July 30 both render.
+    // 6월 30(선행) + 7월 30.
     expect(find.text('30'), findsNWidgets(2));
-    // July 1 + August 1 (trailing) both render.
+    // 7월 1 + 8월 1(후행).
     expect(find.text('1'), findsNWidgets(2));
-    // July 2 + August 2 (trailing) both render.
-    expect(find.text('2'), findsNWidgets(2));
-    // 31 is unique to July (no adjacent month shows it here).
+    // 7월 2만 (8월 2는 그리드 밖).
+    expect(find.text('2'), findsOneWidget);
+    // 첫 칸은 일요일인 6월 28.
+    expect(find.text('28'), findsNWidgets(2));
     expect(find.text('31'), findsOneWidget);
   });
 
@@ -63,7 +64,7 @@ void main() {
       onDateSelected: (d) => picked = d,
     );
 
-    // The very first cell of the grid is Monday, June 29, 2026.
+    // 일요일 시작이므로 첫 칸은 6월 28(일). 29는 그 다음 칸(월).
     await tester.tap(find.text('29').first);
     await tester.pump();
 
@@ -73,14 +74,23 @@ void main() {
     expect(picked!.day, 29);
   });
 
-  testWidgets('a month starting on Monday pulls in no leading days', (
-    tester,
-  ) async {
-    // June 1 2026 is a Monday, so the first week has no leading days. The
-    // previous month's 30th (May 30) must therefore NOT appear — only June's
-    // own 30th does. (The last week trails into July 1-5, which carries no 30.)
+  testWidgets('월요일 시작 달은 선행 한 칸(전월 말일)을 가져온다', (tester) async {
+    // 2026-06-01은 월요일. 일요일 시작이므로 5월 31 한 칸이 앞에 붙는다.
+    // 5월 30은 그리드 밖이라 30은 6월 것 하나만 나온다.
     await _pumpCalendar(tester, displayedMonth: DateTime(2026, 6));
 
-    expect(find.text('30'), findsOneWidget);
+    expect(find.text('31'), findsOneWidget); // 5월 31 (선행)
+    expect(find.text('30'), findsOneWidget); // 6월 30
+  });
+
+  testWidgets('요일 헤더는 일요일부터 시작하고 주말은 다른 색이다', (tester) async {
+    await _pumpCalendar(tester, displayedMonth: DateTime(2026, 7));
+
+    final header = tester.widgetList<Text>(find.byType(Text)).toList();
+    final su = header.firstWhere((t) => t.data == 'Su');
+    final mo = header.firstWhere((t) => t.data == 'Mo');
+    final sa = header.firstWhere((t) => t.data == 'Sa');
+    expect(su.style!.color, isNot(mo.style!.color), reason: '일요일은 주말 색');
+    expect(sa.style!.color, su.style!.color, reason: '토요일도 같은 주말 색');
   });
 }

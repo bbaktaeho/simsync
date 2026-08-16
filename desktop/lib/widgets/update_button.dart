@@ -37,7 +37,7 @@ class _UpdateButtonState extends State<UpdateButton> {
       height: 28,
       decoration: BoxDecoration(
         color: _hovered ? c.surfaceHover : c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         border: Border.all(color: c.border),
       ),
       child: Row(

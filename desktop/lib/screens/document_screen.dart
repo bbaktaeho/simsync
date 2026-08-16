@@ -31,6 +31,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
 import '../widgets/editor_panel.dart';
+import '../widgets/hover_builder.dart';
 import '../widgets/editor_tab_bar.dart';
 import '../widgets/note_list_menus.dart';
 import '../widgets/note_list_section.dart';
@@ -1745,7 +1746,7 @@ class _ResizeHandleState extends State<_ResizeHandle> {
 }
 
 /// Weekly view toggle button placed between calendar and note list.
-class _ReviewViewButton extends StatefulWidget {
+class _ReviewViewButton extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isActive;
@@ -1759,21 +1760,12 @@ class _ReviewViewButton extends StatefulWidget {
   });
 
   @override
-  State<_ReviewViewButton> createState() => _ReviewViewButtonState();
-}
-
-class _ReviewViewButtonState extends State<_ReviewViewButton> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+    return HoverBuilder(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           margin: const EdgeInsets.symmetric(
@@ -1785,16 +1777,16 @@ class _ReviewViewButtonState extends State<_ReviewViewButton> {
             vertical: AppDimensions.spacingSm,
           ),
           decoration: BoxDecoration(
-            color: widget.isActive
+            color: isActive
                 ? c.accentMuted
-                : _isHovered
+                : hovered
                 ? c.surfaceHover
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             border: Border.all(
-              color: widget.isActive
+              color: isActive
                   ? c.accent.withValues(alpha: 0.4)
-                  : _isHovered
+                  : hovered
                   ? c.border
                   : Colors.transparent,
             ),
@@ -1802,14 +1794,14 @@ class _ReviewViewButtonState extends State<_ReviewViewButton> {
           child: Row(
             children: [
               Icon(
-                widget.icon,
+                icon,
                 size: 14,
-                color: widget.isActive ? c.accent : c.textMuted,
+                color: isActive ? c.accent : c.textMuted,
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                widget.label,
-                style: AppTextStyles.microSemibold.copyWith(color: widget.isActive ? c.accent : c.textSecondary),
+                label,
+                style: AppTextStyles.microSemibold.copyWith(color: isActive ? c.accent : c.textSecondary),
               ),
             ],
           ),
