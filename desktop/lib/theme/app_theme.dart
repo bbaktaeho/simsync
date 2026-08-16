@@ -189,3 +189,21 @@ ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
     ),
   );
 }
+
+/// 바깥 컨테이너가 배경과 테두리를 직접 그리는 입력칸에 쓰는 데코레이션.
+///
+/// 앱 테마의 [InputDecorationTheme]은 `border`뿐 아니라 `enabledBorder`,
+/// `focusedBorder`와 `filled`까지 준다. 그래서 호출부에서 `border`만
+/// `InputBorder.none`으로 두면 **입력칸 안쪽에 테두리가 한 겹 더 남는다** —
+/// 검색창에서 실제로 그렇게 보였다. 여기서 한 번에 전부 끈다.
+const InputDecoration bareInputDecoration = InputDecoration(
+  isDense: true,
+  contentPadding: EdgeInsets.zero,
+  filled: false,
+  border: InputBorder.none,
+  enabledBorder: InputBorder.none,
+  focusedBorder: InputBorder.none,
+  errorBorder: InputBorder.none,
+  focusedErrorBorder: InputBorder.none,
+  disabledBorder: InputBorder.none,
+);

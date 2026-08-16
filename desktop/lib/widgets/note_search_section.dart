@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_theme.dart';
 
 /// Search field + filter button shown in the title bar.
 ///
@@ -44,6 +45,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
   /// exactly the same size and stay vertically aligned.
   static const double _controlHeight = 32;
 
+  /// 아이콘·글자 잉크가 박스보다 아래에 그려지는 것을 상쇄하는 값.
+  static const double _opticalNudge = 4;
+
   FocusNode? _ownedFocusNode;
   bool _focused = false;
 
@@ -84,7 +88,8 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final controller = widget.controller ??
+    final controller =
+        widget.controller ??
         TextEditingController.fromValue(
           TextEditingValue(
             text: widget.query,
@@ -99,13 +104,21 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
         Expanded(
           child: Container(
             height: _controlHeight,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.spacingSm,
+            // 아래쪽에만 여백을 조금 준다. 아이콘과 글자 모두 잉크가 박스보다
+            // 아래에 그려져(실측 각각 +2.0px, +1.5px) 그냥 가운데 정렬하면
+            // 눈에는 내려앉아 보인다 — 광학 보정.
+            padding: const EdgeInsets.fromLTRB(
+              AppDimensions.spacingSm,
+              0,
+              AppDimensions.spacingSm,
+              _opticalNudge,
             ),
             decoration: BoxDecoration(
               color: c.surfaceLight,
               borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-              border: Border.all(color: _focused ? c.accent : c.border),
+              // 평상시엔 채운 배경만으로 충분하다. 테두리는 포커스 표시로만
+              // 쓴다 (DESIGN.md §8: 인터랙티브 요소는 포커스가 보여야 한다).
+              border: _focused ? Border.all(color: c.accent) : null,
             ),
             child: Row(
               children: [
@@ -117,20 +130,26 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
                     focusNode: _focusNode,
                     onChanged: widget.onQueryChanged,
                     textAlignVertical: TextAlignVertical.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall!
-                        .copyWith(color: c.textPrimary),
-                    decoration: InputDecoration(
-                      isCollapsed: true,
-                      border: InputBorder.none,
+                    // 한 줄 컨트롤의 세로 정렬. height 1.0으로 라인 박스를
+                    // 글자 크기에 맞추고, leading을 위아래 균등 분배해야 잉크가
+                    // 박스 가운데 온다 (기본 proportional은 아래로 쏠린다 —
+                    // 실측 +1.5px).
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: c.textPrimary,
+                      height: 1.0,
+                      leadingDistribution: TextLeadingDistribution.even,
+                    ),
+                    // 배경/테두리는 바깥 Container가 그린다. isDense 조합이라야
+                    // 32px 슬롯 안에서 글자가 가운데 온다 (isCollapsed는 위로 붙는다).
+                    decoration: bareInputDecoration.copyWith(
                       hintText: _hasActiveFilters
                           ? 'Search (filters active)'
                           : 'Search notes',
-                      hintStyle: Theme.of(context)
-                          .textTheme
-                          .labelSmall!
-                          .copyWith(color: c.textMuted),
+                      hintStyle: Theme.of(context).textTheme.labelSmall!.copyWith(
+                        color: c.textMuted,
+                        height: 1.0,
+                        leadingDistribution: TextLeadingDistribution.even,
+                      ),
                     ),
                   ),
                 ),
@@ -157,7 +176,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
               height: _controlHeight,
               decoration: BoxDecoration(
                 color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+                borderRadius: BorderRadius.circular(
+                  AppDimensions.radiusStandard,
+                ),
                 border: Border.all(
                   color: _hasActiveFilters ? c.accent : c.border,
                 ),
