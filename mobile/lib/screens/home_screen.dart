@@ -7,6 +7,7 @@ import '../storage/github/github_sync_engine.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
 import 'calendar_screen.dart';
+import 'review_screen.dart';
 import 'search_screen.dart';
 import 'settings_screen.dart';
 
@@ -60,6 +61,11 @@ class _HomeScreenState extends State<HomeScreen> {
             settingsController: widget.settingsController,
             syncEngine: widget.syncEngine,
           ),
+          ReviewScreen(
+            storage: widget.storage,
+            localStorage: widget.localStorage,
+            refreshSignal: widget.refreshSignal,
+          ),
           SearchScreen(
             storage: widget.storage,
             localStorage: widget.localStorage,
@@ -87,6 +93,11 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(Icons.calendar_month_outlined),
             activeIcon: Icon(Icons.calendar_month),
             label: '노트',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.auto_awesome_outlined),
+            activeIcon: Icon(Icons.auto_awesome),
+            label: '리뷰',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.search_outlined),
