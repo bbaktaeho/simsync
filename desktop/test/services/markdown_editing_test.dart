@@ -473,12 +473,18 @@ void main() {
           '[]tail');
     });
 
-    test('붙여넣기(여러 글자)는 건드리지 않는다', () {
+    test('두 글자가 한 번에 들어와도 펼친다 (한글 IME 경로)', () {
+      // 실제 앱에서 재현된 케이스: IME가 조합 커밋과 괄호를 한 번에 보낸다.
       final oldV = _value('', 0);
       final newV = _value('[]', 2);
       expect(
           CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV).text,
-          '[]');
+          '- [ ] ');
+    });
+
+    test('텍스트가 그대로면(커서 이동 등) 건드리지 않는다', () {
+      final v = _value('[]', 2);
+      expect(CheckboxShorthandInputFormatter().formatEditUpdate(v, v).text, '[]');
     });
   });
 
