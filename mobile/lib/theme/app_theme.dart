@@ -3,11 +3,17 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 import 'app_dimensions.dart';
+import 'app_text_styles.dart';
 
-ThemeData buildLightTheme() => _buildTheme(AppColorsExtension.light);
+ThemeData buildLightTheme() =>
+    _buildTheme(AppColorsExtension.light, Brightness.light);
 
-ThemeData _buildTheme(AppColorsExtension c) {
-  final base = ThemeData.light();
+ThemeData buildDarkTheme() =>
+    _buildTheme(AppColorsExtension.dark, Brightness.dark);
+
+ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
+  final base =
+      brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
   final baseTextTheme = GoogleFonts.interTextTheme(base.textTheme);
 
   // TextTheme mapped from DESIGN.md §3 (16-role hierarchy → 15 Flutter slots).
@@ -76,17 +82,17 @@ ThemeData _buildTheme(AppColorsExtension c) {
   );
 
   return ThemeData(
-    brightness: Brightness.light,
+    brightness: brightness,
     scaffoldBackgroundColor: c.scaffold,
     extensions: [c],
     colorScheme: ColorScheme(
-      brightness: Brightness.light,
+      brightness: brightness,
       primary: c.accent,
       onPrimary: c.textOnAccent,
       surface: c.surface,
       onSurface: c.textPrimary,
       error: c.error,
-      onError: Colors.white,
+      onError: c.textOnAccent,
       secondary: c.accent,
       onSecondary: c.textOnAccent,
       outline: c.border,
@@ -115,6 +121,38 @@ ThemeData _buildTheme(AppColorsExtension c) {
         backgroundColor: c.accent,
         foregroundColor: c.textOnAccent,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
+        textStyle: GoogleFonts.inter(
+          fontWeight: FontWeight.w600,
+          fontSize: 15,
+        ),
+      ),
+    ),
+    // 데스크탑과 같은 버튼 언어. 없으면 Material 기본값이 적용돼 호출부마다
+    // padding을 따로 주게 되고 같은 버튼이 화면마다 달라진다.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: c.accent,
+        foregroundColor: c.textOnAccent,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingLg,
+          vertical: AppDimensions.spacingSm,
+        ),
+        minimumSize: const Size(0, 44), // 모바일 터치 타깃
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
+        textStyle: AppTextStyles.captionSemibold,
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: c.accent,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        side: BorderSide(color: c.border),
+        minimumSize: const Size(0, 44),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         ),

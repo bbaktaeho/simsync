@@ -139,7 +139,7 @@ class _SearchScreenState extends State<SearchScreen> {
       backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimensions.borderRadiusLg),
+          top: Radius.circular(AppDimensions.radiusComfortable),
         ),
       ),
       isScrollControlled: true,
@@ -243,21 +243,23 @@ class _SearchScreenState extends State<SearchScreen> {
                     : null,
                 filled: true,
                 fillColor: c.surfaceLight,
+                // 채운 배경만으로 충분하다. 테두리는 포커스 표시로만 쓴다
+                // (데스크탑 검색창과 같은 결정).
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
-                    AppDimensions.borderRadius,
+                    AppDimensions.radiusStandard,
                   ),
-                  borderSide: BorderSide(color: c.border),
+                  borderSide: BorderSide.none,
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
-                    AppDimensions.borderRadius,
+                    AppDimensions.radiusStandard,
                   ),
-                  borderSide: BorderSide(color: c.border),
+                  borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
-                    AppDimensions.borderRadius,
+                    AppDimensions.radiusStandard,
                   ),
                   borderSide: BorderSide(color: c.accent, width: 1.5),
                 ),
@@ -284,7 +286,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       : c.surfaceLight,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(
-                      AppDimensions.borderRadius,
+                      AppDimensions.radiusStandard,
                     ),
                     side: BorderSide(color: c.border),
                   ),
@@ -358,7 +360,7 @@ class _SearchScreenState extends State<SearchScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppDimensions.spacingXs),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.accent.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -454,7 +456,7 @@ class _SearchScreenState extends State<SearchScreen> {
         padding: const EdgeInsets.all(AppDimensions.spacingMd),
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           border: Border.all(color: c.borderSubtle),
         ),
         child: Column(
@@ -482,7 +484,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         ? c.localAccent.withValues(alpha: 0.15)
                         : c.accentSubtle,
                     borderRadius: BorderRadius.circular(
-                      AppDimensions.borderRadiusSm,
+                      AppDimensions.radiusMicro,
                     ),
                   ),
                   child: Text(
@@ -516,7 +518,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     decoration: BoxDecoration(
                       color: c.accentSubtle,
                       borderRadius: BorderRadius.circular(
-                        AppDimensions.borderRadiusSm,
+                        AppDimensions.radiusMicro,
                       ),
                     ),
                     child: Text(
@@ -794,7 +796,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         side: BorderSide(color: c.border),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
-                            AppDimensions.borderRadius,
+                            AppDimensions.radiusStandard,
                           ),
                         ),
                         padding: const EdgeInsets.symmetric(
@@ -825,7 +827,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         side: BorderSide(color: c.border),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
-                            AppDimensions.borderRadius,
+                            AppDimensions.radiusStandard,
                           ),
                         ),
                         padding: const EdgeInsets.symmetric(
@@ -871,7 +873,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         side: BorderSide(color: c.border),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
-                            AppDimensions.borderRadius,
+                            AppDimensions.radiusStandard,
                           ),
                         ),
                         padding: const EdgeInsets.symmetric(
@@ -896,7 +898,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                         foregroundColor: c.textOnAccent,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(
-                            AppDimensions.borderRadius,
+                            AppDimensions.radiusStandard,
                           ),
                         ),
                         padding: const EdgeInsets.symmetric(
@@ -942,7 +944,7 @@ class _QuickDateButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: 6),
         decoration: BoxDecoration(
           color: colors.surfaceLight,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           border: Border.all(color: colors.border),
         ),
         child: Text(
