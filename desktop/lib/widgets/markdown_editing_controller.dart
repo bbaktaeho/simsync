@@ -54,7 +54,6 @@ class MarkdownEditingController extends TextEditingController {
   // 인용문: 새 문법은 `| `, 레거시 `> `도 하위 호환으로 계속 렌더링한다.
   // 테이블 줄은 buildTextSpan에서 먼저 걸러지므로 여기 도달하지 않는다.
   static final RegExp _blockquote = RegExp(r'^(\s*(?:[>|]\s?)+)(.*)$');
-  static final RegExp _checkbox = RegExp(r'^(\s*[-*+] \[)([ xX])(\] )(.*)$');
   static final RegExp _bullet = RegExp(r'^(\s*)([-*+])(\s+)(.*)$');
   static final RegExp _ordered = RegExp(r'^(\s*)(\d+[.)])(\s+)(.*)$');
   static final RegExp _fence = RegExp(r'^\s*(```|~~~)');
@@ -330,26 +329,29 @@ class MarkdownEditingController extends TextEditingController {
       return [TextSpan(text: line, style: _hideKeepHeight(base, c, active))];
     }
 
-    // Structural markers (checkbox, bullet, ordered, quote) stay visible even
-    // when inactive — they convey block structure, not inline syntax noise.
-    final checkbox = _checkbox.firstMatch(line);
+    // Structural markers (bullet, ordered, quote) stay visible even when
+    // inactive — they convey block structure, not inline syntax noise. The
+    // checkbox bracket is the exception: an overlay paints a real, clickable
+    // checkbox in its place, so the raw `[x]` never shows.
+    final checkbox = checkboxLineRe.firstMatch(line);
     if (checkbox != null) {
-      final pre = checkbox.group(1)!;
-      final mark = checkbox.group(2)!;
-      final post = checkbox.group(3)!;
-      final content = checkbox.group(4)!;
-      final checked = mark.toLowerCase() == 'x';
+      final lead = checkbox.group(1)!; // 들여쓰기 + 불릿 + 공백
+      final bracket =
+          '${checkbox.group(2)!}${checkbox.group(3)!}${checkbox.group(4)!}';
+      final rest = checkbox.group(5)!; // 닫는 대괄호 뒤 공백 + 내용
+      final checked = checkbox.group(3)!.toLowerCase() == 'x';
       final contentStyle = checked
           ? base.copyWith(
               color: c.textMuted, decoration: TextDecoration.lineThrough)
           : base;
       return [
-        TextSpan(text: pre, style: base.copyWith(color: c.textMuted)),
-        TextSpan(
-            text: mark,
-            style: base.copyWith(color: c.accent, fontWeight: FontWeight.w700)),
-        TextSpan(text: post, style: base.copyWith(color: c.textMuted)),
-        ..._styleInline(content, contentStyle, c, active),
+        TextSpan(text: lead, style: base.copyWith(color: c.textMuted)),
+        // `[x]` 세 글자는 폭만 남기고 감춘다 — 그 자리에 오버레이가 실제
+        // 체크박스를 그리고 클릭도 받는다. 캐럿이 이 줄에 있어도 원문을
+        // 노출하지 않는다 (체크박스는 문법 노이즈가 아니라 구조 컨트롤이다).
+        TextSpan(text: bracket, style: base.copyWith(color: Colors.transparent)),
+        TextSpan(text: rest.substring(0, 1), style: base),
+        ..._styleInline(rest.substring(1), contentStyle, c, active),
       ];
     }
 

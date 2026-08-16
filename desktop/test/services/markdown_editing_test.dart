@@ -394,4 +394,99 @@ void main() {
       expect(findImageRegions(text), isEmpty);
     });
   });
+
+  group('findCheckboxRegions', () {
+    test('대괄호 세 글자 범위와 체크 상태를 돌려준다', () {
+      const text = '- [ ] todo\n- [x] done';
+      final regions = findCheckboxRegions(text);
+      expect(regions.length, 2);
+      expect(text.substring(regions[0].start, regions[0].end), '[ ]');
+      expect(regions[0].checked, isFalse);
+      expect(text.substring(regions[1].start, regions[1].end), '[x]');
+      expect(regions[1].checked, isTrue);
+      expect(text[regions[1].markOffset], 'x');
+    });
+
+    test('들여쓴 항목과 다른 불릿도 찾는다', () {
+      const text = '- a\n  * [X] nested';
+      final r = findCheckboxRegions(text).single;
+      expect(text.substring(r.start, r.end), '[X]');
+      expect(r.checked, isTrue);
+    });
+
+    test('닫는 대괄호 뒤 공백이 없으면 체크박스가 아니다', () {
+      expect(findCheckboxRegions('- [ ]'), isEmpty);
+    });
+
+    test('fence 안은 무시한다', () {
+      expect(findCheckboxRegions('```\n- [ ] todo\n```'), isEmpty);
+    });
+  });
+
+  group('indentListSelection', () {
+    test('캐럿이 줄 어디에 있든 줄 머리를 2칸 들여쓴다', () {
+      // "- a\n- " 의 마지막(= `- ` 우측) 캐럿.
+      final r = indentListSelection(_value('- a\n- ', 6), outdent: false)!;
+      expect(r.text, '- a\n  - ');
+      expect(r.selection.baseOffset, 8);
+    });
+
+    test('줄 중간 캐럿도 같은 글자를 계속 가리킨다', () {
+      final r = indentListSelection(_value('- abc', 3), outdent: false)!;
+      expect(r.text, '  - abc');
+      expect(r.selection.baseOffset, 5);
+    });
+
+    test('Shift+Tab은 한 단계 되돌린다', () {
+      final r = indentListSelection(_value('  - a', 5), outdent: true)!;
+      expect(r.text, '- a');
+      expect(r.selection.baseOffset, 3);
+    });
+
+    test('지워진 들여쓰기 안의 캐럿은 줄 머리로 당겨진다', () {
+      final r = indentListSelection(_value('  - a', 1), outdent: true)!;
+      expect(r.text, '- a');
+      expect(r.selection.baseOffset, 0);
+    });
+
+    test('더 뺄 들여쓰기가 없으면 그대로 돌려준다 (키는 소비)', () {
+      final value = _value('- a', 3);
+      expect(indentListSelection(value, outdent: true), value);
+    });
+
+    test('리스트가 아닌 줄은 null (기본 Tab 동작 유지)', () {
+      expect(indentListSelection(_value('plain', 3), outdent: false), isNull);
+    });
+
+    test('체크박스 항목도 들여쓴다', () {
+      final r = indentListSelection(_value('- [ ] todo', 6), outdent: false)!;
+      expect(r.text, '  - [ ] todo');
+    });
+
+    test('선택이 걸친 줄을 모두 들여쓰고 선택 범위를 유지한다', () {
+      const text = '- a\n- b\n- c';
+      final r = indentListSelection(
+        const TextEditingValue(
+          text: text,
+          selection: TextSelection(baseOffset: 2, extentOffset: 6),
+        ),
+        outdent: false,
+      )!;
+      expect(r.text, '  - a\n  - b\n- c');
+      expect(r.selection.baseOffset, 4);
+      expect(r.selection.extentOffset, 10);
+    });
+
+    test('다음 줄 머리에서 끝나는 선택은 그 줄을 건드리지 않는다', () {
+      const text = '- a\n- b';
+      final r = indentListSelection(
+        const TextEditingValue(
+          text: text,
+          selection: TextSelection(baseOffset: 0, extentOffset: 4),
+        ),
+        outdent: false,
+      )!;
+      expect(r.text, '  - a\n- b');
+    });
+  });
 }
