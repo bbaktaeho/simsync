@@ -440,8 +440,12 @@ class EditorPanelState extends State<EditorPanel> {
   /// cmd+V 인터셉트: 클립보드에 이미지가 있으면 첨부, 아니면 일반 텍스트
   /// 붙여넣기를 수동 수행한다(이벤트를 가로챘으므로). 우클릭 메뉴 Paste는
   /// 이 경로를 타지 않는다 — 텍스트만 붙는 기존 동작 유지 (MVP 한계).
+  /// Tab/Shift+Tab은 리스트 들여쓰기로 가로챈다.
   KeyEventResult _onEditorKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      return _handleListIndent();
+    }
     if (event.logicalKey != LogicalKeyboardKey.keyV) {
       return KeyEventResult.ignored;
     }
@@ -452,6 +456,22 @@ class EditorPanelState extends State<EditorPanel> {
       return KeyEventResult.ignored;
     }
     unawaited(_handlePaste());
+    return KeyEventResult.handled;
+  }
+
+  /// Tab / Shift+Tab: 캐럿이 있는 리스트 줄의 들여쓰기 단계를 올리고 내린다.
+  /// 리스트 줄이 아니면 ignored를 돌려 기본 Tab 동작(포커스 이동)을 남긴다.
+  KeyEventResult _handleListIndent() {
+    if (widget.isReadOnly || widget.note == null) return KeyEventResult.ignored;
+    final updated = indentListSelection(
+      _contentController.value,
+      outdent: HardwareKeyboard.instance.isShiftPressed,
+    );
+    if (updated == null) return KeyEventResult.ignored;
+    if (updated.text != _contentController.text) {
+      _contentController.value = updated;
+      _onContentChanged();
+    }
     return KeyEventResult.handled;
   }
 
@@ -1015,6 +1035,10 @@ class EditorPanelState extends State<EditorPanel> {
         Positioned.fill(
           child: ClipRect(child: _buildDetailsToggles(c)),
         ),
+        // 작업 목록 체크박스 — 숨겨진 `[x]` 글자 자리에 겹친다.
+        Positioned.fill(
+          child: ClipRect(child: _buildCheckboxOverlays()),
+        ),
         // 인라인 이미지 — 숨겨진 <img> 줄의 예약 밴드 위에 그린다.
         Positioned.fill(
           child: ClipRect(child: _buildImageOverlays(c)),
@@ -1133,6 +1157,66 @@ class EditorPanelState extends State<EditorPanel> {
         );
       },
     );
+  }
+
+  /// 체크박스 한 변의 크기(px, 콘텐츠 줌 이전). 본문 14px에서 감춘 `[ ]` 세
+  /// 글자 폭과 비슷해 텍스트 흐름을 밀지 않는다. 폰트를 바꾸면 조정한다.
+  static const double _checkboxSize = 12;
+
+  // 체크박스를 감춰진 `[x]` 글자 자리에 겹친다. 자식 목록은 텍스트 변경 때
+  // 재빌드되고, 위치는 델리게이트가 RenderEditable에서 직접 읽는다.
+  Widget _buildCheckboxOverlays() {
+    return ListenableBuilder(
+      listenable: _contentController,
+      builder: (context, _) {
+        final boxes = findCheckboxRegions(_contentController.text);
+        if (boxes.isEmpty) return const SizedBox.shrink();
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            leftInset: _foldGutterWidth,
+            items: [
+              for (final b in boxes)
+                EditorOverlayItem(
+                  id: b.start,
+                  start: b.start,
+                  end: b.end,
+                  anchor: EditorOverlayAnchor.charBox,
+                ),
+            ],
+          ),
+          children: [
+            for (final b in boxes)
+              LayoutId(
+                id: b.start,
+                child: _forwardEditorScroll(
+                  child: _CheckboxToggle(
+                    key: ValueKey('checkbox:${b.start}'),
+                    checked: b.checked,
+                    size: _checkboxSize * widget.contentScale,
+                    onTap: widget.isReadOnly ? null : () => _toggleCheckbox(b),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 체크박스 클릭: `[ ]` ↔ `[x]`. 글자 수가 그대로라 캐럿/선택은 손대지
+  /// 않는다. 클릭과 리빌드 사이에 노트가 바뀌었을 수 있으므로 마크 문자를
+  /// 다시 확인하고 쓴다.
+  void _toggleCheckbox(CheckboxRegion box) {
+    if (widget.isReadOnly || widget.note == null) return;
+    final text = _contentController.text;
+    if (box.end > text.length || !' xX'.contains(text[box.markOffset])) return;
+    _contentController.value = _contentController.value.copyWith(
+      text: text.replaceRange(
+          box.markOffset, box.markOffset + 1, box.checked ? ' ' : 'x'),
+    );
+    _onContentChanged();
   }
 
   /// 오버레이(이미지/테이블) 위의 스크롤 입력을 에디터 스크롤로 전달한다.
@@ -1537,6 +1621,55 @@ class _DetailsToggleButton extends StatelessWidget {
           open ? Icons.arrow_drop_down_rounded : Icons.arrow_right_rounded,
           size: 16,
           color: c.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+/// 작업 목록(`- [ ] `) 체크박스. 감춰진 `[x]` 글자 자리에 겹쳐 그려지고,
+/// 클릭하면 원문의 마크 문자를 토글한다.
+///
+/// [TextFieldTapRegion]으로 감싸는 이유: 데스크톱 TextField는 자기 영역 밖
+/// 탭에서 포커스를 놓는다. 체크만 눌렀다고 편집 중이던 캐럿이 사라지면 안 된다.
+class _CheckboxToggle extends StatelessWidget {
+  final bool checked;
+  final double size;
+  final VoidCallback? onTap;
+
+  const _CheckboxToggle({
+    super.key,
+    required this.checked,
+    required this.size,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return TextFieldTapRegion(
+      child: MouseRegion(
+        cursor: onTap == null ? MouseCursor.defer : SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: size,
+            height: size,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: checked ? c.accent : Colors.transparent,
+              borderRadius:
+                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+              border: Border.all(
+                color: checked ? c.accent : c.textMuted,
+                width: 1.2,
+              ),
+            ),
+            child: checked
+                ? Icon(Icons.check_rounded,
+                    size: size - 2, color: c.textOnAccent)
+                : null,
+          ),
         ),
       ),
     );

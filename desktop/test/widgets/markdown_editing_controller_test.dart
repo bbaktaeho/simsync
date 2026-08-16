@@ -90,6 +90,7 @@ void main() {
       '| H1 | H2 |\n| --- | --- |\n| a | b |',
       'intro\n\n| A | B |\n| :-- | --: |\n| 1 | 2 |\n\nafter',
       'text | with a pipe but no table',
+      '- [ ] todo\n  - [x] done',
     ];
 
     await tester.pumpWidget(
@@ -241,6 +242,17 @@ void main() {
         TextDecoration.lineThrough);
     expect(pairs.firstWhere((p) => p.$1 == 'todo').$2!.decoration,
         anyOf(isNull, TextDecoration.none));
+  });
+
+  testWidgets('체크박스 대괄호는 폭만 남기고 감춰진다 (오버레이 자리)', (tester) async {
+    final pairs = _flatten(await _build(tester, '- [ ] todo'));
+    final bracket = pairs.firstWhere((p) => p.$1 == '[ ]');
+    expect(bracket.$2!.color, Colors.transparent);
+    // 접힌 글자(극소 폰트)가 아니어야 체크박스가 들어갈 자리가 생긴다.
+    expect(bracket.$2!.fontSize ?? 14, greaterThan(1));
+    // 불릿은 그대로 보인다.
+    expect(pairs.firstWhere((p) => p.$1 == '- ').$2!.color,
+        isNot(Colors.transparent));
   });
 
   testWidgets('fenced code is syntax-highlighted into multiple colored tokens', (
