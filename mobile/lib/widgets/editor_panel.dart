@@ -9,6 +9,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'editor_block_decorations.dart';
 import 'editor_overlay_layout.dart';
+import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
 
 /// 엔진(레이아웃)과 TextPainter(캐럿 메트릭) 모두 "스트럿 없음"으로 취급하는
@@ -121,6 +122,9 @@ class _EditorPanelState extends State<EditorPanel> {
   Widget build(BuildContext context) {
     final c = context.colors;
     widget.controller.scale = widget.contentScale;
+    // 모바일에는 아직 이미지 첨부/로드 경로가 없다. 감추면 <img> 줄이 통째로
+    // 사라져 보이므로 원문 그대로 렌더한다.
+    widget.controller.renderInlineImages = false;
 
     final baseStyle = AppTextStyles.mdBody(
       widget.contentScale,
@@ -169,6 +173,9 @@ class _EditorPanelState extends State<EditorPanel> {
         ),
         field,
         Positioned.fill(
+          child: ClipRect(child: _buildTableOverlays(bodyStyle)),
+        ),
+        Positioned.fill(
           child: ClipRect(child: _buildCheckboxOverlays(c)),
         ),
       ],
@@ -201,6 +208,158 @@ class _EditorPanelState extends State<EditorPanel> {
           ),
         );
       },
+    );
+  }
+
+  // 숨겨진 표 마크다운 위에 실제 표를 겹친다. 탭하면 캐럿이 표 안으로 들어가
+  // 편집 컨트롤이 뜬다 (데스크탑과 같은 오버레이 패턴).
+  Widget _buildTableOverlays(TextStyle bodyStyle) {
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final tables = findTableRegions(widget.controller.text);
+        if (tables.isEmpty) return const SizedBox.shrink();
+        final sel = widget.controller.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final t in tables)
+                EditorOverlayItem(
+                  id: t.start,
+                  start: t.start,
+                  end: t.end,
+                  anchor: EditorOverlayAnchor.band,
+                ),
+            ],
+          ),
+          children: [
+            for (final t in tables)
+              LayoutId(
+                id: t.start,
+                child: InlineTableView(
+                  key: ValueKey(t.start),
+                  data: t.table,
+                  active: !widget.readOnly && caret >= t.start && caret <= t.end,
+                  cellStyle: bodyStyle,
+                  onActivate: () => _activateTable(t),
+                  onAddRow: () => _mutateTable(
+                    t,
+                    MarkdownTableData(
+                      [...t.table.rows, List.filled(t.table.columns, '')],
+                      t.table.aligns,
+                    ),
+                  ),
+                  onAddColumn: () => _mutateTable(
+                    t,
+                    MarkdownTableData(
+                      [for (final row in t.table.rows) [...row, '']],
+                      [...t.table.aligns, MarkdownTableAlign.left],
+                    ),
+                  ),
+                  onRemove: () => _removeTable(t),
+                  onCellChanged: (row, col, value) =>
+                      _setTableCell(t, row, col, value),
+                  onRemoveRow: (row) => _removeTableRow(t, row),
+                  onRemoveColumn: (col) => _removeTableColumn(t, col),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _activateTable(TableRegion table) {
+    if (widget.readOnly) return;
+    widget.focusNode.requestFocus();
+    widget.controller.selection = TextSelection.collapsed(
+      offset: table.start.clamp(0, widget.controller.text.length),
+    );
+  }
+
+  void _mutateTable(TableRegion table, MarkdownTableData next) {
+    if (widget.readOnly) return;
+    final text = widget.controller.text;
+    final s = table.start.clamp(0, text.length);
+    final e = table.end.clamp(s, text.length);
+    widget.controller.value = TextEditingValue(
+      text: text.replaceRange(s, e, serializeMarkdownTable(next)),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    widget.onChanged?.call();
+  }
+
+  void _removeTable(TableRegion table) {
+    if (widget.readOnly) return;
+    final text = widget.controller.text;
+    final s = table.start.clamp(0, text.length);
+    var e = table.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    widget.controller.value = TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    );
+    widget.onChanged?.call();
+  }
+
+  void _setTableCell(TableRegion table, int row, int col, String value) {
+    final data = table.table;
+    if (row < 0 || row >= data.rows.length || col < 0 || col >= data.columns) {
+      return;
+    }
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var r = 0; r < data.rows.length; r++)
+            [
+              for (var k = 0; k < data.columns; k++)
+                (r == row && k == col)
+                    ? value
+                    : (k < data.rows[r].length ? data.rows[r][k] : ''),
+            ],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
+  void _removeTableRow(TableRegion table, int row) {
+    final data = table.table;
+    if (row <= 0 || row >= data.rows.length) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (var i = 0; i < data.rows.length; i++)
+            if (i != row) data.rows[i],
+        ],
+        data.aligns,
+      ),
+    );
+  }
+
+  void _removeTableColumn(TableRegion table, int col) {
+    final data = table.table;
+    if (col < 0 || col >= data.columns || data.columns <= 1) return;
+    _mutateTable(
+      table,
+      MarkdownTableData(
+        [
+          for (final row in data.rows)
+            [
+              for (var j = 0; j < data.columns; j++)
+                if (j != col) (j < row.length ? row[j] : ''),
+            ],
+        ],
+        [
+          for (var j = 0; j < data.columns; j++)
+            if (j != col) data.aligns[j],
+        ],
+      ),
     );
   }
 

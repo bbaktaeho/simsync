@@ -90,6 +90,20 @@ void main() {
     expect((leftOf(8, 11) - leftOf(0, 5)).abs(), lessThan(1.0));
   });
 
+  testWidgets('표는 인라인 위젯으로 렌더된다 (원문이 사라지지 않는다)', (tester) async {
+    await pump(tester, 'before\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n');
+    // 표 셀 내용이 실제 위젯으로 보인다.
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('2'), findsOneWidget);
+  });
+
+  testWidgets('img 줄은 감추지 않고 원문 그대로 보인다 (모바일엔 이미지 오버레이가 없다)',
+      (tester) async {
+    const tag = '<img src="assets/a.png" width="10" height="10">';
+    final controller = await pump(tester, 'x\n$tag\n');
+    expect(controller.renderInlineImages, isFalse);
+  });
+
   testWidgets('[] 입력이 - [ ] 로 펼쳐진다 (포매터 연결 확인)', (tester) async {
     final controller = await pump(tester, '');
     await tester.tap(find.byType(EditableText));

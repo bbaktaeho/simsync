@@ -35,6 +35,11 @@ class MarkdownEditingController extends TextEditingController {
   /// renders). Set by the editor's focus listener before paint.
   bool focused = false;
 
+  /// `<img>` 줄을 감추고 높이만 예약할지. 이미지 오버레이를 그리는 화면(데스크탑)
+  /// 에서만 true다. 오버레이가 없는 곳에서 감추면 태그가 통째로 사라져 보이므로,
+  /// 그런 화면은 false로 두고 원문을 그대로 렌더한다.
+  bool renderInlineImages = true;
+
   /// Per-line highlight parse cache. `buildTextSpan` runs on every keystroke and
   /// caret move; this keeps unchanged code lines from being re-tokenized each
   /// time. Keyed by `lang line` (parse output depends only on those, not on
@@ -143,8 +148,10 @@ class MarkdownEditingController extends TextEditingController {
 
     // 인라인 이미지 줄: 태그 텍스트는 항상 숨기고 오버레이가 이미지를 그린다.
     final imageStarts = <int, ImageRegion>{};
-    for (final r in findImageRegions(text)) {
-      imageStarts[r.start] = r;
+    if (renderInlineImages) {
+      for (final r in findImageRegions(text)) {
+        imageStarts[r.start] = r;
+      }
     }
 
     final lines = text.split('\n');

@@ -625,18 +625,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           // Weekday headers
           Row(
-            children: _weekdayHeaders.map((day) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    day,
-                    style: AppTextStyles.microSemibold.copyWith(
-                      color: c.textMuted,
+            children: [
+              for (var i = 0; i < _weekdayHeaders.length; i++)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _weekdayHeaders[i],
+                      style: AppTextStyles.microSemibold.copyWith(
+                        // 0=일, 6=토
+                        color: i == 0 || i == 6
+                            ? c.calendarWeekend
+                            : c.textMuted,
+                      ),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+            ],
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           // Calendar cells
@@ -724,6 +728,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               ? c.calendarToday
                               : isSelected
                               ? c.accent
+                              : (date.weekday == DateTime.saturday ||
+                                      date.weekday == DateTime.sunday)
+                              ? c.calendarWeekend
                               : c.textPrimary,
                         ),
                       ),

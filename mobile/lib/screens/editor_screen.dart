@@ -431,11 +431,16 @@ class _EditorScreenState extends State<EditorScreen>
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(AppDimensions.spacingLg),
-            child: EditorPanel(
-              controller: _contentController,
-              focusNode: _contentFocusNode,
-              contentScale: widget.settingsController.value.contentScale,
-              onChanged: () => _onContentChanged(_contentController.text),
+            // 설정의 콘텐츠 배율을 즉시 반영한다 (구독하지 않으면 다른 이유로
+            // 리빌드될 때까지 옛 배율로 남는다).
+            child: ListenableBuilder(
+              listenable: widget.settingsController,
+              builder: (context, _) => EditorPanel(
+                controller: _contentController,
+                focusNode: _contentFocusNode,
+                contentScale: widget.settingsController.value.contentScale,
+                onChanged: () => _onContentChanged(_contentController.text),
+              ),
             ),
           ),
         ),

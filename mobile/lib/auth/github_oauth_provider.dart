@@ -1,16 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
-import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
-import 'package:url_launcher/url_launcher.dart';
 
 import 'auth_models.dart';
 import 'auth_provider.dart';
 
-typedef BrowserLauncher = Future<bool> Function(Uri uri);
+/// Waits [duration]; injectable so tests can skip real delays.
+typedef DelayFunction = Future<void> Function(Duration duration);
 
 class AuthException implements Exception {
   const AuthException(this.message);
@@ -30,100 +28,69 @@ class AuthCancelledException extends AuthException {
 }
 
 class GitHubOAuthConfig {
-  const GitHubOAuthConfig({
-    required this.clientId,
-    required this.clientSecret,
-  });
+  const GitHubOAuthConfig({required this.clientId});
 
+  /// The OAuth App's client id. Public by design (it ships in released
+  /// binaries), unlike a client secret — which the device flow never needs.
   final String clientId;
-  final String clientSecret;
 
-  bool get isConfigured {
-    return clientId.trim().isNotEmpty && clientSecret.trim().isNotEmpty;
-  }
+  bool get isConfigured => clientId.trim().isNotEmpty;
 }
 
+/// GitHub sign-in via the OAuth device flow.
+///
+/// The device flow is the no-secret path GitHub provides for apps that are
+/// distributed to users (CLI/desktop): only the public client id is used, so
+/// nothing sensitive ships in the binary. GitHub does not support PKCE as a
+/// secret replacement, which rules out the redirect (web) flow for releases.
+///
+/// Flow: request a device/user code pair → surface the user code to the UI
+/// ([DeviceAuthorizationPrompt]) → poll the token endpoint at the
+/// server-mandated interval until the user approves on github.com/login/device
+/// (or denies / the code expires / [cancelSignIn] is called).
 class GitHubOAuthProvider implements AuthProvider {
   GitHubOAuthProvider({
     required GitHubOAuthConfig config,
     http.Client? httpClient,
-    BrowserLauncher? browserLauncher,
-    Duration? callbackTimeout,
-    String Function(int length)? randomStringGenerator,
+    DelayFunction? delay,
   })  : _config = config,
         _httpClient = httpClient ?? http.Client(),
-        _browserLauncher = browserLauncher ?? _defaultBrowserLauncher,
-        _callbackTimeout = callbackTimeout ?? const Duration(minutes: 2),
-        _randomStringGenerator =
-            randomStringGenerator ?? _defaultRandomStringGenerator;
+        _delay = delay ?? _defaultDelay;
 
-  static const String _redirectUri = 'simsync://callback';
+  static const String _scope = 'read:user repo';
+  static const String _deviceGrantType =
+      'urn:ietf:params:oauth:grant-type:device_code';
 
   final GitHubOAuthConfig _config;
   final http.Client _httpClient;
-  final BrowserLauncher _browserLauncher;
-  final Duration _callbackTimeout;
-  final String Function(int length) _randomStringGenerator;
+  final DelayFunction _delay;
 
-  Completer<Uri>? _callbackCompleter;
+  /// Completes when [cancelSignIn] is called, waking the poll loop early.
+  Completer<void>? _cancelRequested;
 
   @override
-  Future<AuthGrant> signIn() async {
+  Future<AuthGrant> signIn({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async {
     if (!_config.isConfigured) {
       throw const AuthConfigurationException(
-        'GitHub OAuth is not configured. Set SIMSYNC_GITHUB_CLIENT_ID and SIMSYNC_GITHUB_CLIENT_SECRET.',
+        'GitHub OAuth is not configured. Set SIMSYNC_GITHUB_CLIENT_ID.',
       );
     }
 
-    final state = _randomStringGenerator(32);
-    final codeVerifier = _randomStringGenerator(64);
-    final codeChallenge = createCodeChallenge(codeVerifier);
-    final redirectUri = Uri.parse(_redirectUri);
-
-    _callbackCompleter = Completer<Uri>();
-
+    final cancel = Completer<void>();
+    _cancelRequested = cancel;
     try {
-      final authorizationUri = buildAuthorizationUri(
-        redirectUri: redirectUri,
-        state: state,
-        codeChallenge: codeChallenge,
+      final device = await _requestDeviceCode();
+      onAuthorizationPrompt?.call(
+        DeviceAuthorization(
+          userCode: device.userCode,
+          verificationUri: device.verificationUri,
+          expiresAt: device.expiresAt,
+        ),
       );
-      final launched = await _browserLauncher(authorizationUri);
-      if (!launched) {
-        throw const AuthException('Could not open the browser for GitHub login.');
-      }
-
-      final callbackUri = await _callbackCompleter!.future.timeout(
-        _callbackTimeout,
-        onTimeout: () {
-          throw const AuthCancelledException(
-            'GitHub login timed out before the callback was received.',
-          );
-        },
-      );
-
-      final error = callbackUri.queryParameters['error'];
-      if (error != null) {
-        throw AuthException('GitHub returned error: $error');
-      }
-
-      final callbackState = callbackUri.queryParameters['state'];
-      if (callbackState != state) {
-        throw const AuthException('GitHub OAuth state validation failed.');
-      }
-
-      final code = callbackUri.queryParameters['code'];
-      if (code == null || code.isEmpty) {
-        throw const AuthException('GitHub OAuth callback did not include a code.');
-      }
-
-      final token = await _exchangeCodeForToken(
-        code: code,
-        redirectUri: redirectUri,
-        codeVerifier: codeVerifier,
-      );
-      final user = await _fetchUser(token);
-
+      final token = await _pollForToken(device, cancel);
+      final user = await _fetchUser(token.accessToken);
       return AuthGrant(
         provider: 'github',
         accessToken: token.accessToken,
@@ -132,31 +99,21 @@ class GitHubOAuthProvider implements AuthProvider {
         user: user,
       );
     } finally {
-      _callbackCompleter = null;
-    }
-  }
-
-  /// Called by the app when the custom URL scheme redirect is received.
-  /// Pass the full callback URI (e.g. simsync://callback?code=...&state=...).
-  void handleRedirectUri(Uri uri) {
-    final completer = _callbackCompleter;
-    if (completer != null && !completer.isCompleted) {
-      completer.complete(uri);
-    }
-  }
-
-  /// Cancel any pending sign-in flow.
-  void cancelPendingSignIn() {
-    final completer = _callbackCompleter;
-    if (completer != null && !completer.isCompleted) {
-      completer.completeError(
-        const AuthCancelledException('Sign-in was cancelled.'),
-      );
+      _cancelRequested = null;
     }
   }
 
   @override
-  Future<SessionValidationResult> validateAccessToken(String accessToken) async {
+  void cancelSignIn() {
+    final cancel = _cancelRequested;
+    if (cancel != null && !cancel.isCompleted) {
+      cancel.complete();
+    }
+  }
+
+  @override
+  Future<SessionValidationResult> validateAccessToken(
+      String accessToken) async {
     try {
       final response = await _getUserProfileResponse(accessToken);
       if (response.statusCode == HttpStatus.ok) {
@@ -174,70 +131,124 @@ class GitHubOAuthProvider implements AuthProvider {
     }
   }
 
-  Uri buildAuthorizationUri({
-    required Uri redirectUri,
-    required String state,
-    required String codeChallenge,
-  }) {
-    return Uri.https(
-      'github.com',
-      '/login/oauth/authorize',
-      {
-        'client_id': _config.clientId,
-        'redirect_uri': redirectUri.toString(),
-        'scope': 'read:user user:email repo',
-        'state': state,
-        'code_challenge': codeChallenge,
-        'code_challenge_method': 'S256',
-      },
-    );
-  }
-
-  static String createCodeChallenge(String verifier) {
-    final bytes = utf8.encode(verifier);
-    final digest = sha256.convert(bytes).bytes;
-    return base64UrlEncode(digest).replaceAll('=', '');
-  }
-
-  Future<_GitHubTokenResponse> _exchangeCodeForToken({
-    required String code,
-    required Uri redirectUri,
-    required String codeVerifier,
-  }) async {
+  Future<_DeviceCodeResponse> _requestDeviceCode() async {
     final response = await _httpClient.post(
-      Uri.https('github.com', '/login/oauth/access_token'),
-      headers: const {
-        'Accept': 'application/json',
-      },
+      Uri.https('github.com', '/login/device/code'),
+      headers: const {'Accept': 'application/json'},
       body: {
         'client_id': _config.clientId,
-        'client_secret': _config.clientSecret,
-        'code': code,
-        'redirect_uri': redirectUri.toString(),
-        'code_verifier': codeVerifier,
+        'scope': _scope,
       },
     );
 
     if (response.statusCode != HttpStatus.ok) {
       throw AuthException(
-        'GitHub token exchange failed with status ${response.statusCode}.',
+        'GitHub device code request failed with status ${response.statusCode}.',
       );
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     if (json['error'] case final String error) {
-      throw AuthException('GitHub token exchange failed: $error');
+      throw AuthException('GitHub device code request failed: $error');
     }
 
-    return _GitHubTokenResponse(
-      accessToken: json['access_token'] as String,
-      tokenType: (json['token_type'] as String?) ?? 'bearer',
-      scope: (json['scope'] as String?) ?? '',
+    return _DeviceCodeResponse(
+      deviceCode: json['device_code'] as String,
+      userCode: json['user_code'] as String,
+      verificationUri: Uri.parse(json['verification_uri'] as String),
+      expiresAt: DateTime.now()
+          .add(Duration(seconds: (json['expires_in'] as num).toInt())),
+      interval: Duration(
+        // GitHub's documented minimum is 5s; never poll faster even if the
+        // response says otherwise.
+        seconds: ((json['interval'] as num?)?.toInt() ?? 5).clamp(5, 60),
+      ),
     );
   }
 
-  Future<AuthUser> _fetchUser(_GitHubTokenResponse token) async {
-    final response = await _getUserProfileResponse(token.accessToken);
+  Future<_GitHubTokenResponse> _pollForToken(
+    _DeviceCodeResponse device,
+    Completer<void> cancel,
+  ) async {
+    var interval = device.interval;
+
+    while (true) {
+      // Wait one interval, but wake immediately on cancelSignIn().
+      await Future.any<void>([_delay(interval), cancel.future]);
+      if (cancel.isCompleted) {
+        throw const AuthCancelledException('GitHub login was cancelled.');
+      }
+      if (DateTime.now().isAfter(device.expiresAt)) {
+        throw const AuthException(
+          'The GitHub device code expired before authorization. Try again.',
+        );
+      }
+
+      // The device code stays valid for ~15 min, so a single failed poll —
+      // a transient network drop or a GitHub 5xx/gateway hiccup — must not
+      // kill the whole sign-in. Skip this attempt and poll again next
+      // interval (until the code actually expires above). Only definitive
+      // OAuth errors in the JSON body (below) end the flow.
+      final http.Response response;
+      try {
+        response = await _httpClient.post(
+          Uri.https('github.com', '/login/oauth/access_token'),
+          headers: const {'Accept': 'application/json'},
+          body: {
+            'client_id': _config.clientId,
+            'device_code': device.deviceCode,
+            'grant_type': _deviceGrantType,
+          },
+        );
+      } on http.ClientException {
+        continue;
+      } on SocketException {
+        continue;
+      }
+
+      if (response.statusCode != HttpStatus.ok) {
+        continue;
+      }
+
+      final Map<String, dynamic> json;
+      try {
+        json = jsonDecode(response.body) as Map<String, dynamic>;
+      } on FormatException {
+        // A proxy/error page instead of JSON: transient, keep polling.
+        continue;
+      }
+      switch (json['error']) {
+        case 'authorization_pending':
+          continue;
+        case 'slow_down':
+          // Server-mandated backoff: +5s (or its explicit new interval).
+          final next = (json['interval'] as num?)?.toInt();
+          interval = next != null
+              ? Duration(seconds: next.clamp(5, 60))
+              : interval + const Duration(seconds: 5);
+          continue;
+        case 'expired_token':
+          throw const AuthException(
+            'The GitHub device code expired before authorization. Try again.',
+          );
+        case 'access_denied':
+          throw const AuthCancelledException(
+            'GitHub login was denied on github.com.',
+          );
+        case final String error:
+          throw AuthException('GitHub token polling failed: $error');
+      }
+
+      return _GitHubTokenResponse(
+        accessToken: json['access_token'] as String,
+        tokenType: (json['token_type'] as String?) ?? 'bearer',
+        scope: (json['scope'] as String?) ?? '',
+      );
+    }
+  }
+
+  Future<AuthUser> _fetchUser(String accessToken) async {
+    final response = await _getUserProfileResponse(accessToken);
 
     if (response.statusCode != HttpStatus.ok) {
       throw AuthException(
@@ -265,19 +276,25 @@ class GitHubOAuthProvider implements AuthProvider {
     );
   }
 
-  static Future<bool> _defaultBrowserLauncher(Uri uri) {
-    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  static Future<void> _defaultDelay(Duration duration) {
+    return Future<void>.delayed(duration);
   }
+}
 
-  static String _defaultRandomStringGenerator(int length) {
-    const characters =
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    final random = Random.secure();
-    return List.generate(
-      length,
-      (_) => characters[random.nextInt(characters.length)],
-    ).join();
-  }
+class _DeviceCodeResponse {
+  const _DeviceCodeResponse({
+    required this.deviceCode,
+    required this.userCode,
+    required this.verificationUri,
+    required this.expiresAt,
+    required this.interval,
+  });
+
+  final String deviceCode;
+  final String userCode;
+  final Uri verificationUri;
+  final DateTime expiresAt;
+  final Duration interval;
 }
 
 class _GitHubTokenResponse {

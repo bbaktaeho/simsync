@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
@@ -9,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth/auth_models.dart';
+import 'auth/auth_provider.dart';
 import 'auth/auth_service.dart';
 import 'auth/github_oauth_provider.dart';
 import 'auth/session_policy.dart';
@@ -179,25 +179,16 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
   /// HomeScreen listens to this to reload notes.
   final ValueNotifier<int> _refreshSignal = ValueNotifier<int>(0);
 
-  /// Deep link stream subscription (app_links).
-  StreamSubscription<Uri>? _deepLinkSub;
-
-  /// app_links instance for handling deep links.
-  late final AppLinks _appLinks;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _appLinks = AppLinks();
-    _initDeepLinkListener();
     _initialize();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _deepLinkSub?.cancel();
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
     _settingsController.removeListener(_syncThemeMode);
@@ -232,32 +223,6 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
     }
   }
 
-  void _initDeepLinkListener() {
-    // Handle deep link that launched the app (cold start).
-    _handleInitialUri();
-    // Listen for deep links while the app is running (warm start).
-    _deepLinkSub = _appLinks.uriLinkStream.listen((Uri uri) {
-      _handleDeepLink(uri);
-    });
-  }
-
-  Future<void> _handleInitialUri() async {
-    try {
-      final initialUri = await _appLinks.getInitialLink();
-      if (initialUri != null) {
-        _handleDeepLink(initialUri);
-      }
-    } catch (_) {
-      // Ignore - no initial URI
-    }
-  }
-
-  void _handleDeepLink(Uri uri) {
-    if (uri.scheme == 'simsync' && uri.host == 'callback') {
-      _oauthProvider.handleRedirectUri(uri);
-    }
-  }
-
   Future<void> _initialize() async {
     final dir = await getApplicationDocumentsDirectory();
     final localPath = '${dir.path}/SimSync';
@@ -268,8 +233,12 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
     await _restoreSession();
   }
 
-  Future<void> _handleLogin() async {
-    final session = await widget.authService.signIn();
+  Future<void> _handleLogin({
+    DeviceAuthorizationPrompt? onAuthorizationPrompt,
+  }) async {
+    final session = await widget.authService.signIn(
+      onAuthorizationPrompt: onAuthorizationPrompt,
+    );
     if (!mounted) return;
     _session = session;
     _startSessionMonitor();
@@ -451,7 +420,10 @@ class _AppShellState extends State<_AppShell> with WidgetsBindingObserver {
         onSyncEnabledChanged: _handleSyncEnabledChanged,
       );
     }
-    return LoginScreen(onGitHubLogin: _handleLogin);
+    return LoginScreen(
+      onGitHubLogin: _handleLogin,
+      onCancelLogin: widget.authService.cancelSignIn,
+    );
   }
 }
 
@@ -535,19 +507,19 @@ String _defaultLocalNotePath() {
   return '$home/Documents/SimSync';
 }
 
-/// Global reference to the OAuth provider so deep links can reach it.
-late final GitHubOAuthProvider _oauthProvider;
-
 AuthService createDefaultAuthService() {
+  // Device flow는 공개 client id만 쓴다 — 시크릿이 앱에 들어가지 않는다.
+  // 데스크탑과 같은 공식 client id를 기본값으로 두어 빌드만 해도 로그인된다.
+  // 포크는 --dart-define=SIMSYNC_GITHUB_CLIENT_ID=... 로 덮어쓴다.
   const config = GitHubOAuthConfig(
-    clientId: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_ID'),
-    clientSecret: String.fromEnvironment('SIMSYNC_GITHUB_CLIENT_SECRET'),
+    clientId: String.fromEnvironment(
+      'SIMSYNC_GITHUB_CLIENT_ID',
+      defaultValue: 'Ov23likpPsGK5U4sCxI5',
+    ),
   );
 
-  _oauthProvider = GitHubOAuthProvider(config: config, httpClient: http.Client());
-
   return DefaultAuthService(
-    provider: _oauthProvider,
+    provider: GitHubOAuthProvider(config: config, httpClient: http.Client()),
     store: FileSessionStore(directoryProvider: getApplicationSupportDirectory),
     policy: const SessionPolicy(maxAge: Duration(days: 30)),
     nowProvider: DateTime.now,
