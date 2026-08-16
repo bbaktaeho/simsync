@@ -17,8 +17,10 @@ enum EditorOverlayAnchor {
   /// 밴드 왼쪽 끝에 세로 중앙 정렬 (details 접기 chevron).
   leadingChevron,
 
-  /// 문자 범위 박스 안에 가로/세로 중앙 정렬 (체크박스). 숨겨진 글자가
-  /// 차지하던 자리에 정확히 겹친다.
+  /// 문자 범위 박스의 **왼쪽 끝**에 세로 중앙 정렬 (체크박스). 가운데
+  /// 정렬하지 않는 이유: 박스가 예상보다 넓게 잡히는 경우(줄바꿈이 걸린
+  /// 범위 등) 자식이 그 폭의 절반만큼 오른쪽으로 밀려 엉뚱한 자리에 그려진다.
+  /// 왼쪽 정렬은 항상 그 글자가 시작하는 자리다.
   charBox,
 }
 
@@ -148,7 +150,7 @@ class EditorOverlayLayoutDelegate extends MultiChildLayoutDelegate {
           positionChild(
             item.id,
             Offset(
-              leftInset + band.left + (band.width - childSize.width) / 2,
+              leftInset + band.left,
               band.top + (band.height - childSize.height) / 2,
             ),
           );

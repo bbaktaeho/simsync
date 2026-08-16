@@ -783,6 +783,10 @@ final RegExp _checkboxShorthandRe = RegExp(r'^(\s*)([-*+] )?\[\]$');
 /// 줄에 `[]`만 입력하면 `- [ ] `로 펼친다. 이미 불릿이 있으면(`- []`) 그
 /// 불릿을 그대로 쓴다. 줄 전체가 `[]`이고 캐럿이 줄 끝일 때만 반응하므로
 /// 문장 중간의 링크 대괄호(`[텍스트](url)`)는 건드리지 않는다.
+///
+/// 삽입 글자 수는 따지지 않는다. 한글 IME는 조합 커밋과 괄호를 한 번에
+/// 보내기도 해서 "한 글자 삽입"으로 좁히면 그 경로에서 통째로 막힌다 (실제
+/// 앱에서 재현된 버그). 줄 전체가 `[]`라는 조건이 이미 충분히 좁다.
 class CheckboxShorthandInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
@@ -791,8 +795,7 @@ class CheckboxShorthandInputFormatter extends TextInputFormatter {
   ) {
     final sel = newValue.selection;
     if (!sel.isValid || !sel.isCollapsed) return newValue;
-    // 한 글자 삽입만 반응 (붙여넣기/IME 조합 제외).
-    if (newValue.text.length != oldValue.text.length + 1) return newValue;
+    if (newValue.text == oldValue.text) return newValue;
     final cursor = sel.baseOffset;
     final lineStart = _lineStartOf(newValue.text, cursor);
     final lineEnd = _lineEndOf(newValue.text, cursor);
