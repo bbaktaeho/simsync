@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../theme/app_colors.dart';
+import 'app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 
@@ -49,8 +50,9 @@ class CalendarSection extends StatelessWidget {
         AnimatedCrossFade(
           firstChild: _buildCalendarGrid(context),
           secondChild: const SizedBox.shrink(),
-          crossFadeState:
-              isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+          crossFadeState: isExpanded
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
           duration: AppDimensions.animFast,
           sizeCurve: Curves.easeInOut,
         ),
@@ -72,42 +74,58 @@ class CalendarSection extends StatelessWidget {
           ),
           child: Row(
             children: [
-              InkWell(
-                onTap: onToggleExpand,
-                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppDimensions.spacingXs),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isExpanded
-                            ? Icons.keyboard_arrow_down_rounded
-                            : Icons.keyboard_arrow_right_rounded,
-                        size: 18,
-                        color: c.textSecondary,
-                      ),
-                      const SizedBox(width: AppDimensions.spacingXs),
-                      Text(
-                        'Calendar',
-                        style: AppTextStyles.microSemibold.copyWith(color: c.textSecondary, letterSpacing: 0.5),
-                      ),
-                    ],
+              Flexible(
+                child: InkWell(
+                  onTap: onToggleExpand,
+                  borderRadius: BorderRadius.circular(
+                    AppDimensions.radiusMicro,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppDimensions.spacingXs),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isExpanded
+                              ? Icons.keyboard_arrow_down_rounded
+                              : Icons.keyboard_arrow_right_rounded,
+                          size: 18,
+                          color: c.textSecondary,
+                        ),
+                        const SizedBox(width: AppDimensions.spacingXs),
+                        Flexible(
+                          child: Text(
+                            'Calendar',
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTextStyles.microSemibold.copyWith(
+                              color: c.textSecondary,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
               const Spacer(),
               if (isExpanded) ...[
-                _MonthNavButton(icon: Icons.chevron_left_rounded, onTap: onPreviousMonth),
-                const SizedBox(width: AppDimensions.spacingXs),
-                if (showMonthLabel) ...[
+                // 버튼이 자체 여백을 가지므로 라벨 양옆 간격은 따로 두지 않는다.
+                AppIconButton(
+                  icon: Icons.chevron_left_rounded,
+                  onTap: onPreviousMonth,
+                ),
+                if (showMonthLabel)
                   Text(
                     monthLabel,
-                    style: Theme.of(context).textTheme.labelMedium!.copyWith(color: c.textPrimary),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelMedium!.copyWith(color: c.textPrimary),
                   ),
-                  const SizedBox(width: AppDimensions.spacingXs),
-                ],
-                _MonthNavButton(icon: Icons.chevron_right_rounded, onTap: onNextMonth),
+                AppIconButton(
+                  icon: Icons.chevron_right_rounded,
+                  onTap: onNextMonth,
+                ),
               ],
             ],
           ),
@@ -135,7 +153,14 @@ class CalendarSection extends StatelessWidget {
       children: [
         _buildWeekdayHeader(context),
         const SizedBox(height: AppDimensions.spacingXs),
-        ..._buildWeeks(context, year, month, leadingDays, weekCount, todayNormalized),
+        ..._buildWeeks(
+          context,
+          year,
+          month,
+          leadingDays,
+          weekCount,
+          todayNormalized,
+        ),
         const SizedBox(height: AppDimensions.spacingSm),
       ],
     );
@@ -158,14 +183,18 @@ class CalendarSection extends StatelessWidget {
     const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
     return Row(
       children: days
-          .map((d) => Expanded(
-                child: Center(
-                  child: Text(
-                    d,
-                    style: AppTextStyles.nanoSemibold.copyWith(color: c.textMuted),
+          .map(
+            (d) => Expanded(
+              child: Center(
+                child: Text(
+                  d,
+                  style: AppTextStyles.nanoSemibold.copyWith(
+                    color: c.textMuted,
                   ),
                 ),
-              ))
+              ),
+            ),
+          )
           .toList(),
     );
   }
@@ -190,7 +219,8 @@ class CalendarSection extends StatelessWidget {
         final date = DateTime(year, month, 1 + dayOffset);
         final isCurrentMonth = date.month == month && date.year == year;
         final isToday = date == todayNormalized;
-        final isSelected = selectedDate != null &&
+        final isSelected =
+            selectedDate != null &&
             date.year == selectedDate!.year &&
             date.month == selectedDate!.month &&
             date.day == selectedDate!.day;
@@ -207,13 +237,15 @@ class CalendarSection extends StatelessWidget {
               ? null
               : (pos) => onDateSecondaryTap!(date, pos),
         );
-        cells.add(Expanded(
-          // Square (popover) => height tracks the cell width; otherwise the
-          // fixed short height used in the sidebar.
-          child: squareCellSize != null
-              ? AspectRatio(aspectRatio: 1, child: cell)
-              : SizedBox(height: AppDimensions.calendarCellSize, child: cell),
-        ));
+        cells.add(
+          Expanded(
+            // Square (popover) => height tracks the cell width; otherwise the
+            // fixed short height used in the sidebar.
+            child: squareCellSize != null
+                ? AspectRatio(aspectRatio: 1, child: cell)
+                : SizedBox(height: AppDimensions.calendarCellSize, child: cell),
+          ),
+        );
       }
       weeks.add(
         Padding(
@@ -252,17 +284,17 @@ class _CalendarCell extends StatelessWidget {
     final bgColor = isSelected
         ? c.calendarSelected
         : isToday
-            ? c.accentSubtle
-            : Colors.transparent;
+        ? c.accentSubtle
+        : Colors.transparent;
 
     // Adjacent-month days are subdued so the current month stays dominant.
     final textColor = isToday
         ? c.calendarToday
         : isSelected
-            ? c.textPrimary
-            : isCurrentMonth
-                ? c.textSecondary
-                : c.textMuted;
+        ? c.textPrimary
+        : isCurrentMonth
+        ? c.textSecondary
+        : c.textMuted;
 
     return GestureDetector(
       onTap: onTap,
@@ -274,7 +306,7 @@ class _CalendarCell extends StatelessWidget {
         // popover), so the cell fills whatever box it's given.
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
           border: isToday
               ? Border.all(color: c.accent.withValues(alpha: 0.4))
               : null,
@@ -284,10 +316,11 @@ class _CalendarCell extends StatelessWidget {
           children: [
             Text(
               '$day',
-              style: (isToday || isSelected
-                      ? AppTextStyles.microBold
-                      : AppTextStyles.microMedium)
-                  .copyWith(color: textColor),
+              style:
+                  (isToday || isSelected
+                          ? AppTextStyles.microBold
+                          : AppTextStyles.microMedium)
+                      .copyWith(color: textColor),
             ),
             if (hasNotes)
               Container(
@@ -303,26 +336,6 @@ class _CalendarCell extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MonthNavButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _MonthNavButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(icon, size: 18, color: c.textSecondary),
       ),
     );
   }

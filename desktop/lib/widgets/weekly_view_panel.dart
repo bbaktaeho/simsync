@@ -9,6 +9,7 @@ import '../services/review_outline.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import 'hover_builder.dart';
 import 'markdown_preview.dart';
 
 /// Displays all notes for a given week (Mon–Sun) in a scrollable journal view,
@@ -170,7 +171,7 @@ class WeeklyViewPanel extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: 2),
             decoration: BoxDecoration(
               color: c.accentSubtle,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               '$startStr – $endStr',
@@ -465,7 +466,7 @@ class _StageCard extends StatelessWidget {
                 child: Text(
                   '$step',
                   style: AppTextStyles.microMedium
-                      .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                      .copyWith(color: c.textOnAccent, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(width: AppDimensions.spacingSm),
@@ -572,17 +573,17 @@ class _SelectAllRow extends StatelessWidget {
               height: 16,
               decoration: BoxDecoration(
                 color: active ? c.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                 border: Border.all(
                   color: active ? c.accent : c.borderSubtle,
                   width: 1.5,
                 ),
               ),
               child: allChecked
-                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  ? Icon(Icons.check_rounded, size: 12, color: c.textOnAccent)
                   : someChecked
-                      ? const Icon(Icons.remove_rounded,
-                          size: 12, color: Colors.white)
+                      ? Icon(Icons.remove_rounded,
+                          size: 12, color: c.textOnAccent)
                       : null,
             ),
             const SizedBox(width: AppDimensions.spacingSm),
@@ -622,14 +623,14 @@ class _ChecklistRow extends StatelessWidget {
               height: 16,
               decoration: BoxDecoration(
                 color: item.checked ? c.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                 border: Border.all(
                   color: item.checked ? c.accent : c.borderSubtle,
                   width: 1.5,
                 ),
               ),
               child: item.checked
-                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  ? Icon(Icons.check_rounded, size: 12, color: c.textOnAccent)
                   : null,
             ),
             const SizedBox(width: AppDimensions.spacingSm),
@@ -873,7 +874,7 @@ class MonthlyViewPanel extends StatelessWidget {
                 horizontal: AppDimensions.spacingSm, vertical: 2),
             decoration: BoxDecoration(
               color: c.accentSubtle,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               monthStr,
@@ -904,7 +905,6 @@ class _GenerateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     return FilledButton.icon(
       onPressed: loading ? null : onTap,
       icon: Icon(
@@ -916,14 +916,6 @@ class _GenerateButton extends StatelessWidget {
           : hasResult
               ? 'Regenerate'
               : 'Generate'),
-      style: FilledButton.styleFrom(
-        backgroundColor: c.accent,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        textStyle: AppTextStyles.captionSemibold,
-        minimumSize: const Size(0, 32),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
     );
   }
 }
@@ -1000,29 +992,20 @@ class _DateGroup extends StatelessWidget {
   }
 }
 
-class _NoteCard extends StatefulWidget {
+class _NoteCard extends StatelessWidget {
   final Note note;
   final ValueChanged<Note>? onTap;
 
   const _NoteCard({required this.note, this.onTap});
 
   @override
-  State<_NoteCard> createState() => _NoteCardState();
-}
-
-class _NoteCardState extends State<_NoteCard> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final timeStr = DateFormat('HH:mm').format(widget.note.updatedAt);
+    final timeStr = DateFormat('HH:mm').format(note.updatedAt);
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: () => widget.onTap?.call(widget.note),
+    return HoverBuilder(
+      builder: (context, hovered) => GestureDetector(
+        onTap: () => onTap?.call(note),
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           margin: const EdgeInsets.only(
@@ -1031,10 +1014,10 @@ class _NoteCardState extends State<_NoteCard> {
           ),
           padding: const EdgeInsets.all(AppDimensions.spacingLg),
           decoration: BoxDecoration(
-            color: _isHovered ? c.surfaceLight : c.surface,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            color: hovered ? c.surfaceLight : c.surface,
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             border: Border.all(
-              color: _isHovered ? c.accent.withValues(alpha: 0.3) : c.border,
+              color: hovered ? c.accent.withValues(alpha: 0.3) : c.border,
             ),
           ),
           child: Column(
@@ -1045,9 +1028,9 @@ class _NoteCardState extends State<_NoteCard> {
                 children: [
                   Expanded(
                     child: Text(
-                      widget.note.title.isEmpty
+                      note.title.isEmpty
                           ? 'Untitled'
-                          : widget.note.title,
+                          : note.title,
                       style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     ),
                   ),
@@ -1056,7 +1039,7 @@ class _NoteCardState extends State<_NoteCard> {
                     timeStr,
                     style: AppTextStyles.micro.copyWith(color: c.textMuted),
                   ),
-                  if (_isHovered) ...[
+                  if (hovered) ...[
                     const SizedBox(width: AppDimensions.spacingSm),
                     Icon(
                       Icons.edit_outlined,
@@ -1067,24 +1050,26 @@ class _NoteCardState extends State<_NoteCard> {
                 ],
               ),
               // Tags
-              if (widget.note.tags.isNotEmpty) ...[
+              if (note.tags.isNotEmpty) ...[
                 const SizedBox(height: AppDimensions.spacingSm),
                 Wrap(
                   spacing: 4,
                   runSpacing: 4,
-                  children: widget.note.tags
+                  children: note.tags
                       .map((tag) => _WeeklyTagChip(label: tag))
                       .toList(),
                 ),
               ],
               // Content preview (rendered markdown)
-              if (widget.note.content.isNotEmpty) ...[
+              if (note.content.isNotEmpty) ...[
                 const SizedBox(height: AppDimensions.spacingMd),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 300),
                   child: ClipRect(
                     child: ShaderMask(
                       shaderCallback: (bounds) {
+                        // dstIn 블렌드의 알파 마스크 — 색은 쓰이지 않고
+                        // 아래쪽 페이드 아웃만 만든다 (테마 색 아님).
                         return LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
@@ -1099,7 +1084,7 @@ class _NoteCardState extends State<_NoteCard> {
                       blendMode: BlendMode.dstIn,
                       child: IgnorePointer(
                         child: MarkdownPreviewWidget(
-                          content: widget.note.content,
+                          content: note.content,
                         ),
                       ),
                     ),

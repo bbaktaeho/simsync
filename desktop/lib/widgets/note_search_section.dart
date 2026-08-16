@@ -104,7 +104,7 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
             ),
             decoration: BoxDecoration(
               color: c.surfaceLight,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
               border: Border.all(color: _focused ? c.accent : c.border),
             ),
             child: Row(
@@ -151,13 +151,13 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
         _maybeLink(
           InkWell(
             onTap: widget.onOpenFilters,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             child: Container(
               width: _controlHeight,
               height: _controlHeight,
               decoration: BoxDecoration(
                 color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
-                borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                 border: Border.all(
                   color: _hasActiveFilters ? c.accent : c.border,
                 ),

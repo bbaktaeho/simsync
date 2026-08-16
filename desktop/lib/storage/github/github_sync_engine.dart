@@ -3,10 +3,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../sync_engine.dart';
+/// 동기화 상태.
+enum SyncStatus { idle, syncing, error }
 
 /// Polling-based sync engine that detects remote changes by comparing commit SHAs.
-class GitHubSyncEngine implements SyncEngine {
+class GitHubSyncEngine {
   static const String _baseUrl = 'https://api.github.com';
 
   final String _token;
@@ -64,19 +65,16 @@ class GitHubSyncEngine implements SyncEngine {
     _timer = Timer.periodic(_currentInterval, (_) => syncNow());
   }
 
-  @override
   void start() {
     _restartTimer();
     syncNow();
   }
 
-  @override
   void stop() {
     _timer?.cancel();
     _timer = null;
   }
 
-  @override
   Future<void> syncNow() async {
     _statusController.add(SyncStatus.syncing);
     try {
@@ -97,10 +95,8 @@ class GitHubSyncEngine implements SyncEngine {
     }
   }
 
-  @override
   Stream<SyncStatus> get statusStream => _statusController.stream;
 
-  @override
   void dispose() {
     stop();
     _statusController.close();

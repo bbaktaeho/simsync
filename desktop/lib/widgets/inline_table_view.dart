@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/markdown_editing.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
 
 /// A rendered, horizontally-scrollable markdown table shown inline in the editor
 /// over its (hidden) markdown source.
@@ -167,7 +168,7 @@ class _InlineTableViewState extends State<InlineTableView> {
           decoration: BoxDecoration(
             color: c.surface,
             border: Border.all(color: c.border),
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           ),
           clipBehavior: Clip.antiAlias,
           child: Scrollbar(
@@ -377,19 +378,24 @@ class _CornerButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Tooltip(
       message: tooltip,
       child: Material(
         color: color,
-        shape: const CircleBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
         elevation: 1,
         child: InkWell(
-          customBorder: const CircleBorder(),
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+          ),
           onTap: onTap,
           child: SizedBox(
             width: 24,
             height: 24,
-            child: Icon(icon, size: 16, color: Colors.white),
+            child: Icon(icon, size: 16, color: c.textOnAccent),
           ),
         ),
       ),

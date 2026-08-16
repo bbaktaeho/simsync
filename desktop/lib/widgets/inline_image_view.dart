@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_dimensions.dart';
 
 /// 에디터의 숨겨진 `<img>` 마크다운 줄 위에 겹쳐 그려지는 인라인 이미지.
 /// InlineTableView와 같은 오버레이 패턴. 활성(클릭/캐럿) 상태에서 우상단
@@ -146,7 +147,7 @@ class _InlineImageViewState extends State<InlineImageView> {
               width: displayW,
               height: displayH,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                 border: Border.all(
                   color: widget.active ? c.accent : c.border,
                   width: widget.active ? 1.5 : 1,
@@ -190,7 +191,7 @@ class _InlineImageViewState extends State<InlineImageView> {
                       padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
                         color: c.surface.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                         border: Border.all(color: c.border),
                       ),
                       child:
@@ -214,8 +215,8 @@ class _InlineImageViewState extends State<InlineImageView> {
                       decoration: BoxDecoration(
                         color: c.accent,
                         borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
-                          bottomRight: Radius.circular(5),
+                          topLeft: Radius.circular(AppDimensions.radiusMicro),
+                          bottomRight: Radius.circular(AppDimensions.radiusMicro),
                         ),
                       ),
                     ),
