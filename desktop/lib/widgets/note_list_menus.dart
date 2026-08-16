@@ -67,7 +67,7 @@ class AddNoteMenuButton extends StatelessWidget {
       },
       offset: const Offset(0, 28),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         side: BorderSide(color: c.border),
       ),
       color: c.surface,

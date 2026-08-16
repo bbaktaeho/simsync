@@ -95,3 +95,49 @@ radiusComfortable`로 옮기고 별칭을 삭제했다. 값이 같아 시각 변
 `flutter analyze` clean, 527개 통과. 디버그 빌드로 표·코드 블록·체크박스·노트
 리스트를 실제 렌더해 확인. 다이얼로그 버튼은 클릭이 필요해 육안 확인 못 했다
 (테마 값은 DESIGN.md 규격 그대로).
+
+## 버튼 통일 (추가 요청)
+
+버튼이 화면마다 제각각이라 전수 조사 후 하나로 맞췄다.
+
+### 조사 결과 (전)
+
+| 버튼 | 탭 영역 | 반경 | 아이콘 |
+|------|---------|------|--------|
+| 에디터 툴바 | 28 | 4 | 16 |
+| 캘린더 월 이동 | 22 | 4 | 18 |
+| 미니 캘린더 이동 | 26 | 5 | 18 |
+| 노트 페이지네이션 | 20 | 4 | 16 |
+| 설정 확대/축소 | 34 | 8 | 16 |
+| 표 코너 +/- | 24 | 원형 | 16 |
+
+라벨 버튼도 반경이 4와 8로 갈리고, 확인 버튼(`FilledButton`)은 padding이 16/10,
+12/8, Material 기본값 세 가지였다.
+
+### 후
+
+- `AppIconButton` 하나로 통일 — 24x24, 반경 4, 아이콘 16, 호버 시 `surfaceHover`.
+  경계가 필요한 곳(툴바, 설정 스텝퍼)은 `bordered: true`로 배경과 테두리를 얻는다.
+  기존 위젯 5종(`_ToolbarIconButton`, `_MonthNavButton`, `_NavButton`,
+  `_PaginationButton`, `_IconStepButton`) 삭제.
+- 표 코너 버튼은 원형 → 반경 4. 나머지 버튼과 모서리 언어를 맞춘다.
+- 라벨 버튼(`_CreateNoteButton`, `_ActionButton`, `AddNoteMenuButton`,
+  `UpdateButton`) 반경 8 → 4. DESIGN.md §5가 "Micro (4px): Buttons, inputs,
+  functional interactive elements"로 규정한다.
+- `_ActionButton` padding 12/8 → 16/8 (DESIGN.md 버튼 규격).
+
+### 통일하며 걸린 문제
+
+탭 영역을 28로 잡았더니 캘린더 헤더 Row가 7px 넘쳐 위젯 테스트 15개가 깨졌다.
+두 가지를 고쳤다 — 탭 영역을 24로 낮추고, 헤더 좌측 라벨을 `Flexible`로 감싸
+어떤 폭에서도 넘치지 않게 했다. 그 상태로 실제 앱을 띄우니 이번엔 "Calendar"가
+`Calend…`로 잘렸다. 버튼이 자체 여백을 갖게 됐는데 라벨 양옆 `SizedBox(4)`가
+남아 있어 폭을 8px 더 먹고 있었다. 중복 간격을 걷어내니 원래대로 들어간다.
+**테스트만 봤으면 잘린 라벨을 못 봤을 자리다.**
+
+### 예외로 남긴 것
+
+- 검색 입력 안의 지우기 아이콘 — 독립 버튼이 아니라 입력 필드의 suffix
+  affordance다. Material 관행대로 작게(14) 둔다.
+- 에디터의 체크박스/접기 chevron — 본문에 얹히는 인라인 컨트롤이라 버튼 규격을
+  적용하면 글자 흐름을 밀어낸다.

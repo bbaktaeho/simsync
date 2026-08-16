@@ -14,6 +14,7 @@ import '../settings/shortcut_binding.dart';
 import '../widgets/settings_json_dialog.dart';
 import '../storage/github/repo_cache.dart';
 import '../theme/app_colors.dart';
+import '../widgets/app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
@@ -979,7 +980,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Row(
                   children: [
-                    _IconStepButton(
+                    AppIconButton(bordered: true, 
                       icon: Icons.remove_rounded,
                       onTap: widget.settingsController.decreaseContentScale,
                     ),
@@ -989,7 +990,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(width: AppDimensions.spacingMd),
-                    _IconStepButton(
+                    AppIconButton(bordered: true, 
                       icon: Icons.add_rounded,
                       onTap: widget.settingsController.increaseContentScale,
                     ),
@@ -1019,7 +1020,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Number of lines shown above and below each search match.',
             child: Row(
               children: [
-                _IconStepButton(
+                AppIconButton(bordered: true, 
                   icon: Icons.remove_rounded,
                   onTap: () => widget.settingsController.setSearchContextLines(
                     settings.searchContextLines - 1,
@@ -1031,7 +1032,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: AppTextStyles.sectionHeading.copyWith(color: c.textPrimary),
                 ),
                 const SizedBox(width: AppDimensions.spacingMd),
-                _IconStepButton(
+                AppIconButton(bordered: true, 
                   icon: Icons.add_rounded,
                   onTap: () => widget.settingsController.setSearchContextLines(
                     settings.searchContextLines + 1,
@@ -1419,8 +1420,8 @@ class _ActionButton extends StatelessWidget {
         foregroundColor: c.textPrimary,
         side: BorderSide(color: c.borderSubtle),
         backgroundColor: c.surface,
-        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingMd, vertical: AppDimensions.spacingSm),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusStandard)),
+        padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingLg, vertical: AppDimensions.spacingSm),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusMicro)),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
@@ -1543,32 +1544,6 @@ class _RepoChip extends StatelessWidget {
             color: isActive ? c.accent : c.textPrimary,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _IconStepButton extends StatelessWidget {
-  const _IconStepButton({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-          border: Border.all(color: c.border),
-        ),
-        child: Icon(icon, size: 16, color: c.textSecondary),
       ),
     );
   }

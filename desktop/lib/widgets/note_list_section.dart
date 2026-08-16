@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../models/note.dart';
 import '../theme/app_colors.dart';
+import 'app_icon_button.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'hover_builder.dart';
@@ -195,7 +196,7 @@ class NoteListSection extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _PaginationButton(
+          AppIconButton(
             icon: Icons.chevron_left_rounded,
             enabled: currentPage > 0,
             onTap: () => onPageChanged(currentPage - 1),
@@ -206,7 +207,7 @@ class NoteListSection extends StatelessWidget {
             style: AppTextStyles.micro.copyWith(color: c.textMuted),
           ),
           const SizedBox(width: AppDimensions.spacingSm),
-          _PaginationButton(
+          AppIconButton(
             icon: Icons.chevron_right_rounded,
             enabled: currentPage < totalPages - 1,
             onTap: () => onPageChanged(currentPage + 1),
@@ -393,36 +394,6 @@ class _TagChip extends StatelessWidget {
       child: Text(
         label,
         style: AppTextStyles.atto.copyWith(fontWeight: FontWeight.w500, color: c.accent),
-      ),
-    );
-  }
-}
-
-class _PaginationButton extends StatelessWidget {
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  const _PaginationButton({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return InkWell(
-      onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(
-          icon,
-          size: 16,
-          color: enabled ? c.textSecondary : c.textMuted,
-        ),
       ),
     );
   }

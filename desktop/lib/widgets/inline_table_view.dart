@@ -383,10 +383,14 @@ class _CornerButton extends StatelessWidget {
       message: tooltip,
       child: Material(
         color: color,
-        shape: const CircleBorder(),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
         elevation: 1,
         child: InkWell(
-          customBorder: const CircleBorder(),
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+          ),
           onTap: onTap,
           child: SizedBox(
             width: 24,
