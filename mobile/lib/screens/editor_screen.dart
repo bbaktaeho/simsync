@@ -40,7 +40,7 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   late TextEditingController _titleController;
   late MarkdownEditingController _contentController;
@@ -64,6 +64,7 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _note = widget.note;
     _tabController = TabController(length: 3, vsync: this);
     _titleController = TextEditingController(text: _note.title);
@@ -82,8 +83,35 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  /// 앱이 백그라운드로 갈 때 디바운스 대기 중인 편집을 즉시 저장한다.
+  ///
+  /// 안드로이드는 백그라운드 프로세스를 예고 없이 회수한다. 그러면 dispose가
+  /// 돌지 않아 1초 디바운스 안에 있던 편집이 사라진다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _flushPendingSave();
+    }
+  }
+
+  void _flushPendingSave() {
+    if (!_isDirty) return;
+    _saveDebounce?.cancel();
+    final noteToSave = _note;
+    final storage = widget.storage;
+    final notify = widget.onNoteChanged;
+    _isDirty = false;
+    storage.saveNote(noteToSave).then((_) => notify(noteToSave)).catchError((_) {
+      // 저장 실패는 조용히 넘긴다 — 다음 편집/복귀 때 다시 저장된다.
+      _isDirty = true;
+    });
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.refreshSignal?.removeListener(_handleRefreshSignal);
     _saveDebounce?.cancel();
     // Save pending changes on exit. Must be dispose-safe: no setState calls

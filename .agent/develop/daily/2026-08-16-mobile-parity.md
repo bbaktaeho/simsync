@@ -166,3 +166,46 @@ GitHub/NoteService 구현)를 이식하고 나니 둘 다 열렸다.
   테두리를 그린다 (데스크탑과 같은 결정).
 
 검증: `flutter analyze` clean, **164개 통과**, APK 디버그 빌드 성공.
+
+## 7. 안드로이드 관점 최종 검토
+
+플랫폼 설정부터 봤다. 릴리즈에서만 드러나는 것들이 여기 있다.
+
+### 고친 것
+
+1. **`android:label="simsync_mobile"`** — 템플릿 기본값이 그대로였다. 앱 서랍에
+   `simsync_mobile`로 뜬다. → `SimSync`.
+2. **Android 11+ 패키지 가시성 누락** — `<queries>`에 `PROCESS_TEXT`만 있고
+   `VIEW`+`https`가 없었다. url_launcher가 브라우저를 찾지 못해 **device flow
+   로그인에서 GitHub 인증 페이지가 안 열릴 수 있다**. API 30+ 기기에서 로그인이
+   막히는 문제라 가장 큰 발견이다.
+3. **백그라운드 전환 시 저장 유실 가능** — 편집은 1초 디바운스로 저장되고,
+   화면을 닫을 때는 `dispose`가 flush한다. 그런데 **안드로이드는 백그라운드
+   프로세스를 예고 없이 회수**해서 dispose가 안 돌 수 있다. `didChangeAppLifecycle
+   State`에서 paused/hidden/detached일 때 즉시 저장하도록 했다.
+4. **버전** 1.0.0+1(템플릿) → 0.3.4+1로 제품 버전과 맞췄다.
+
+### 확인하고 문제 없던 것
+
+- `INTERNET` 권한 선언됨 (릴리즈에서도 네트워크 동작).
+- 로컬 노트 경로가 `getApplicationDocumentsDirectory()` 기반 — 앱 전용 저장소라
+  스토리지 권한이 필요 없다(스코프드 스토리지 준수).
+- Timer/StreamSubscription 전부 cancel, `print` 0건, analyzer clean.
+- 세션 토큰은 앱 전용 디렉토리의 파일 — 다른 앱이 못 읽는다.
+- `windowSoftInputMode="adjustResize"` — 키보드가 뜰 때 본문이 밀린다.
+
+### 남은 위험 (기록)
+
+- **릴리즈 서명이 debug 키다** (`signingConfig = signingConfigs.getByName("debug")`).
+  사이드로드 설치는 되지만 스토어 배포 불가이고, 나중에 정식 키로 서명하면
+  기존 설치본 위에 업데이트가 안 된다(제거 후 재설치 필요). 정식 배포 시
+  keystore + `key.properties`를 먼저 만들어야 한다.
+- 통합 APK가 59.6MB인 이유는 3개 ABI(arm64/armv7/x86_64)를 모두 담기 때문이다.
+  `--split-per-abi`로 arm64 단독 20.9MB가 나온다.
+
+### 테스트
+
+백그라운드 저장은 무력화 검증까지 했다 — 처음엔 `pumpAndSettle`이 디바운스를
+흘려보내 통과해 버렸고, 페이크 스토리지가 같은 Note 인스턴스를 공유해 내용
+비교도 무의미했다. **저장 호출 횟수**를 세는 래퍼로 바꾸고 디바운스 전에 검사하도록
+고쳐서야 무력화 시 실패한다.
