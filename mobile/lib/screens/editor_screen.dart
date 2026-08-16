@@ -10,6 +10,8 @@ import '../settings/app_settings_controller.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../widgets/editor_panel.dart';
+import '../widgets/markdown_editing_controller.dart';
 import '../widgets/markdown_preview.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -38,8 +40,9 @@ class _EditorScreenState extends State<EditorScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
+  late MarkdownEditingController _contentController;
   late TextEditingController _tagsController;
+  final FocusNode _contentFocusNode = FocusNode();
   late Note _note;
   Timer? _saveDebounce;
   bool _isSaving = false;
@@ -54,7 +57,7 @@ class _EditorScreenState extends State<EditorScreen>
     _note = widget.note;
     _tabController = TabController(length: 3, vsync: this);
     _titleController = TextEditingController(text: _note.title);
-    _contentController = TextEditingController(text: _note.content);
+    _contentController = MarkdownEditingController(text: _note.content);
     _tagsController = TextEditingController(text: _note.tags.join(', '));
     _previewScale = widget.settingsController.value.contentScale;
     widget.refreshSignal?.addListener(_handleRefreshSignal);
@@ -90,6 +93,7 @@ class _EditorScreenState extends State<EditorScreen>
       });
     }
     _tabController.dispose();
+    _contentFocusNode.dispose();
     _titleController.dispose();
     _contentController.dispose();
     _tagsController.dispose();
@@ -393,55 +397,45 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildEditorTab(AppColorsExtension c) {
     return Column(
       children: [
+        // 제목은 고정 헤더 (데스크탑과 같은 배치). 본문만 스크롤한다.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.spacingLg,
+            AppDimensions.spacingLg,
+            AppDimensions.spacingLg,
+            AppDimensions.spacingSm,
+          ),
+          child: TextField(
+            controller: _titleController,
+            onChanged: _onTitleChanged,
+            style: Theme.of(context).textTheme.titleLarge!.copyWith(
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+            decoration: InputDecoration(
+              hintText: '제목',
+              hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: c.textMuted,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+          ),
+        ),
+        Divider(height: 1, color: c.borderSubtle),
         Expanded(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.all(AppDimensions.spacingLg),
-            child: Column(
-              children: [
-                // Title field
-                TextField(
-                  controller: _titleController,
-                  onChanged: _onTitleChanged,
-                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '제목',
-                    hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: c.textMuted,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-                const SizedBox(height: AppDimensions.spacingSm),
-                Divider(height: 1, color: c.borderSubtle),
-                const SizedBox(height: AppDimensions.spacingSm),
-                // Content field
-                TextField(
-                  controller: _contentController,
-                  onChanged: _onContentChanged,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  style: AppTextStyles.codeMono(size: 14, height: 1.6).copyWith(color: c.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: '마크다운으로 작성하세요...',
-                    hintStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      color: c.textMuted,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
+            child: EditorPanel(
+              controller: _contentController,
+              focusNode: _contentFocusNode,
+              contentScale: widget.settingsController.value.contentScale,
+              onChanged: () => _onContentChanged(_contentController.text),
             ),
           ),
         ),
