@@ -354,6 +354,12 @@ func cmdStoreStatus() error {
 		fmt.Printf("스토어:    %s (branch %s) — 앱과 공유 (~/.simsync/repos.json)\n",
 			shared.fullName(), shared.Branch)
 	}
+	// 로컬 노트는 동기화되지 않으므로 앱과 CLI가 같은 디렉토리를 봐야 서로가
+	// 만든 노트가 보인다 — 어디를 보고 있는지 먼저 드러낸다.
+	if base, err := localStoreBase(); err == nil {
+		fmt.Printf("로컬 노트: %s (동기화 안 함, 'note new --local')\n", base)
+	}
+
 	cfg, err := loadConfig()
 	if err != nil {
 		return err

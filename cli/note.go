@@ -71,15 +71,34 @@ func cmdNoteNew(args []string) error {
 	dateStr := fs.String("date", time.Now().Format("2006-01-02"), "노트 날짜 (YYYY-MM-DD, 기본 오늘)")
 	title := fs.String("title", "", "노트 제목 (파일명으로도 쓰임)")
 	memo := fs.Bool("memo", false, "메모로 생성 (날짜 무관 빠른 기록)")
+	local := fs.Bool("local", false, "로컬 스토어에 생성 (동기화하지 않음)")
+	basePath := fs.String("path", "", "로컬 스토어 루트 직접 지정 (--local 전용)")
 	tagsStr := fs.String("tags", "", "쉼표로 구분한 태그 (예: work,idea)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
-	cfg, err := requireConfig()
-	if err != nil {
-		return err
+	if *basePath != "" && !*local {
+		return errors.New("--path는 --local과 함께 씁니다 (동기화 노트 경로는 클론이 정합니다)")
 	}
+
+	// 로컬 노트는 클론(git 저장소) 밖에 있으므로 클론 설정이 필요 없다.
+	var storeRoot string
+	var err error
+	if *local {
+		storeRoot = *basePath
+		if storeRoot == "" {
+			if storeRoot, err = localStoreBase(); err != nil {
+				return err
+			}
+		}
+	} else {
+		cfg, cfgErr := requireConfig()
+		if cfgErr != nil {
+			return cfgErr
+		}
+		storeRoot = cfg.ClonePath
+	}
+
 	date, err := time.ParseInLocation("2006-01-02", *dateStr, time.Local)
 	if err != nil {
 		return fmt.Errorf("날짜 형식이 잘못되었습니다 (YYYY-MM-DD): %s", *dateStr)
@@ -98,14 +117,18 @@ func cmdNoteNew(args []string) error {
 	if name == "" {
 		name = id
 	}
-	dayDir := filepath.Join(cfg.ClonePath, "notes",
+	// 경로 규칙은 로컬/동기화가 동일하다 (데스크톱 LocalNoteStorage와
+	// GitHubNoteStorage가 같은 레이아웃을 쓴다) — 루트만 다르다.
+	dayDir := filepath.Join(storeRoot, "notes",
 		date.Format("2006-01"), date.Format("02"))
 	path := filepath.Join(dayDir, name+".md")
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("같은 제목의 노트가 이미 있습니다: %s", path)
 	}
 
-	isDefault := !*memo && !hasDailyNote(dayDir)
+	// 앱 규칙(menu_bar_controller.createNote): 그 날짜의 첫 "동기화" 일일 노트만
+	// 기본 노트가 된다 — 로컬 노트와 메모는 되지 않는다.
+	isDefault := !*local && !*memo && !hasDailyNote(dayDir)
 	if err := os.MkdirAll(dayDir, 0o755); err != nil {
 		return err
 	}
@@ -114,7 +137,11 @@ func cmdNoteNew(args []string) error {
 		return err
 	}
 
-	fmt.Println("노트 스캐폴드를 만들었습니다. frontmatter는 수정하지 말고 본문만 작성하세요.")
+	if *local {
+		fmt.Printf("로컬 노트 스캐폴드를 만들었습니다 (스토어: %s). frontmatter는 수정하지 말고 본문만 작성하세요.\n", storeRoot)
+	} else {
+		fmt.Println("노트 스캐폴드를 만들었습니다. frontmatter는 수정하지 말고 본문만 작성하세요.")
+	}
 	fmt.Println()
 	fmt.Println("본문 작성 규칙 (템플릿 예시: simsync guide note-format):")
 	fmt.Println("  - 본문은 ## 헤더로 시작하고, 주제가 바뀌면 헤더로 섹션을 나눈다")
@@ -123,7 +150,11 @@ func cmdNoteNew(args []string) error {
 	fmt.Println("  - 명령어, 코드, 로그는 코드블록(```)에 넣는다")
 	fmt.Println("  - 같은 꼴의 항목이 반복되는 정돈된 내용은 표로 정리한다")
 	fmt.Println()
-	fmt.Println("작성 후: 클론에서 git add/commit → 'simsync store sync'")
+	if *local {
+		fmt.Println("작성 후: 저장만 하면 됩니다 (로컬 노트는 동기화하지 않습니다).")
+	} else {
+		fmt.Println("작성 후: 클론에서 git add/commit → 'simsync store sync'")
+	}
 	fmt.Println(path)
 	return nil
 }
@@ -137,6 +168,6 @@ func runNote(args []string) error {
 	case "new":
 		return cmdNoteNew(args[1:])
 	default:
-		return errors.New("사용법: simsync note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--tags a,b]")
+		return errors.New("사용법: simsync note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--local] [--path 루트] [--tags a,b]")
 	}
 }

@@ -58,18 +58,23 @@ AI agent 권장 워크플로:
                  기본 위치: ~/.simsync/store/<owner>/<repo>
                  용도: 최초 1회. 클론을 열면 AGENTS.md/.agents/ 지침이 함께 온다.
 
-  store status   스토어 상태를 출력한다: 앱과 공유되는 활성 스토어, 클론
-                 경로/존재, 앱-클론 불일치 경고.
+  store status   스토어 상태를 출력한다: 앱과 공유되는 활성 스토어, 로컬 노트
+                 디렉토리, 클론 경로/존재, 앱-클론 불일치 경고.
                  용도: 작업 환경 확인. auth status 다음으로 실행하면 좋다.
 
   store sync     클론을 원격과 정합시킨다 (pull --rebase 후 push).
                  커밋되지 않은 변경이 있으면 실패한다 — 먼저 커밋하라는 뜻.
                  용도: 노트 커밋 후 마무리로 항상 실행. 앱은 폴링으로 곧 반영한다.
 
-  note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--tags a,b]
-                 클론 안에 노트 파일을 규칙대로 스캐폴드한다 (경로·frontmatter 자동).
+  note new [--date YYYY-MM-DD] [--title 제목] [--memo] [--local] [--path 루트] [--tags a,b]
+                 노트 파일을 규칙대로 스캐폴드한다 (경로·frontmatter 자동).
                  본문 작성 규칙 요약을 함께 출력한다. stdout 마지막 줄이 생성된
                  파일의 절대 경로다.
+                 --memo  날짜에 매이지 않는 빠른 기록으로 만든다.
+                 --local 동기화 스토어(클론) 대신 앱의 로컬 노트 디렉토리에
+                         만든다. 클론이 없어도 동작하고, git 커밋/sync가 필요
+                         없다. 위치는 앱 설정을 따른다 (store status로 확인,
+                         SIMSYNC_LOCAL_NOTE_PATH 또는 --path로 오버라이드).
                  용도: 노트 생성의 시작점. frontmatter는 손대지 말고 본문만
                  작성하며, 출력된 본문 작성 규칙을 따른다.
 
@@ -80,6 +85,15 @@ AI agent 권장 워크플로:
 
   version        CLI 버전을 출력한다.
   help           이 도움말을 출력한다.
+
+아직 없는 기능 (곧 구현 예정):
+  위클리/먼슬리 리뷰는 데스크톱 앱에만 있다. CLI에서 리뷰를 만들거나 읽으려면
+  앱이 쓰는 1차(아웃라인)·2차(리뷰) 지침과 경로 규칙을 CLI도 알아야 하는데,
+  2차 지침만 스토어(settings/settings.json)에 있고 1차 지침은 앱 코드에 박혀
+  있다. 지침 전체를 스토어에 내보내고 CLI가 그것을 읽는 방식을 설계 중이다.
+  (제안: .agent/proposal/cli-review-instructions.md)
+  이미 저장된 리뷰 파일은 클론에서 직접 읽을 수 있다:
+  notes/{YYYY-MM}/{N주차}/weekly-{outline,review}.md, notes/{YYYY-MM}/monthly-*.md
 
 환경변수:
   SIMSYNC_GITHUB_CLIENT_ID   포크에서 자체 OAuth App client_id 오버라이드
