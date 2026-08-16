@@ -69,7 +69,10 @@ class MiniCalendar extends StatelessWidget {
                   child: Text(
                     _weekdays[i],
                     style: AppTextStyles.micro.copyWith(
-                      color: i == 0 ? c.error : c.textMuted,
+                      // 0=일, 6=토
+                      color: i == 0 || i == 6
+                          ? c.calendarWeekend
+                          : c.textMuted,
                     ),
                   ),
                 ),
@@ -116,8 +119,11 @@ class MiniCalendar extends StatelessWidget {
     final inRange = s != null && e != null && date.isAfter(s) && date.isBefore(e);
     final isToday = date == today;
 
+    final isWeekend = date.weekday == DateTime.saturday ||
+        date.weekday == DateTime.sunday;
+
     Color? bg;
-    Color fg = c.textPrimary;
+    Color fg = isWeekend ? c.calendarWeekend : c.textPrimary;
     if (isEndpoint) {
       bg = c.accent;
       fg = c.textOnAccent;

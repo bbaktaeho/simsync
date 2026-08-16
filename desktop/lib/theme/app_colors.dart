@@ -23,6 +23,9 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
   final Color calendarToday;
   final Color calendarDot;
   final Color calendarSelected;
+
+  /// 토/일 날짜 글자색. 평일과 구분되는 단일 주말 색.
+  final Color calendarWeekend;
   final Color localAccent;
   // ── DESIGN.md additions ──
   final Color focus;
@@ -50,6 +53,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     required this.calendarToday,
     required this.calendarDot,
     required this.calendarSelected,
+    required this.calendarWeekend,
     required this.localAccent,
     required this.focus,
     required this.badgeText,
@@ -78,6 +82,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarToday: Color(0xFF0075DE), // Notion Blue
     calendarDot: Color(0xFF0075DE), // Notion Blue
     calendarSelected: Color(0xFFF2F9FF), // Badge Blue Bg (subtle)
+    calendarWeekend: Color(0xFFDD5B00), // Orange (DESIGN.md semantic accent)
     localAccent: Color(0xFFDD5B00), // Orange (local note emphasis)
     focus: Color(0xFF097FE8), // Focus Blue (keyboard ring)
     badgeText: Color(0xFF097FE8), // Pill badge text on accentSubtle
@@ -109,6 +114,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarToday: Color(0xFF3B8EEF),
     calendarDot: Color(0xFF3B8EEF),
     calendarSelected: Color(0xFF16304C),
+    calendarWeekend: Color(0xFFFF8A3D), // Orange lightened for dark contrast
     localAccent: Color(0xFFE8703A),
     focus: Color(0xFF62AEF0),
     badgeText: Color(0xFF7FC0FF),
@@ -138,6 +144,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarToday: calendarToday,
       calendarDot: calendarDot,
       calendarSelected: calendarSelected,
+      calendarWeekend: calendarWeekend,
       localAccent: localAccent ?? this.localAccent,
       focus: focus,
       badgeText: badgeText,
@@ -169,6 +176,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarToday: Color.lerp(calendarToday, other.calendarToday, t)!,
       calendarDot: Color.lerp(calendarDot, other.calendarDot, t)!,
       calendarSelected: Color.lerp(calendarSelected, other.calendarSelected, t)!,
+      calendarWeekend: Color.lerp(calendarWeekend, other.calendarWeekend, t)!,
       localAccent: Color.lerp(localAccent, other.localAccent, t)!,
       focus: Color.lerp(focus, other.focus, t)!,
       badgeText: Color.lerp(badgeText, other.badgeText, t)!,
