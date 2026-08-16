@@ -388,15 +388,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               textStyle: Theme.of(context).textTheme.labelMedium,
             ),
           ),
-          const SizedBox(height: AppDimensions.spacingXs),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            style: TextButton.styleFrom(
-              foregroundColor: c.textSecondary,
-              padding: EdgeInsets.zero,
-              alignment: Alignment.centerLeft,
+          const SizedBox(height: AppDimensions.spacingMd),
+          // 창을 닫는 주 동작. 보조 동작(JSON 편집)과 같은 회색 텍스트로 두면
+          // 무엇이 주 동작인지 읽히지 않는다. 라벨도 주변 한국어와 맞춘다.
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('완료'),
             ),
-            child: Text('Done', style: Theme.of(context).textTheme.labelMedium),
           ),
         ],
       ),

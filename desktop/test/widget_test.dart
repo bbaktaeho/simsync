@@ -326,7 +326,7 @@ void main() {
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.text('완료'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('동기화 노트'));
@@ -429,7 +429,7 @@ void main() {
 
       await tester.tap(find.text('Change...').first);
       await tester.pump();
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.text('완료'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 140));
       await tester.pumpAndSettle();
@@ -532,7 +532,7 @@ void main() {
 
       await tester.tap(find.text('Change...').first);
       await tester.pump();
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.text('완료'));
       // Pump just enough for didUpdateWidget to fire, but NOT enough for
       // the delayed new storage to finish loading.
       await tester.pump();

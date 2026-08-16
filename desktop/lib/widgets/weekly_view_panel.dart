@@ -1,6 +1,5 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
@@ -10,6 +9,8 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'hover_builder.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+
 import 'markdown_preview.dart';
 
 /// Displays all notes for a given week (Mon–Sun) in a scrollable journal view,
@@ -132,13 +133,13 @@ class WeeklyViewPanel extends StatelessWidget {
             'No notes this week',
             style: Theme.of(context).textTheme.titleSmall!.copyWith(
                   fontWeight: FontWeight.w500,
-                  color: c.textMuted,
+                  color: c.textSecondary,
                 ),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Select a date and start writing',
-            style: AppTextStyles.caption.copyWith(color: c.textMuted),
+            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
           ),
         ],
       ),
@@ -181,7 +182,7 @@ class WeeklyViewPanel extends StatelessWidget {
           const Spacer(),
           Text(
             '$noteCount note${noteCount != 1 ? 's' : ''}',
-            style: AppTextStyles.micro.copyWith(color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textSecondary),
           ),
         ],
       ),
@@ -536,7 +537,7 @@ class _OutlineChecklist extends StatelessWidget {
         const SizedBox(height: AppDimensions.spacingSm),
         Text(
           '$checkedCount / ${items.length} 선택됨 · 체크한 항목으로 2단계를 생성합니다',
-          style: AppTextStyles.micro.copyWith(color: c.textMuted),
+          style: AppTextStyles.micro.copyWith(color: c.textSecondary),
         ),
       ],
     );
@@ -721,22 +722,18 @@ class _ReviewMarkdown extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // 노트 미리보기와 같은 스타일시트를 쓴다. 예전엔 여기만 자체 스타일시트를
+        // 들고 있어서 지정하지 않은 슬롯(굵게/기울임/코드/인용/표/링크)이 기본
+        // 검정으로 떨어졌고, 다크 모드에서 글자가 보이지 않았다.
         MarkdownBody(
           data: content,
           selectable: true,
-          styleSheet: MarkdownStyleSheet(
-            p: AppTextStyles.mdBody(1.0).copyWith(color: c.textPrimary),
-            listBullet:
-                AppTextStyles.mdBody(1.0).copyWith(color: c.textSecondary),
-            h1: AppTextStyles.mdH3(1.0).copyWith(color: c.textPrimary),
-            h2: AppTextStyles.mdH4(1.0).copyWith(color: c.textPrimary),
-            h3: AppTextStyles.mdH5(1.0).copyWith(color: c.textPrimary),
-          ),
+          styleSheet: buildMarkdownStyleSheet(context),
         ),
         const SizedBox(height: AppDimensions.spacingSm),
         Text(
           '원본 노트와 별도로 저장됩니다',
-          style: AppTextStyles.micro.copyWith(color: c.textMuted),
+          style: AppTextStyles.micro.copyWith(color: c.textSecondary),
         ),
       ],
     );
@@ -838,13 +835,13 @@ class MonthlyViewPanel extends StatelessWidget {
             'No notes this month',
             style: Theme.of(context).textTheme.titleSmall!.copyWith(
                   fontWeight: FontWeight.w500,
-                  color: c.textMuted,
+                  color: c.textSecondary,
                 ),
           ),
           const SizedBox(height: AppDimensions.spacingXs),
           Text(
             'Select a date and start writing',
-            style: AppTextStyles.caption.copyWith(color: c.textMuted),
+            style: AppTextStyles.caption.copyWith(color: c.textSecondary),
           ),
         ],
       ),
@@ -884,7 +881,7 @@ class MonthlyViewPanel extends StatelessWidget {
           const Spacer(),
           Text(
             '$noteCount note${noteCount != 1 ? 's' : ''}',
-            style: AppTextStyles.micro.copyWith(color: c.textMuted),
+            style: AppTextStyles.micro.copyWith(color: c.textSecondary),
           ),
         ],
       ),
@@ -970,7 +967,7 @@ class _DateGroup extends StatelessWidget {
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
                 dateLabel,
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textMuted),
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(color: c.textSecondary),
               ),
               const SizedBox(width: AppDimensions.spacingMd),
               Expanded(
@@ -1037,7 +1034,7 @@ class _NoteCard extends StatelessWidget {
                   const SizedBox(width: AppDimensions.spacingSm),
                   Text(
                     timeStr,
-                    style: AppTextStyles.micro.copyWith(color: c.textMuted),
+                    style: AppTextStyles.micro.copyWith(color: c.textSecondary),
                   ),
                   if (hovered) ...[
                     const SizedBox(width: AppDimensions.spacingSm),

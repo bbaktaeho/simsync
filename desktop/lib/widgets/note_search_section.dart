@@ -84,7 +84,8 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final controller = widget.controller ??
+    final controller =
+        widget.controller ??
         TextEditingController.fromValue(
           TextEditingValue(
             text: widget.query,
@@ -105,7 +106,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
             decoration: BoxDecoration(
               color: c.surfaceLight,
               borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
-              border: Border.all(color: _focused ? c.accent : c.border),
+              // 평상시엔 채운 배경만으로 충분하다. 테두리는 포커스 표시로만
+              // 쓴다 (DESIGN.md §8: 인터랙티브 요소는 포커스가 보여야 한다).
+              border: _focused ? Border.all(color: c.accent) : null,
             ),
             child: Row(
               children: [
@@ -117,20 +120,25 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
                     focusNode: _focusNode,
                     onChanged: widget.onQueryChanged,
                     textAlignVertical: TextAlignVertical.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall!
-                        .copyWith(color: c.textPrimary),
+                    // height 1.0: 한 줄 컨트롤에서 폰트의 여유 공간(leading)이
+                    // 아래로 쏠려 글자가 7px 내려앉던 것을 바로잡는다.
+                    style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                      color: c.textPrimary,
+                      height: 1.0,
+                    ),
                     decoration: InputDecoration(
-                      isCollapsed: true,
+                      // isCollapsed는 내용을 박스 위쪽에 붙인다 (실측 6.5px).
+                      // isDense + contentPadding 0이라야 32px 슬롯 안에서
+                      // 실제로 가운데 정렬된다. 배경은 바깥 Container가 그린다.
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      filled: false,
                       border: InputBorder.none,
                       hintText: _hasActiveFilters
                           ? 'Search (filters active)'
                           : 'Search notes',
-                      hintStyle: Theme.of(context)
-                          .textTheme
-                          .labelSmall!
-                          .copyWith(color: c.textMuted),
+                      hintStyle: Theme.of(context).textTheme.labelSmall!
+                          .copyWith(color: c.textMuted, height: 1.0),
                     ),
                   ),
                 ),
@@ -157,7 +165,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
               height: _controlHeight,
               decoration: BoxDecoration(
                 color: _hasActiveFilters ? c.accentSubtle : c.surfaceLight,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
+                borderRadius: BorderRadius.circular(
+                  AppDimensions.radiusStandard,
+                ),
                 border: Border.all(
                   color: _hasActiveFilters ? c.accent : c.border,
                 ),
