@@ -69,21 +69,22 @@ void main() {
     expect(controller.selection, const TextSelection.collapsed(offset: 8));
   });
 
-  testWidgets('체크박스는 감춰진 [x] 글자 자리에 겹친다', (tester) async {
+  testWidgets('체크박스는 여는 대괄호가 시작하는 자리에 그려진다', (tester) async {
+    // 왼쪽 정렬이라 폰트 폭과 무관하게 항상 `[` 글자의 왼쪽 끝에 붙는다.
+    // (세 글자 박스에 가운데 정렬하면 박스가 넓게 잡힐 때 오른쪽으로 밀린다.)
     await pumpEditor(tester, '- [ ] todo');
 
     final etFinder =
         find.descendant(of: contentField(), matching: find.byType(EditableText));
     final re = tester.state<EditableTextState>(etFinder).renderEditable;
     final boxes = re.getBoxesForSelection(
-        const TextSelection(baseOffset: 2, extentOffset: 5));
+        const TextSelection(baseOffset: 2, extentOffset: 3));
     expect(boxes, isNotEmpty);
-    final fieldLeft = tester.getTopLeft(etFinder).dx;
-    final bracketCenter = fieldLeft + (boxes.first.left + boxes.first.right) / 2;
+    final bracketLeft = tester.getTopLeft(etFinder).dx + boxes.first.left;
 
-    final drawnCenter =
-        tester.getCenter(find.byKey(const ValueKey('checkbox:2'))).dx;
-    expect((drawnCenter - bracketCenter).abs(), lessThan(1.0));
+    final drawnLeft =
+        tester.getTopLeft(find.byKey(const ValueKey('checkbox:2'))).dx;
+    expect((drawnLeft - bracketLeft).abs(), lessThan(1.0));
   });
 
   testWidgets('체크박스를 눌러도 에디터 포커스가 유지된다', (tester) async {

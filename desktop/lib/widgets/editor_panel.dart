@@ -1182,10 +1182,12 @@ class EditorPanelState extends State<EditorPanel> {
             leftInset: _foldGutterWidth,
             items: [
               for (final b in boxes)
+                // 앵커는 여는 대괄호 한 글자다. 세 글자(`[x]`)를 쓰면 줄바꿈이
+                // 걸리거나 런이 쪼개질 때 박스가 넓게 잡혀 자리가 튄다.
                 EditorOverlayItem(
                   id: b.start,
                   start: b.start,
-                  end: b.end,
+                  end: b.start + 1,
                   anchor: EditorOverlayAnchor.charBox,
                 ),
             ],
