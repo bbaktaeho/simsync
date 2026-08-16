@@ -946,7 +946,11 @@ class EditorPanelState extends State<EditorPanel> {
       readOnly: widget.isReadOnly,
       inputFormatters: widget.isReadOnly
           ? null
-          : [MarkdownListInputFormatter(), DetailsBlockInputFormatter()],
+          : [
+              MarkdownListInputFormatter(),
+              DetailsBlockInputFormatter(),
+              CheckboxShorthandInputFormatter(),
+            ],
       maxLines: null,
       expands: true,
       textAlignVertical: TextAlignVertical.top,

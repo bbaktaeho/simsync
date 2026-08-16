@@ -776,6 +776,39 @@ class DetailsBlockInputFormatter extends TextInputFormatter {
   }
 }
 
+// ── 체크박스 단축 입력 ───────────────────────────────────────────────────────
+
+final RegExp _checkboxShorthandRe = RegExp(r'^(\s*)([-*+] )?\[\]$');
+
+/// 줄에 `[]`만 입력하면 `- [ ] `로 펼친다. 이미 불릿이 있으면(`- []`) 그
+/// 불릿을 그대로 쓴다. 줄 전체가 `[]`이고 캐럿이 줄 끝일 때만 반응하므로
+/// 문장 중간의 링크 대괄호(`[텍스트](url)`)는 건드리지 않는다.
+class CheckboxShorthandInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final sel = newValue.selection;
+    if (!sel.isValid || !sel.isCollapsed) return newValue;
+    // 한 글자 삽입만 반응 (붙여넣기/IME 조합 제외).
+    if (newValue.text.length != oldValue.text.length + 1) return newValue;
+    final cursor = sel.baseOffset;
+    final lineStart = _lineStartOf(newValue.text, cursor);
+    final lineEnd = _lineEndOf(newValue.text, cursor);
+    if (cursor != lineEnd) return newValue;
+    final m =
+        _checkboxShorthandRe.firstMatch(newValue.text.substring(lineStart, lineEnd));
+    if (m == null) return newValue;
+
+    final replacement = '${m.group(1)!}${m.group(2) ?? '- '}[ ] ';
+    return TextEditingValue(
+      text: newValue.text.replaceRange(lineStart, lineEnd, replacement),
+      selection: TextSelection.collapsed(offset: lineStart + replacement.length),
+    );
+  }
+}
+
 // ── 인라인 이미지 (`<img>` 한 줄 태그) ────────────────────────────────────────
 
 final RegExp _imgLineRe = RegExp(
@@ -837,12 +870,13 @@ String serializeImageTag(String src, int width, int height) =>
 
 // ── 체크박스 (작업 목록) ─────────────────────────────────────────────────────
 
-/// `- [ ] 할 일` 작업 항목 줄. 그룹: 1=들여쓰기+불릿+공백, 2=`[`, 3=마크,
-/// 4=`]`, 5=닫는 대괄호 뒤(공백으로 시작).
+/// `- [ ] 할 일` 작업 항목 줄. 그룹: 1=들여쓰기, 2=불릿+공백, 3=`[`, 4=마크,
+/// 5=`]`, 6=닫는 대괄호 뒤(공백으로 시작). 들여쓰기와 불릿을 나눠 잡는 이유:
+/// 렌더링에서 불릿만 감추고 들여쓰기 폭은 살려야 한다.
 ///
 /// 렌더러(`MarkdownEditingController`)와 클릭 오버레이가 같은 판정을 쓰도록
 /// 패턴은 여기 하나만 둔다.
-final RegExp checkboxLineRe = RegExp(r'^(\s*[-*+] )(\[)([ xX])(\])( .*)$');
+final RegExp checkboxLineRe = RegExp(r'^(\s*)([-*+] )(\[)([ xX])(\])( .*)$');
 
 /// 작업 항목 줄에서 찾은 체크박스 하나. 범위는 대괄호 세 글자(`[x]`)다 —
 /// 그 자리에 오버레이가 실제 체크박스를 그리고 클릭도 받는다.
@@ -874,8 +908,8 @@ List<CheckboxRegion> findCheckboxRegions(String text) {
       final m = checkboxLineRe.firstMatch(line);
       if (m != null) {
         result.add(CheckboxRegion(
-          start: offset + m.group(1)!.length,
-          checked: m.group(3)!.toLowerCase() == 'x',
+          start: offset + m.group(1)!.length + m.group(2)!.length,
+          checked: m.group(4)!.toLowerCase() == 'x',
         ));
       }
     }
