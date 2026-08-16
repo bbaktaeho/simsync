@@ -138,9 +138,10 @@ class CalendarSection extends StatelessWidget {
     final year = displayedMonth.year;
     final month = displayedMonth.month;
     final daysInMonth = DateTime(year, month + 1, 0).day;
-    // Days from the previous month shown to complete the first week (Mon-based:
-    // weekday 1 => 0 leading days).
-    final leadingDays = DateTime(year, month, 1).weekday - 1;
+    // Days from the previous month shown to complete the first week.
+    // 일요일 시작: DateTime.weekday는 월=1..일=7이므로 %7이 곧 선행 칸 수다
+    // (일=0, 월=1, ... 토=6). 미니 캘린더도 같은 식을 쓴다.
+    final leadingDays = DateTime(year, month, 1).weekday % 7;
     // Enough rows to cover the leading fill plus the whole month; the final
     // week's remaining cells spill into the next month. Weeks stay 7-wide with
     // no empty gaps.
@@ -180,22 +181,22 @@ class CalendarSection extends StatelessWidget {
 
   Widget _buildWeekdayHeader(BuildContext context) {
     final c = context.colors;
-    const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+    const days = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
     return Row(
-      children: days
-          .map(
-            (d) => Expanded(
-              child: Center(
-                child: Text(
-                  d,
-                  style: AppTextStyles.nanoSemibold.copyWith(
-                    color: c.textMuted,
-                  ),
+      children: [
+        for (var i = 0; i < days.length; i++)
+          Expanded(
+            child: Center(
+              child: Text(
+                days[i],
+                style: AppTextStyles.nanoSemibold.copyWith(
+                  // 0=일, 6=토
+                  color: i == 0 || i == 6 ? c.calendarWeekend : c.textMuted,
                 ),
               ),
             ),
-          )
-          .toList(),
+          ),
+      ],
     );
   }
 
@@ -228,6 +229,8 @@ class CalendarSection extends StatelessWidget {
 
         final cell = _CalendarCell(
           day: date.day,
+          isWeekend: date.weekday == DateTime.saturday ||
+              date.weekday == DateTime.sunday,
           isCurrentMonth: isCurrentMonth,
           isToday: isToday,
           isSelected: isSelected,
@@ -260,6 +263,7 @@ class CalendarSection extends StatelessWidget {
 
 class _CalendarCell extends StatelessWidget {
   final int day;
+  final bool isWeekend;
   final bool isCurrentMonth;
   final bool isToday;
   final bool isSelected;
@@ -269,6 +273,7 @@ class _CalendarCell extends StatelessWidget {
 
   const _CalendarCell({
     required this.day,
+    required this.isWeekend,
     required this.isCurrentMonth,
     required this.isToday,
     required this.isSelected,
@@ -292,6 +297,11 @@ class _CalendarCell extends StatelessWidget {
         ? c.calendarToday
         : isSelected
         ? c.textPrimary
+        : isWeekend
+        // 인접 월의 주말은 같은 색을 흐리게 — '이번 달이 주인공' 규칙 유지.
+        ? (isCurrentMonth
+            ? c.calendarWeekend
+            : c.calendarWeekend.withValues(alpha: 0.45))
         : isCurrentMonth
         ? c.textSecondary
         : c.textMuted;
