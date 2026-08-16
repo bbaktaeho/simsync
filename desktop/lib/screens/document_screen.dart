@@ -1782,7 +1782,7 @@ class _ReviewViewButton extends StatelessWidget {
                 : hovered
                 ? c.surfaceHover
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             border: Border.all(
               color: isActive
                   ? c.accent.withValues(alpha: 0.4)

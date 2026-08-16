@@ -172,10 +172,6 @@ class _SettingsJsonDialogState extends State<SettingsJsonDialog> {
                   const SizedBox(width: AppDimensions.spacingSm),
                   FilledButton(
                     onPressed: _applying ? null : _apply,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: c.accent,
-                      foregroundColor: Colors.white,
-                    ),
                     child: const Text('적용'),
                   ),
                 ],

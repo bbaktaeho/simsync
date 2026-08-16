@@ -113,7 +113,7 @@ class NoteListSection extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: c.surfaceHover,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               '$totalCount',
@@ -271,7 +271,7 @@ class _NoteListItem extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             border: isSelected
                 ? Border.all(color: itemAccent.withValues(alpha: 0.3))
                 : isLocal
@@ -366,7 +366,7 @@ class _NoteListItem extends StatelessWidget {
       textStyle: AppTextStyles.microMedium.copyWith(color: c.textPrimary),
       decoration: BoxDecoration(
         color: c.surfaceHover,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         border: Border.all(color: c.border),
       ),
       child: tagRow,
@@ -415,7 +415,7 @@ class _PaginationButton extends StatelessWidget {
 
     return InkWell(
       onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Icon(

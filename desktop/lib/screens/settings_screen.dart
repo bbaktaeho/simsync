@@ -756,7 +756,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       selectedColor: c.accent,
       side: BorderSide(color: selected ? c.accent : c.border),
       labelStyle: AppTextStyles.captionSemibold.copyWith(
-        color: selected ? Colors.white : c.textSecondary,
+        color: selected ? c.textOnAccent : c.textSecondary,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       shape: RoundedRectangleBorder(

@@ -119,7 +119,7 @@ class MiniCalendar extends StatelessWidget {
     Color fg = c.textPrimary;
     if (isEndpoint) {
       bg = c.accent;
-      fg = Colors.white;
+      fg = c.textOnAccent;
     } else if (inRange) {
       bg = c.accentSubtle;
       fg = c.accentMuted;

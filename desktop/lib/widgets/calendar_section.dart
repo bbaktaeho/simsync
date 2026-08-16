@@ -74,7 +74,7 @@ class CalendarSection extends StatelessWidget {
             children: [
               InkWell(
                 onTap: onToggleExpand,
-                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                 child: Padding(
                   padding: const EdgeInsets.all(AppDimensions.spacingXs),
                   child: Row(
@@ -274,7 +274,7 @@ class _CalendarCell extends StatelessWidget {
         // popover), so the cell fills whatever box it's given.
         decoration: BoxDecoration(
           color: bgColor,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
           border: isToday
               ? Border.all(color: c.accent.withValues(alpha: 0.4))
               : null,
@@ -319,7 +319,7 @@ class _MonthNavButton extends StatelessWidget {
     final c = context.colors;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+      borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       child: Padding(
         padding: const EdgeInsets.all(2),
         child: Icon(icon, size: 18, color: c.textSecondary),

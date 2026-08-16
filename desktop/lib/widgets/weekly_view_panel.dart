@@ -171,7 +171,7 @@ class WeeklyViewPanel extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: AppDimensions.spacingSm, vertical: 2),
             decoration: BoxDecoration(
               color: c.accentSubtle,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               '$startStr – $endStr',
@@ -466,7 +466,7 @@ class _StageCard extends StatelessWidget {
                 child: Text(
                   '$step',
                   style: AppTextStyles.microMedium
-                      .copyWith(color: Colors.white, fontWeight: FontWeight.w700),
+                      .copyWith(color: c.textOnAccent, fontWeight: FontWeight.w700),
                 ),
               ),
               const SizedBox(width: AppDimensions.spacingSm),
@@ -573,17 +573,17 @@ class _SelectAllRow extends StatelessWidget {
               height: 16,
               decoration: BoxDecoration(
                 color: active ? c.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                 border: Border.all(
                   color: active ? c.accent : c.borderSubtle,
                   width: 1.5,
                 ),
               ),
               child: allChecked
-                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  ? Icon(Icons.check_rounded, size: 12, color: c.textOnAccent)
                   : someChecked
-                      ? const Icon(Icons.remove_rounded,
-                          size: 12, color: Colors.white)
+                      ? Icon(Icons.remove_rounded,
+                          size: 12, color: c.textOnAccent)
                       : null,
             ),
             const SizedBox(width: AppDimensions.spacingSm),
@@ -623,14 +623,14 @@ class _ChecklistRow extends StatelessWidget {
               height: 16,
               decoration: BoxDecoration(
                 color: item.checked ? c.accent : Colors.transparent,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
                 border: Border.all(
                   color: item.checked ? c.accent : c.borderSubtle,
                   width: 1.5,
                 ),
               ),
               child: item.checked
-                  ? const Icon(Icons.check_rounded, size: 12, color: Colors.white)
+                  ? Icon(Icons.check_rounded, size: 12, color: c.textOnAccent)
                   : null,
             ),
             const SizedBox(width: AppDimensions.spacingSm),
@@ -874,7 +874,7 @@ class MonthlyViewPanel extends StatelessWidget {
                 horizontal: AppDimensions.spacingSm, vertical: 2),
             decoration: BoxDecoration(
               color: c.accentSubtle,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
             ),
             child: Text(
               monthStr,
@@ -905,7 +905,6 @@ class _GenerateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
     return FilledButton.icon(
       onPressed: loading ? null : onTap,
       icon: Icon(
@@ -917,14 +916,6 @@ class _GenerateButton extends StatelessWidget {
           : hasResult
               ? 'Regenerate'
               : 'Generate'),
-      style: FilledButton.styleFrom(
-        backgroundColor: c.accent,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        textStyle: AppTextStyles.captionSemibold,
-        minimumSize: const Size(0, 32),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
     );
   }
 }
@@ -1024,7 +1015,7 @@ class _NoteCard extends StatelessWidget {
           padding: const EdgeInsets.all(AppDimensions.spacingLg),
           decoration: BoxDecoration(
             color: hovered ? c.surfaceLight : c.surface,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             border: Border.all(
               color: hovered ? c.accent.withValues(alpha: 0.3) : c.border,
             ),
@@ -1077,6 +1068,8 @@ class _NoteCard extends StatelessWidget {
                   child: ClipRect(
                     child: ShaderMask(
                       shaderCallback: (bounds) {
+                        // dstIn 블렌드의 알파 마스크 — 색은 쓰이지 않고
+                        // 아래쪽 페이드 아웃만 만든다 (테마 색 아님).
                         return LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,

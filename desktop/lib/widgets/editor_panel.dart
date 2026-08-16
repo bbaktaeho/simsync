@@ -1589,7 +1589,7 @@ class _ToolbarIconButton extends StatelessWidget {
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
               color: hovered ? c.surfaceHover : c.surfaceLight,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
               border: Border.all(color: c.border),
             ),
             child: Icon(icon, size: 16, color: c.textSecondary),
@@ -1657,7 +1657,7 @@ class _CheckboxToggle extends StatelessWidget {
             decoration: BoxDecoration(
               color: checked ? c.accent : Colors.transparent,
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               border: Border.all(
                 color: checked ? c.accent : c.textMuted,
                 width: 1.2,
@@ -1702,7 +1702,7 @@ class _CreateNoteButton extends StatelessWidget {
           ),
           decoration: BoxDecoration(
             color: hovered ? c.surfaceHover : c.surfaceLight,
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             border: Border.all(
               color: hovered ? accentColor.withValues(alpha: 0.3) : c.border,
             ),
@@ -1742,7 +1742,7 @@ class _EditorTagChip extends StatelessWidget {
       padding: const EdgeInsets.only(left: AppDimensions.spacingSm, right: 2, top: 2, bottom: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         border: Border.all(color: c.accent.withValues(alpha: 0.2)),
       ),
       child: Row(

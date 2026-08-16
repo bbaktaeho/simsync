@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'app_colors.dart';
 import 'app_dimensions.dart';
+import 'app_text_styles.dart';
 
 ThemeData buildLightTheme() =>
     _buildTheme(AppColorsExtension.light, Brightness.light);
@@ -91,7 +92,7 @@ ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
       surface: c.surface,
       onSurface: c.textPrimary,
       error: c.error,
-      onError: Colors.white,
+      onError: c.textOnAccent,
       secondary: c.accent,
       onSecondary: c.textOnAccent,
       outline: c.border,
@@ -153,6 +154,26 @@ ThemeData _buildTheme(AppColorsExtension c, Brightness brightness) {
           fontWeight: FontWeight.w500,
           fontSize: 14,
         ),
+      ),
+    ),
+    // 다이얼로그와 패널의 확인 버튼(FilledButton)이 쓰는 공통 스타일.
+    // 테마가 없던 동안 호출부마다 padding을 따로 줘서 같은 버튼이 16/10,
+    // 12/8, Material 기본값 세 가지로 갈려 있었다. DESIGN.md의 버튼 규격
+    // (padding 8x16, radius 4)으로 통일한다.
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: c.accent,
+        foregroundColor: c.textOnAccent,
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppDimensions.spacingLg,
+          vertical: AppDimensions.spacingSm,
+        ),
+        minimumSize: const Size(0, 36),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+        ),
+        textStyle: AppTextStyles.captionSemibold,
       ),
     ),
     iconTheme: IconThemeData(color: c.textSecondary, size: 20),

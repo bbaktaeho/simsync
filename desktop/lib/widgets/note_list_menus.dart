@@ -67,7 +67,7 @@ class AddNoteMenuButton extends StatelessWidget {
       },
       offset: const Offset(0, 28),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         side: BorderSide(color: c.border),
       ),
       color: c.surface,
@@ -99,7 +99,7 @@ class AddNoteMenuButton extends StatelessWidget {
         padding: const EdgeInsets.all(3),
         decoration: BoxDecoration(
           color: c.accentSubtle,
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         ),
         child: Icon(Icons.add_rounded, size: 14, color: c.accent),
       ),
@@ -226,15 +226,8 @@ Future<bool> confirmNoteDelete(BuildContext context, Note note) async {
             child: const Text('취소'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: c.error,
-              foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              minimumSize: const Size(0, 36),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              textStyle: AppTextStyles.captionSemibold,
-            ),
+            // 삭제 확인만 위험 색을 쓴다. 나머지는 filledButtonTheme.
+            style: FilledButton.styleFrom(backgroundColor: c.error),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('삭제'),
           ),

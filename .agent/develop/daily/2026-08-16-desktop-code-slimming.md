@@ -47,3 +47,51 @@ created: 2026-08-16
 - `flutter analyze` clean, 527개 통과 (삭제된 conflict_resolver 테스트 2개 제외, 신규 1개 포함)
 - `HoverBuilder`에 마우스 진입/이탈 테스트 1개 추가 — 리팩터의 유일한 위험(호버가 죽는 것)을 잡는다
 - 디버그 빌드로 실제 앱 실행 후 VM service `_flutter.screenshot`으로 화면 대조 — 리팩터 전과 동일하게 렌더
+
+## 디자인 정리 (같은 브랜치)
+
+DESIGN.md를 기준으로 "정리 안 된" 지점만 손봤다. 새 스타일을 만들지 않는다.
+
+### 1. 미완료 토큰 마이그레이션 마무리
+
+`app_dimensions.dart`에 `// Deprecated aliases — remove in PR2 once all usages
+migrated` 주석과 함께 구/신 라디우스 토큰이 **41:60으로 공존**하고 있었다.
+`borderRadius/borderRadiusSm/borderRadiusLg` 41곳을 `radiusStandard/radiusMicro/
+radiusComfortable`로 옮기고 별칭을 삭제했다. 값이 같아 시각 변화는 없다.
+
+### 2. 스케일 밖 라디우스
+
+- `circular(6)` 3곳(인라인 표·이미지 컨테이너, 코드 블록 박스) → `radiusStandard`(8).
+  DESIGN.md §5 반경 스케일은 4/5/8/12/16/pill이고 8은 "small cards, containers,
+  inline elements"로 규정돼 있다.
+- 이미지 리사이즈 핸들이 한 위젯에서 topLeft 4 / bottomRight 5를 섞어 쓰던 것을
+  `radiusMicro`로 통일.
+- 1/1.5/2px는 헤어라인 장식(탭 밑줄, 인용문 바)이라 그대로 둔다.
+
+### 3. 확인 버튼 스타일 통일
+
+`filledButtonTheme`이 없어 `FilledButton` 5곳이 제각각이었다 — padding 16/10,
+12/8, Material 기본값 세 가지에 높이도 36/32/기본으로 갈렸다. 테마에 DESIGN.md
+버튼 규격(padding 8x16, radius 4, 높이 36)을 정의하고 호출부의 중복 스타일을
+제거했다. 삭제 확인 버튼의 `backgroundColor: c.error`만 남겼다.
+
+### 4. 하드코딩 흰색 → 토큰
+
+액센트 위에 얹히는 흰색 텍스트/아이콘 13곳을 `c.textOnAccent`로 교체
+(`onError`도 포함). 라이트/다크 모두 흰색이라 시각 변화는 없지만, 토큰을
+바꾸면 따라오도록 만든다. 남긴 두 곳은 의도가 다르다 — 브랜드 로고의 기본
+색 파라미터, 그리고 `ShaderMask`의 알파 마스크(색이 아니라 알파만 쓰임,
+주석 추가).
+
+### 손대지 않은 것
+
+- **아이콘 크기 11/12/13/14/16/18 혼재** — DESIGN.md에 아이콘 스케일 규정이 없다.
+  근거 없이 통일하면 레이아웃만 흔든다. 규격을 먼저 정하는 게 순서다.
+- **여백의 2/3/5/6/10px** — DESIGN.md §5가 "non-rigid organic scale"로 2,3,5,6,7,11,14를
+  명시적으로 허용한다. 위반이 아니다.
+
+### 검증
+
+`flutter analyze` clean, 527개 통과. 디버그 빌드로 표·코드 블록·체크박스·노트
+리스트를 실제 렌더해 확인. 다이얼로그 버튼은 클릭이 필요해 육안 확인 못 했다
+(테마 값은 DESIGN.md 규격 그대로).

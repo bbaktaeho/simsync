@@ -25,11 +25,6 @@ abstract final class AppDimensions {
   static const double radiusLarge = 16.0;
   static const double radiusPill = 9999.0;
 
-  // Deprecated aliases — remove in PR2 once all usages migrated.
-  static const double borderRadius = radiusStandard;
-  static const double borderRadiusSm = radiusMicro;
-  static const double borderRadiusLg = radiusComfortable;
-
   // ── Animation ──
   static const Duration animFast = Duration(milliseconds: 200);
   static const Duration animMedium = Duration(milliseconds: 300);

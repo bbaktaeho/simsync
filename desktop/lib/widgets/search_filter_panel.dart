@@ -366,13 +366,13 @@ class _TagChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                const Icon(Icons.check_rounded, size: 12, color: Colors.white),
+                Icon(Icons.check_rounded, size: 12, color: c.textOnAccent),
                 const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: AppTextStyles.micro.copyWith(
-                  color: selected ? Colors.white : c.textSecondary,
+                  color: selected ? c.textOnAccent : c.textSecondary,
                   fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
