@@ -48,6 +48,18 @@ WCAG AA는 4.5:1이다. `textMuted`(#a39e98)는 DESIGN.md에서 placeholder/disa
   DESIGN.md §8(포커스 표시)은 지킨다.
 - 두 가지 모두 테스트로 못 박았다(`note_search_section_align_test.dart`).
 
+### 검색창 테두리 — 한 번 더
+
+바깥 컨테이너의 테두리를 지웠는데도 **입력칸 안쪽에 테두리가 한 겹 남아 있었다**
+(소유자 스크린샷으로 확인). 원인은 테마다: `InputDecorationTheme`이 `border`뿐
+아니라 `enabledBorder`/`focusedBorder`와 `filled`까지 준다. 호출부에서 `border`만
+`InputBorder.none`으로 두면 나머지가 이긴다.
+
+같은 함정이 3곳 더 있었다 — 표 셀 인라인 편집, JSON 다이얼로그, 검색 필터의 날짜
+입력. 반복되는 실수라 `bareInputDecoration` 프리셋을 테마에 두고 네 곳 모두
+거기서 가져다 쓰게 했다. 테스트는 데코레이션의 6개 테두리 슬롯이 전부 none인지
+확인한다.
+
 ## 4. 리소스 / 외부 요청
 
 측정 결과:

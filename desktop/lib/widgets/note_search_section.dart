@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../theme/app_theme.dart';
 
 /// Search field + filter button shown in the title bar.
 ///
@@ -126,14 +127,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
                       color: c.textPrimary,
                       height: 1.0,
                     ),
-                    decoration: InputDecoration(
-                      // isCollapsed는 내용을 박스 위쪽에 붙인다 (실측 6.5px).
-                      // isDense + contentPadding 0이라야 32px 슬롯 안에서
-                      // 실제로 가운데 정렬된다. 배경은 바깥 Container가 그린다.
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                      filled: false,
-                      border: InputBorder.none,
+                    // 배경/테두리는 바깥 Container가 그린다. isDense 조합이라야
+                    // 32px 슬롯 안에서 글자가 가운데 온다 (isCollapsed는 위로 붙는다).
+                    decoration: bareInputDecoration.copyWith(
                       hintText: _hasActiveFilters
                           ? 'Search (filters active)'
                           : 'Search notes',
