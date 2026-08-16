@@ -122,6 +122,26 @@ void main() {
     expect(tester.getTopLeft(box).dy, lessThan(-1000));
   });
 
+  testWidgets('체크박스 자리는 줄 머리에서 시작한다 (불릿이 접혀서)', (tester) async {
+    // 폭 비교는 테스트 폰트(모든 글자가 정사각형)에 좌우되므로, 체크박스가
+    // 그려지는 대괄호 박스의 시작 x를 일반 텍스트 줄의 시작 x와 비교한다.
+    await pumpEditor(tester, 'plain\n- [ ] todo');
+    final etFinder =
+        find.descendant(of: contentField(), matching: find.byType(EditableText));
+    final re = tester.state<EditableTextState>(etFinder).renderEditable;
+    double leftOf(int start, int end) {
+      final boxes = re.getBoxesForSelection(
+          TextSelection(baseOffset: start, extentOffset: end));
+      expect(boxes, isNotEmpty);
+      return boxes.first.left;
+    }
+
+    // 'plain' 줄의 시작 vs '- [ ] todo' 줄의 `[ ]` 시작.
+    expect((leftOf(8, 11) - leftOf(0, 5)).abs(), lessThan(1.0));
+    // 불릿 두 글자는 폭이 사실상 0이다.
+    expect(leftOf(6, 8), lessThan(leftOf(8, 11) + 0.5));
+  });
+
   testWidgets('읽기 전용이면 클릭해도 바뀌지 않는다', (tester) async {
     await tester.pumpWidget(MaterialApp(
       theme: buildLightTheme(),

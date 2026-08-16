@@ -335,17 +335,21 @@ class MarkdownEditingController extends TextEditingController {
     // checkbox in its place, so the raw `[x]` never shows.
     final checkbox = checkboxLineRe.firstMatch(line);
     if (checkbox != null) {
-      final lead = checkbox.group(1)!; // 들여쓰기 + 불릿 + 공백
+      final indent = checkbox.group(1)!;
+      final bullet = checkbox.group(2)!; // `- `
       final bracket =
-          '${checkbox.group(2)!}${checkbox.group(3)!}${checkbox.group(4)!}';
-      final rest = checkbox.group(5)!; // 닫는 대괄호 뒤 공백 + 내용
-      final checked = checkbox.group(3)!.toLowerCase() == 'x';
+          '${checkbox.group(3)!}${checkbox.group(4)!}${checkbox.group(5)!}';
+      final rest = checkbox.group(6)!; // 닫는 대괄호 뒤 공백 + 내용
+      final checked = checkbox.group(4)!.toLowerCase() == 'x';
       final contentStyle = checked
           ? base.copyWith(
               color: c.textMuted, decoration: TextDecoration.lineThrough)
           : base;
       return [
-        TextSpan(text: lead, style: base.copyWith(color: c.textMuted)),
+        // 들여쓰기는 폭을 살려 하위 항목이 계단으로 보이게 한다.
+        TextSpan(text: indent, style: base),
+        // 불릿은 폭까지 접는다 — 체크박스 자체가 항목 마커라 `-`는 중복이다.
+        TextSpan(text: bullet, style: _collapsed(base)),
         // `[x]` 세 글자는 폭만 남기고 감춘다 — 그 자리에 오버레이가 실제
         // 체크박스를 그리고 클릭도 받는다. 캐럿이 이 줄에 있어도 원문을
         // 노출하지 않는다 (체크박스는 문법 노이즈가 아니라 구조 컨트롤이다).
