@@ -243,17 +243,19 @@ class _SearchScreenState extends State<SearchScreen> {
                     : null,
                 filled: true,
                 fillColor: c.surfaceLight,
+                // 채운 배경만으로 충분하다. 테두리는 포커스 표시로만 쓴다
+                // (데스크탑 검색창과 같은 결정).
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
                     AppDimensions.radiusStandard,
                   ),
-                  borderSide: BorderSide(color: c.border),
+                  borderSide: BorderSide.none,
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(
                     AppDimensions.radiusStandard,
                   ),
-                  borderSide: BorderSide(color: c.border),
+                  borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(

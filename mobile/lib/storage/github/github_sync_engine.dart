@@ -19,6 +19,11 @@ class GitHubSyncEngine implements SyncEngine {
 
   Timer? _timer;
   String? _lastCommitSha;
+
+  /// 직전 폴링 응답의 ETag. If-None-Match로 실어 보내면 변경이 없을 때 304가
+  /// 오고 GitHub은 304를 rate limit에서 차감하지 않는다. 모바일은 데이터/배터리
+  /// 비용도 걸려 있어 이득이 더 크다.
+  String? _lastEtag;
   int _consecutiveErrors = 0;
   static const _maxBackoff = Duration(minutes: 5);
   final StreamController<SyncStatus> _statusController =
@@ -117,6 +122,8 @@ class GitHubSyncEngine implements SyncEngine {
         'Authorization': 'Bearer $_token',
         'Accept': 'application/vnd.github.v3+json',
         'X-GitHub-Api-Version': '2022-11-28',
+        // ignore: use_null_aware_elements
+        if (_lastEtag != null) 'If-None-Match': _lastEtag!,
       },
     );
 
@@ -129,9 +136,15 @@ class GitHubSyncEngine implements SyncEngine {
       }
     }
 
+    // 304: 마지막 폴링 이후 변경 없음. 본문이 없으므로 알던 sha를 그대로 쓴다.
+    if (response.statusCode == 304) return _lastCommitSha;
+
     if (response.statusCode != 200) {
       throw Exception('GitHub API error: ${response.statusCode}');
     }
+
+    // 다음 폴링을 조건부 요청으로 만들기 위해 ETag를 기억한다.
+    _lastEtag = response.headers['etag'];
 
     final json = jsonDecode(response.body) as List<dynamic>;
     if (json.isEmpty) return null;

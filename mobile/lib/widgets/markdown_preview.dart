@@ -54,7 +54,8 @@ class MarkdownPreview extends StatelessWidget {
             MarkdownBody(
               data: content,
               selectable: true,
-              styleSheet: _buildStyleSheet(c),
+              styleSheet: buildMarkdownStyleSheet(context,
+                  contentScale: contentScale),
               builders: {'pre': _CodeBlockBuilder(contentScale: contentScale)},
             )
           else
@@ -67,8 +68,18 @@ class MarkdownPreview extends StatelessWidget {
     );
   }
 
-  MarkdownStyleSheet _buildStyleSheet(AppColorsExtension c) {
-    return MarkdownStyleSheet(
+}
+
+/// 앱 공용 마크다운 스타일시트.
+///
+/// 테마에서 시작해야 여기서 지정하지 않은 슬롯(strong/em/del…)도 테마 색을
+/// 따른다. 직접 생성하면 그 슬롯들이 DefaultTextStyle에 의존해 화면마다 달라진다.
+MarkdownStyleSheet buildMarkdownStyleSheet(
+  BuildContext context, {
+  double contentScale = 1.0,
+}) {
+  final c = context.colors;
+  return MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
       h1: AppTextStyles.mdH1(contentScale).copyWith(color: c.textPrimary),
       h2: AppTextStyles.mdH2(contentScale).copyWith(color: c.textPrimary),
       h3: AppTextStyles.mdH3(contentScale).copyWith(color: c.textPrimary),
@@ -114,8 +125,7 @@ class MarkdownPreview extends StatelessWidget {
       tableBody: AppTextStyles.mdTableBody(contentScale).copyWith(color: c.textSecondary),
       tableBorder: TableBorder.all(color: c.border, width: 1),
       tableHeadAlign: TextAlign.left,
-    );
-  }
+  );
 }
 
 /// Custom builder that applies syntax highlighting to fenced code blocks.

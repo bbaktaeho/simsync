@@ -358,7 +358,7 @@ class _EditorScreenState extends State<EditorScreen>
                       Text(
                         '저장 중...',
                         style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                          color: c.textMuted,
+                          color: c.textSecondary,
                         ),
                       ),
                     ],

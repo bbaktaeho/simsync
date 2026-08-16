@@ -868,7 +868,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     Text(
                       '$noteCount개 노트',
-                      style: AppTextStyles.micro.copyWith(color: c.textMuted),
+                      style: AppTextStyles.micro.copyWith(color: c.textSecondary),
                     ),
                   ],
                 ),
@@ -894,7 +894,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _calendarExpanded ? '접기' : '펼치기',
               style: Theme.of(context).textTheme.labelMedium!.copyWith(
                 fontWeight: FontWeight.w500,
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
             const SizedBox(width: 2),
@@ -978,13 +978,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Text(
               '메모가 없습니다',
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
             const SizedBox(height: AppDimensions.spacingXs),
             Text(
               '노트를 길게 눌러 메모로 옮기세요',
-              style: AppTextStyles.micro.copyWith(color: c.textMuted),
+              style: AppTextStyles.micro.copyWith(color: c.textSecondary),
             ),
           ],
         ),
@@ -1012,7 +1012,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Text(
               '이 날짜에 노트가 없습니다',
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
           ],
