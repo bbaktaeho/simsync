@@ -18,6 +18,7 @@ import '../theme/app_text_styles.dart';
 import '../services/markdown_editing.dart';
 import 'editor_block_decorations.dart';
 import 'editor_overlay_layout.dart';
+import 'hover_builder.dart';
 import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
@@ -1562,7 +1563,7 @@ class EditorPanelState extends State<EditorPanel> {
 }
 
 /// Compact hover icon button used for editor toolbar actions.
-class _ToolbarIconButton extends StatefulWidget {
+class _ToolbarIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
@@ -1574,33 +1575,24 @@ class _ToolbarIconButton extends StatefulWidget {
   });
 
   @override
-  State<_ToolbarIconButton> createState() => _ToolbarIconButtonState();
-}
-
-class _ToolbarIconButtonState extends State<_ToolbarIconButton> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
 
     return Tooltip(
-      message: widget.tooltip,
-      child: MouseRegion(
+      message: tooltip,
+      child: HoverBuilder(
         cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _isHovered = true),
-        onExit: (_) => setState(() => _isHovered = false),
-        child: GestureDetector(
-          onTap: widget.onTap,
+        builder: (context, hovered) => GestureDetector(
+          onTap: onTap,
           child: AnimatedContainer(
             duration: AppDimensions.animFast,
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: _isHovered ? c.surfaceHover : c.surfaceLight,
+              color: hovered ? c.surfaceHover : c.surfaceLight,
               borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
               border: Border.all(color: c.border),
             ),
-            child: Icon(widget.icon, size: 16, color: c.textSecondary),
+            child: Icon(icon, size: 16, color: c.textSecondary),
           ),
         ),
       ),
@@ -1682,7 +1674,7 @@ class _CheckboxToggle extends StatelessWidget {
   }
 }
 
-class _CreateNoteButton extends StatefulWidget {
+class _CreateNoteButton extends StatelessWidget {
   final String label;
   final IconData icon;
   final bool useLocalAccent;
@@ -1696,46 +1688,37 @@ class _CreateNoteButton extends StatefulWidget {
   });
 
   @override
-  State<_CreateNoteButton> createState() => _CreateNoteButtonState();
-}
-
-class _CreateNoteButtonState extends State<_CreateNoteButton> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final accentColor = widget.useLocalAccent ? c.localAccent : c.accent;
+    final accentColor = useLocalAccent ? c.localAccent : c.accent;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+    return HoverBuilder(
+      builder: (context, hovered) => GestureDetector(
+        onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: AppDimensions.spacingLg,
             vertical: AppDimensions.spacingSm,
           ),
           decoration: BoxDecoration(
-            color: _isHovered ? c.surfaceHover : c.surfaceLight,
+            color: hovered ? c.surfaceHover : c.surfaceLight,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             border: Border.all(
-              color: _isHovered ? accentColor.withValues(alpha: 0.3) : c.border,
+              color: hovered ? accentColor.withValues(alpha: 0.3) : c.border,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                widget.icon,
+                icon,
                 size: 14,
-                color: _isHovered ? accentColor : c.textSecondary,
+                color: hovered ? accentColor : c.textSecondary,
               ),
               const SizedBox(width: AppDimensions.spacingSm),
               Text(
-                widget.label,
-                style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500, color: _isHovered ? accentColor : c.textSecondary),
+                label,
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(fontWeight: FontWeight.w500, color: hovered ? accentColor : c.textSecondary),
               ),
             ],
           ),

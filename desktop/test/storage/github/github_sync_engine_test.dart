@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:simsync/storage/github/github_sync_engine.dart';
-import 'package:simsync/storage/sync_engine.dart';
 
 void main() {
   group('GitHubSyncEngine', () {

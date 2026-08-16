@@ -9,6 +9,7 @@ import '../services/review_outline.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
+import 'hover_builder.dart';
 import 'markdown_preview.dart';
 
 /// Displays all notes for a given week (Mon–Sun) in a scrollable journal view,
@@ -1000,29 +1001,20 @@ class _DateGroup extends StatelessWidget {
   }
 }
 
-class _NoteCard extends StatefulWidget {
+class _NoteCard extends StatelessWidget {
   final Note note;
   final ValueChanged<Note>? onTap;
 
   const _NoteCard({required this.note, this.onTap});
 
   @override
-  State<_NoteCard> createState() => _NoteCardState();
-}
-
-class _NoteCardState extends State<_NoteCard> {
-  bool _isHovered = false;
-
-  @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final timeStr = DateFormat('HH:mm').format(widget.note.updatedAt);
+    final timeStr = DateFormat('HH:mm').format(note.updatedAt);
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      child: GestureDetector(
-        onTap: () => widget.onTap?.call(widget.note),
+    return HoverBuilder(
+      builder: (context, hovered) => GestureDetector(
+        onTap: () => onTap?.call(note),
         child: AnimatedContainer(
           duration: AppDimensions.animFast,
           margin: const EdgeInsets.only(
@@ -1031,10 +1023,10 @@ class _NoteCardState extends State<_NoteCard> {
           ),
           padding: const EdgeInsets.all(AppDimensions.spacingLg),
           decoration: BoxDecoration(
-            color: _isHovered ? c.surfaceLight : c.surface,
+            color: hovered ? c.surfaceLight : c.surface,
             borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
             border: Border.all(
-              color: _isHovered ? c.accent.withValues(alpha: 0.3) : c.border,
+              color: hovered ? c.accent.withValues(alpha: 0.3) : c.border,
             ),
           ),
           child: Column(
@@ -1045,9 +1037,9 @@ class _NoteCardState extends State<_NoteCard> {
                 children: [
                   Expanded(
                     child: Text(
-                      widget.note.title.isEmpty
+                      note.title.isEmpty
                           ? 'Untitled'
-                          : widget.note.title,
+                          : note.title,
                       style: Theme.of(context).textTheme.titleMedium!.copyWith(color: c.textPrimary),
                     ),
                   ),
@@ -1056,7 +1048,7 @@ class _NoteCardState extends State<_NoteCard> {
                     timeStr,
                     style: AppTextStyles.micro.copyWith(color: c.textMuted),
                   ),
-                  if (_isHovered) ...[
+                  if (hovered) ...[
                     const SizedBox(width: AppDimensions.spacingSm),
                     Icon(
                       Icons.edit_outlined,
@@ -1067,18 +1059,18 @@ class _NoteCardState extends State<_NoteCard> {
                 ],
               ),
               // Tags
-              if (widget.note.tags.isNotEmpty) ...[
+              if (note.tags.isNotEmpty) ...[
                 const SizedBox(height: AppDimensions.spacingSm),
                 Wrap(
                   spacing: 4,
                   runSpacing: 4,
-                  children: widget.note.tags
+                  children: note.tags
                       .map((tag) => _WeeklyTagChip(label: tag))
                       .toList(),
                 ),
               ],
               // Content preview (rendered markdown)
-              if (widget.note.content.isNotEmpty) ...[
+              if (note.content.isNotEmpty) ...[
                 const SizedBox(height: AppDimensions.spacingMd),
                 Container(
                   constraints: const BoxConstraints(maxHeight: 300),
@@ -1099,7 +1091,7 @@ class _NoteCardState extends State<_NoteCard> {
                       blendMode: BlendMode.dstIn,
                       child: IgnorePointer(
                         child: MarkdownPreviewWidget(
-                          content: widget.note.content,
+                          content: note.content,
                         ),
                       ),
                     ),
