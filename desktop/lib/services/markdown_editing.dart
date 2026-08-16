@@ -920,3 +920,93 @@ List<CheckboxRegion> findCheckboxRegions(String text) {
   }
   return result;
 }
+
+// ── 선택/줄 단위 서식 (툴바·단축키 공용) ─────────────────────────────────────
+
+final RegExp _leadingIndentRe = RegExp(r'^[ \t]*');
+final List<RegExp> _blockPrefixRes = [
+  RegExp(r'^#{1,6} '), // heading
+  RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (bullet보다 먼저)
+  RegExp(r'^[-*+] '), // bullet
+  RegExp(r'^\d+[.)] '), // ordered
+  RegExp(r'^\| '), // quote (현행)
+  RegExp(r'^> '), // quote (레거시, 교체 인식용)
+];
+
+/// 줄 머리에 붙은 블록 프리픽스 길이. 없으면 0.
+int blockPrefixLength(String body) {
+  for (final pattern in _blockPrefixRes) {
+    final match = pattern.firstMatch(body);
+    if (match != null) return match.end;
+  }
+  return 0;
+}
+
+/// 인라인 [marker]로 선택을 감싸거나(빈 선택이면 마커만 삽입) 이미 감싸져
+/// 있으면 벗긴다.
+TextEditingValue wrapSelection(TextEditingValue value, String marker) {
+  final text = value.text;
+  final selection = value.selection;
+  if (!selection.isValid) return value;
+  final start = selection.start.clamp(0, text.length);
+  final end = selection.end.clamp(0, text.length);
+  final selected = text.substring(start, end);
+
+  if (selected.length >= marker.length * 2 &&
+      selected.startsWith(marker) &&
+      selected.endsWith(marker)) {
+    final inner =
+        selected.substring(marker.length, selected.length - marker.length);
+    return TextEditingValue(
+      text: text.replaceRange(start, end, inner),
+      selection:
+          TextSelection(baseOffset: start, extentOffset: start + inner.length),
+    );
+  }
+
+  return TextEditingValue(
+    text: text.replaceRange(start, end, '$marker$selected$marker'),
+    selection: selected.isEmpty
+        ? TextSelection.collapsed(offset: start + marker.length)
+        : TextSelection(
+            baseOffset: start + marker.length,
+            extentOffset: end + marker.length,
+          ),
+  );
+}
+
+/// 캐럿 줄의 블록 프리픽스(`# `, `- `, `- [ ] `…)를 토글한다. 다른 종류가 이미
+/// 있으면 쌓지 않고 교체하고, 같은 것을 다시 누르면 지운다. 들여쓰기는 보존.
+TextEditingValue toggleLinePrefix(TextEditingValue value, String prefix) {
+  final text = value.text;
+  final selection = value.selection;
+  final caret = (selection.isValid ? selection.baseOffset : text.length)
+      .clamp(0, text.length);
+  final lineStart = _lineStartOf(text, caret);
+  final lineEnd = _lineEndOf(text, caret);
+  final line = text.substring(lineStart, lineEnd);
+
+  final indent = _leadingIndentRe.firstMatch(line)!.group(0)!;
+  final body = line.substring(indent.length);
+  final existingLen = blockPrefixLength(body);
+  final content = body.substring(existingLen);
+  final toggleOff = body.substring(0, existingLen) == prefix;
+  final newPrefixLen = toggleOff ? 0 : prefix.length;
+  final newBody = toggleOff ? content : '$prefix$content';
+  final newLine = '$indent$newBody';
+
+  final caretInLine = caret - lineStart;
+  final contentStart = indent.length + existingLen;
+  final newContentStart = indent.length + newPrefixLen;
+  final newCaretInLine = caretInLine <= contentStart
+      ? newContentStart
+      : caretInLine - contentStart + newContentStart;
+
+  final newText = text.replaceRange(lineStart, lineEnd, newLine);
+  final newCaret =
+      (lineStart + newCaretInLine).clamp(lineStart, lineStart + newLine.length);
+  return TextEditingValue(
+    text: newText,
+    selection: TextSelection.collapsed(offset: newCaret),
+  );
+}
