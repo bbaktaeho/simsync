@@ -250,9 +250,16 @@ void main() {
     expect(bracket.$2!.color, Colors.transparent);
     // 접힌 글자(극소 폰트)가 아니어야 체크박스가 들어갈 자리가 생긴다.
     expect(bracket.$2!.fontSize ?? 14, greaterThan(1));
-    // 불릿은 그대로 보인다.
-    expect(pairs.firstWhere((p) => p.$1 == '- ').$2!.color,
-        isNot(Colors.transparent));
+  });
+
+  testWidgets('체크박스 줄의 불릿은 폭까지 접힌다 (체크박스만 보인다)', (tester) async {
+    final pairs = _flatten(await _build(tester, '  - [ ] todo'));
+    final bullet = pairs.firstWhere((p) => p.$1 == '- ');
+    expect(bullet.$2!.color, Colors.transparent);
+    expect(bullet.$2!.fontSize, lessThan(1)); // 폭 ~0
+    // 들여쓰기는 폭을 유지해야 하위 항목이 계단으로 보인다.
+    final indent = pairs.firstWhere((p) => p.$1 == '  ');
+    expect(indent.$2!.fontSize ?? 14, greaterThan(1));
   });
 
   testWidgets('fenced code is syntax-highlighted into multiple colored tokens', (

@@ -423,6 +423,65 @@ void main() {
     });
   });
 
+  group('CheckboxShorthandInputFormatter', () {
+    // `]`를 마지막에 친 상황을 만든다 (한 글자 삽입).
+    TextEditingValue typeClose(String before) {
+      final oldV = _value('$before[', before.length + 1);
+      final newText = '$before[]';
+      final newV = _value(newText, newText.length);
+      return CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV);
+    }
+
+    test('빈 줄의 []는 - [ ] 로 펼쳐지고 캐럿이 뒤에 선다', () {
+      final r = typeClose('');
+      expect(r.text, '- [ ] ');
+      expect(r.selection.baseOffset, 6);
+    });
+
+    test('이미 있는 불릿은 그대로 쓴다', () {
+      expect(typeClose('- ').text, '- [ ] ');
+      expect(typeClose('* ').text, '* [ ] ');
+    });
+
+    test('들여쓰기를 유지한다', () {
+      final r = typeClose('  ');
+      expect(r.text, '  - [ ] ');
+      expect(r.selection.baseOffset, 8);
+    });
+
+    test('앞 줄이 있어도 그 줄만 바꾼다', () {
+      final oldV = _value('memo\n[', 6);
+      final newV = _value('memo\n[]', 7);
+      final r = CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV);
+      expect(r.text, 'memo\n- [ ] ');
+      expect(r.selection.baseOffset, 11);
+    });
+
+    test('문장 중간의 대괄호는 건드리지 않는다 (링크 입력)', () {
+      final oldV = _value('see [', 5);
+      final newV = _value('see []', 6);
+      expect(
+          CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV).text,
+          'see []');
+    });
+
+    test('줄 끝이 아니면 반응하지 않는다', () {
+      final oldV = _value('[tail', 1);
+      final newV = _value('[]tail', 2);
+      expect(
+          CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV).text,
+          '[]tail');
+    });
+
+    test('붙여넣기(여러 글자)는 건드리지 않는다', () {
+      final oldV = _value('', 0);
+      final newV = _value('[]', 2);
+      expect(
+          CheckboxShorthandInputFormatter().formatEditUpdate(oldV, newV).text,
+          '[]');
+    });
+  });
+
   group('indentListSelection', () {
     test('캐럿이 줄 어디에 있든 줄 머리를 2칸 들여쓴다', () {
       // "- a\n- " 의 마지막(= `- ` 우측) 캐럿.
