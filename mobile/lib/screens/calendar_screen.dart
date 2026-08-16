@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
+import '../services/note_conversion.dart';
 import '../services/note_service.dart';
 import '../settings/app_settings_controller.dart';
 import '../storage/github/repo_cache.dart';
@@ -244,10 +245,73 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 _setMemoFlag(note, toMemo);
               },
             ),
+            // 로컬 ↔ 동기화 전환 (데스크탑과 같은 동작). 로컬 스토리지가
+            // 설정돼 있을 때만 뜬다.
+            if (widget.localStorage != null)
+              ListTile(
+                leading: Icon(
+                  note.storageType == StorageType.local
+                      ? Icons.cloud_upload_outlined
+                      : Icons.folder_outlined,
+                  color: c.textSecondary,
+                ),
+                title: Text(
+                  note.storageType == StorageType.local
+                      ? '동기화 노트로 전환'
+                      : '로컬 노트로 전환',
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.titleSmall?.copyWith(color: c.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _convertNoteStorage(note);
+                },
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 노트를 반대편 스토리지로 옮긴다. 이미지 자산도 함께 복사하고, 옮기지 못한
+  /// 자산이 있으면 알려준다 (노트 자체는 전환된다).
+  Future<void> _convertNoteStorage(Note note) async {
+    final local = widget.localStorage;
+    if (local == null) return;
+    final toSynced = note.storageType == StorageType.local;
+    final label = toSynced ? '동기화' : '로컬';
+    try {
+      final result = toSynced
+          ? await convertLocalNoteToSynced(
+              note: note,
+              local: local,
+              synced: widget.storage,
+            )
+          : await convertSyncedNoteToLocal(
+              note: note,
+              synced: widget.storage,
+              local: local,
+            );
+      if (!mounted) return;
+      await _loadNotes();
+      if (!mounted) return;
+      final failed = result.failedAssets.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? '$label 노트로 전환했습니다.'
+                : '$label 노트로 전환했습니다. 이미지 $failed개는 옮기지 못했습니다.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('전환 실패: $e')));
+    }
   }
 
   Future<void> _createNote() async {

@@ -6,8 +6,10 @@ import 'package:intl/intl.dart';
 import '../theme/app_text_styles.dart';
 
 import '../models/note.dart';
+import '../services/image_asset_service.dart';
 import '../services/markdown_editing.dart';
 import '../settings/app_settings_controller.dart';
+import '../storage/github/github_note_storage.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
@@ -44,6 +46,13 @@ class _EditorScreenState extends State<EditorScreen>
   late MarkdownEditingController _contentController;
   late TextEditingController _tagsController;
   final FocusNode _contentFocusNode = FocusNode();
+
+  /// 노트 본문의 상대 src('assets/…') 이미지를 읽는다. 원격(GitHub) 스토리지는
+  /// 디스크 캐시를 써서 앱 재시작 후에도 네트워크 재요청 없이 뜬다.
+  late final ImageAssetService _imageService = ImageAssetService(
+    storage: widget.storage,
+    useDiskCache: widget.storage is GitHubNoteStorage,
+  );
   late Note _note;
   Timer? _saveDebounce;
   bool _isSaving = false;
@@ -463,6 +472,10 @@ class _EditorScreenState extends State<EditorScreen>
                 focusNode: _contentFocusNode,
                 contentScale: widget.settingsController.value.contentScale,
                 onChanged: () => _onContentChanged(_contentController.text),
+                onLoadImage: (src) => _imageService.loadImage(
+                  noteDate: _note.noteDate,
+                  src: src,
+                ),
               ),
             ),
           ),
@@ -739,7 +752,8 @@ class _ToolbarButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 40,
-        height: 36,
+        // 손가락 타깃. 툴바 높이(48) 안에서 최대한 키운다.
+        height: 44,
         alignment: Alignment.center,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(

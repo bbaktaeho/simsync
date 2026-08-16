@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import 'editor_block_decorations.dart';
 import 'editor_overlay_layout.dart';
+import 'inline_image_view.dart';
 import 'inline_table_view.dart';
 import 'markdown_editing_controller.dart';
 
@@ -44,6 +46,7 @@ class EditorPanel extends StatefulWidget {
     this.contentScale = 1.0,
     this.readOnly = false,
     this.onChanged,
+    this.onLoadImage,
   });
 
   final MarkdownEditingController controller;
@@ -51,6 +54,10 @@ class EditorPanel extends StatefulWidget {
   final double contentScale;
   final bool readOnly;
   final VoidCallback? onChanged;
+
+  /// 노트 기준 상대 src('assets/…')의 이미지 바이트 로더. null이면 이미지
+  /// 오버레이를 끄고 `<img>` 줄을 원문 그대로 렌더한다.
+  final Future<Uint8List?> Function(String src)? onLoadImage;
 
   @override
   State<EditorPanel> createState() => _EditorPanelState();
@@ -103,6 +110,28 @@ class _EditorPanelState extends State<EditorPanel> {
   Listenable get _overlayRelayout =>
       Listenable.merge([widget.controller, _scrollController]);
 
+  /// 오버레이(표/체크박스) 위에서 시작한 세로 드래그를 에디터 스크롤로 넘긴다.
+  ///
+  /// 오버레이는 필드 위에 얹혀 히트 테스트를 가져가고, 필드의 Scrollable은
+  /// 오버레이의 조상이 아니다. 감싸지 않으면 표 위에서 손가락을 끌 때 노트가
+  /// 스크롤되지 않는다 (표는 화면 폭을 다 쓰므로 체감이 크다).
+  Widget _forwardVerticalDrag({required Widget child}) {
+    return GestureDetector(
+      onVerticalDragUpdate: (d) => _scrollBy(-d.delta.dy),
+      child: child,
+    );
+  }
+
+  void _scrollBy(double delta) {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (target != position.pixels) position.jumpTo(target);
+  }
+
   /// 체크박스 탭: `[ ]` ↔ `[x]`. 글자 수가 같아 캐럿은 건드리지 않는다.
   void _toggleCheckbox(CheckboxRegion box) {
     if (widget.readOnly) return;
@@ -122,15 +151,17 @@ class _EditorPanelState extends State<EditorPanel> {
   Widget build(BuildContext context) {
     final c = context.colors;
     widget.controller.scale = widget.contentScale;
-    // 모바일에는 아직 이미지 첨부/로드 경로가 없다. 감추면 <img> 줄이 통째로
-    // 사라져 보이므로 원문 그대로 렌더한다.
-    widget.controller.renderInlineImages = false;
+    // 로더가 없으면 오버레이도 없다 — 감추면 <img> 줄이 통째로 사라져 보이므로
+    // 그런 경우에만 원문을 그대로 렌더한다.
+    widget.controller.renderInlineImages = widget.onLoadImage != null;
 
     final baseStyle = AppTextStyles.mdBody(
       widget.contentScale,
     ).copyWith(color: c.textPrimary);
-    final bodyStyle = (Theme.of(context).textTheme.bodyLarge ?? const TextStyle())
-        .merge(baseStyle);
+    final bodyStyle =
+        (Theme.of(context).textTheme.bodyLarge ?? const TextStyle()).merge(
+          baseStyle,
+        );
 
     final field = TextField(
       key: _fieldKey,
@@ -168,16 +199,12 @@ class _EditorPanelState extends State<EditorPanel> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: IgnorePointer(child: _buildDecorations(c)),
-        ),
+        Positioned.fill(child: IgnorePointer(child: _buildDecorations(c))),
         field,
-        Positioned.fill(
-          child: ClipRect(child: _buildTableOverlays(bodyStyle)),
-        ),
-        Positioned.fill(
-          child: ClipRect(child: _buildCheckboxOverlays(c)),
-        ),
+        Positioned.fill(child: ClipRect(child: _buildTableOverlays(bodyStyle))),
+        Positioned.fill(child: ClipRect(child: _buildCheckboxOverlays(c))),
+        if (widget.onLoadImage != null)
+          Positioned.fill(child: ClipRect(child: _buildImageOverlays())),
       ],
     );
   }
@@ -191,7 +218,11 @@ class _EditorPanelState extends State<EditorPanel> {
         final tables = findTableRegions(text);
         final details = findDetailsRegions(text);
         final regions = [
-          ...filterEditorRegions(parseEditorBlockRegions(text), tables, details),
+          ...filterEditorRegions(
+            parseEditorBlockRegions(text),
+            tables,
+            details,
+          ),
           ...detailsGuideRegions(details),
         ];
         if (regions.isEmpty) return const SizedBox.expand();
@@ -239,31 +270,36 @@ class _EditorPanelState extends State<EditorPanel> {
             for (final t in tables)
               LayoutId(
                 id: t.start,
-                child: InlineTableView(
-                  key: ValueKey(t.start),
-                  data: t.table,
-                  active: !widget.readOnly && caret >= t.start && caret <= t.end,
-                  cellStyle: bodyStyle,
-                  onActivate: () => _activateTable(t),
-                  onAddRow: () => _mutateTable(
-                    t,
-                    MarkdownTableData(
-                      [...t.table.rows, List.filled(t.table.columns, '')],
-                      t.table.aligns,
+                child: _forwardVerticalDrag(
+                  child: InlineTableView(
+                    key: ValueKey(t.start),
+                    data: t.table,
+                    active:
+                        !widget.readOnly && caret >= t.start && caret <= t.end,
+                    cellStyle: bodyStyle,
+                    onActivate: () => _activateTable(t),
+                    onAddRow: () => _mutateTable(
+                      t,
+                      MarkdownTableData([
+                        ...t.table.rows,
+                        List.filled(t.table.columns, ''),
+                      ], t.table.aligns),
                     ),
-                  ),
-                  onAddColumn: () => _mutateTable(
-                    t,
-                    MarkdownTableData(
-                      [for (final row in t.table.rows) [...row, '']],
-                      [...t.table.aligns, MarkdownTableAlign.left],
+                    onAddColumn: () => _mutateTable(
+                      t,
+                      MarkdownTableData(
+                        [
+                          for (final row in t.table.rows) [...row, ''],
+                        ],
+                        [...t.table.aligns, MarkdownTableAlign.left],
+                      ),
                     ),
+                    onRemove: () => _removeTable(t),
+                    onCellChanged: (row, col, value) =>
+                        _setTableCell(t, row, col, value),
+                    onRemoveRow: (row) => _removeTableRow(t, row),
+                    onRemoveColumn: (col) => _removeTableColumn(t, col),
                   ),
-                  onRemove: () => _removeTable(t),
-                  onCellChanged: (row, col, value) =>
-                      _setTableCell(t, row, col, value),
-                  onRemoveRow: (row) => _removeTableRow(t, row),
-                  onRemoveColumn: (col) => _removeTableColumn(t, col),
                 ),
               ),
           ],
@@ -312,18 +348,15 @@ class _EditorPanelState extends State<EditorPanel> {
     }
     _mutateTable(
       table,
-      MarkdownTableData(
-        [
-          for (var r = 0; r < data.rows.length; r++)
-            [
-              for (var k = 0; k < data.columns; k++)
-                (r == row && k == col)
-                    ? value
-                    : (k < data.rows[r].length ? data.rows[r][k] : ''),
-            ],
-        ],
-        data.aligns,
-      ),
+      MarkdownTableData([
+        for (var r = 0; r < data.rows.length; r++)
+          [
+            for (var k = 0; k < data.columns; k++)
+              (r == row && k == col)
+                  ? value
+                  : (k < data.rows[r].length ? data.rows[r][k] : ''),
+          ],
+      ], data.aligns),
     );
   }
 
@@ -332,13 +365,10 @@ class _EditorPanelState extends State<EditorPanel> {
     if (row <= 0 || row >= data.rows.length) return;
     _mutateTable(
       table,
-      MarkdownTableData(
-        [
-          for (var i = 0; i < data.rows.length; i++)
-            if (i != row) data.rows[i],
-        ],
-        data.aligns,
-      ),
+      MarkdownTableData([
+        for (var i = 0; i < data.rows.length; i++)
+          if (i != row) data.rows[i],
+      ], data.aligns),
     );
   }
 
@@ -361,6 +391,99 @@ class _EditorPanelState extends State<EditorPanel> {
         ],
       ),
     );
+  }
+
+  // 숨겨진 <img> 줄의 예약 밴드 위에 실제 이미지를 그린다.
+  Widget _buildImageOverlays() {
+    final onLoad = widget.onLoadImage;
+    if (onLoad == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: widget.controller,
+      builder: (context, _) {
+        final images = findImageRegions(widget.controller.text);
+        if (images.isEmpty) return const SizedBox.shrink();
+        final sel = widget.controller.selection;
+        final caret = sel.isValid ? sel.baseOffset : -1;
+        final scale = widget.contentScale;
+        return CustomMultiChildLayout(
+          delegate: EditorOverlayLayoutDelegate(
+            editable: _renderEditable,
+            relayout: _overlayRelayout,
+            items: [
+              for (final r in images)
+                EditorOverlayItem(
+                  id: r.start,
+                  start: r.start,
+                  end: r.end,
+                  anchor: EditorOverlayAnchor.imageBand,
+                  childHeight: r.height * scale,
+                ),
+            ],
+          ),
+          children: [
+            for (final r in images)
+              LayoutId(
+                id: r.start,
+                child: _forwardVerticalDrag(
+                  child: InlineImageView(
+                    key: ValueKey('${r.start}:${r.src}'),
+                    src: r.src,
+                    width: r.width,
+                    height: r.height,
+                    scale: scale,
+                    active: !widget.readOnly &&
+                        caret >= r.start &&
+                        caret <= r.end,
+                    readOnly: widget.readOnly,
+                    loadImage: onLoad,
+                    onActivate: () => _activateImage(r),
+                    onResized: (w, h) => _resizeImage(r, w, h),
+                    onRemove: () => _removeImage(r),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _activateImage(ImageRegion r) {
+    if (widget.readOnly) return;
+    widget.focusNode.requestFocus();
+    widget.controller.selection = TextSelection.collapsed(
+      offset: r.start.clamp(0, widget.controller.text.length),
+    );
+  }
+
+  void _resizeImage(ImageRegion r, int w, int h) {
+    if (widget.readOnly) return;
+    final text = widget.controller.text;
+    final s = r.start.clamp(0, text.length);
+    var e = text.indexOf('\n', s);
+    if (e == -1) e = text.length;
+    _apply(TextEditingValue(
+      text: text.replaceRange(s, e, serializeImageTag(r.src, w, h)),
+      selection: TextSelection.collapsed(offset: s),
+    ));
+  }
+
+  void _removeImage(ImageRegion r) {
+    if (widget.readOnly) return;
+    final text = widget.controller.text;
+    final s = r.start.clamp(0, text.length);
+    var e = r.end.clamp(s, text.length);
+    if (e < text.length && text[e] == '\n') e++;
+    _apply(TextEditingValue(
+      text: text.replaceRange(s, e, ''),
+      selection: TextSelection.collapsed(offset: s),
+    ));
+  }
+
+  void _apply(TextEditingValue updated) {
+    if (updated == widget.controller.value) return;
+    widget.controller.value = updated;
+    widget.onChanged?.call();
   }
 
   // 감춰진 `[x]` 자리에 실제 체크박스를 겹친다.
@@ -388,12 +511,14 @@ class _EditorPanelState extends State<EditorPanel> {
             for (final b in boxes)
               LayoutId(
                 id: b.start,
-                child: _CheckboxToggle(
-                  key: ValueKey('checkbox:${b.start}'),
-                  checked: b.checked,
-                  size: _checkboxSize * widget.contentScale,
-                  tapPadding: _checkboxTapPadding,
-                  onTap: widget.readOnly ? null : () => _toggleCheckbox(b),
+                child: _forwardVerticalDrag(
+                  child: _CheckboxToggle(
+                    key: ValueKey('checkbox:${b.start}'),
+                    checked: b.checked,
+                    size: _checkboxSize * widget.contentScale,
+                    tapPadding: _checkboxTapPadding,
+                    onTap: widget.readOnly ? null : () => _toggleCheckbox(b),
+                  ),
                 ),
               ),
           ],
@@ -426,7 +551,10 @@ class _CheckboxToggle extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.all(tapPadding),
+        // 왼쪽에는 여백을 두지 않는다. 오버레이는 이 위젯의 왼쪽 끝을 `[` 글자
+        // 위치에 맞추므로, 왼쪽 여백을 주면 그림이 그만큼 밀린다. 손가락을 위한
+        // 여유는 오른쪽·위아래로만 준다.
+        padding: EdgeInsets.fromLTRB(0, tapPadding, tapPadding * 2, tapPadding),
         child: Container(
           width: size,
           height: size,
