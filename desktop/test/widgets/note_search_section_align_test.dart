@@ -39,8 +39,12 @@ void main() {
     final fieldCenter = tester.getCenter(fieldBox.first).dy;
     final hintCenter = tester.getCenter(hint).dy;
 
-    expect((hintCenter - fieldCenter).abs(), lessThan(1.0),
-        reason: '힌트가 위/아래로 치우치면 안 된다');
+    // 위젯 박스 기준 허용 오차. 실제 눈에 보이는 정렬은 잉크 기준이라 검색창에
+    // 광학 보정(_opticalNudge)이 들어가 있고, 그 값은 실행 중인 앱 스크린샷을
+    // 픽셀로 재서 맞췄다(위/아래 여백 10.5 vs 9.5px). 이 테스트는 예전처럼
+    // 7px씩 어긋나는 회귀를 잡는 역할이다.
+    expect((hintCenter - fieldCenter).abs(), lessThan(2.5),
+        reason: '힌트가 위/아래로 크게 치우치면 안 된다');
   });
 
   testWidgets('입력칸 자체에는 테두리가 없다 (테마 enabledBorder까지)', (tester) async {

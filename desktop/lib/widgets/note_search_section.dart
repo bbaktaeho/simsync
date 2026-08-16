@@ -45,6 +45,9 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
   /// exactly the same size and stay vertically aligned.
   static const double _controlHeight = 32;
 
+  /// 아이콘·글자 잉크가 박스보다 아래에 그려지는 것을 상쇄하는 값.
+  static const double _opticalNudge = 4;
+
   FocusNode? _ownedFocusNode;
   bool _focused = false;
 
@@ -101,8 +104,14 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
         Expanded(
           child: Container(
             height: _controlHeight,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppDimensions.spacingSm,
+            // 아래쪽에만 여백을 조금 준다. 아이콘과 글자 모두 잉크가 박스보다
+            // 아래에 그려져(실측 각각 +2.0px, +1.5px) 그냥 가운데 정렬하면
+            // 눈에는 내려앉아 보인다 — 광학 보정.
+            padding: const EdgeInsets.fromLTRB(
+              AppDimensions.spacingSm,
+              0,
+              AppDimensions.spacingSm,
+              _opticalNudge,
             ),
             decoration: BoxDecoration(
               color: c.surfaceLight,
@@ -121,11 +130,14 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
                     focusNode: _focusNode,
                     onChanged: widget.onQueryChanged,
                     textAlignVertical: TextAlignVertical.center,
-                    // height 1.0: 한 줄 컨트롤에서 폰트의 여유 공간(leading)이
-                    // 아래로 쏠려 글자가 7px 내려앉던 것을 바로잡는다.
+                    // 한 줄 컨트롤의 세로 정렬. height 1.0으로 라인 박스를
+                    // 글자 크기에 맞추고, leading을 위아래 균등 분배해야 잉크가
+                    // 박스 가운데 온다 (기본 proportional은 아래로 쏠린다 —
+                    // 실측 +1.5px).
                     style: Theme.of(context).textTheme.labelSmall!.copyWith(
                       color: c.textPrimary,
                       height: 1.0,
+                      leadingDistribution: TextLeadingDistribution.even,
                     ),
                     // 배경/테두리는 바깥 Container가 그린다. isDense 조합이라야
                     // 32px 슬롯 안에서 글자가 가운데 온다 (isCollapsed는 위로 붙는다).
@@ -133,8 +145,11 @@ class _NoteSearchSectionState extends State<NoteSearchSection> {
                       hintText: _hasActiveFilters
                           ? 'Search (filters active)'
                           : 'Search notes',
-                      hintStyle: Theme.of(context).textTheme.labelSmall!
-                          .copyWith(color: c.textMuted, height: 1.0),
+                      hintStyle: Theme.of(context).textTheme.labelSmall!.copyWith(
+                        color: c.textMuted,
+                        height: 1.0,
+                        leadingDistribution: TextLeadingDistribution.even,
+                      ),
                     ),
                   ),
                 ),
