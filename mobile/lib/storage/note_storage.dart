@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/note.dart';
 
 /// 노트 저장소 추상 인터페이스.
@@ -21,4 +23,24 @@ abstract class NoteStorage {
 
   /// 노트 삭제.
   Future<void> deleteNote(Note note);
+
+  /// 저장소 루트 기준 [relativePath]의 텍스트 파일을 읽는다. 없으면 null.
+  ///
+  /// 노트(Note 모델)가 아닌 부가 마크다운 파일(예: AI 위클리/먼슬리 리뷰)을
+  /// 다루기 위한 범용 입출력. 노트 목록/검색에는 잡히지 않는다.
+  Future<String?> readTextFile(String relativePath);
+
+  /// 저장소 루트 기준 [relativePath]에 [content]를 쓴다(생성 또는 덮어쓰기).
+  Future<void> writeTextFile(String relativePath, String content);
+
+  /// 저장소 루트 기준 [relativePath]의 바이너리 파일을 읽는다. 없으면 null.
+  /// 노트 본문에 첨부된 이미지 자산 입출력용.
+  Future<Uint8List?> readBinaryFile(String relativePath);
+
+  /// 저장소 루트 기준 [relativePath]에 [bytes]를 쓴다(생성 또는 덮어쓰기).
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes);
+
+  /// [noteDate] 날짜의 노트 파일이 위치하는 스토리지-상대 디렉토리 경로.
+  /// 노트 본문의 상대 src('assets/…')를 스토리지 경로로 해석할 때 쓴다.
+  String noteDirPath(DateTime noteDate);
 }

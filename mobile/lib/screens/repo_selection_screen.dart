@@ -228,7 +228,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius:
-                BorderRadius.circular(AppDimensions.borderRadiusLg),
+                BorderRadius.circular(AppDimensions.radiusComfortable),
             border: Border.all(color: c.border),
             boxShadow: AppShadows.card,
           ),
@@ -312,7 +312,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
           onTap: _isLoading ? null : () => _handleSelectCached(entry),
           child: Container(
             padding: const EdgeInsets.symmetric(
@@ -320,7 +320,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               vertical: AppDimensions.spacingSm,
             ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
               border: Border.all(color: c.borderSubtle),
             ),
             child: Row(
@@ -368,7 +368,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       padding: const EdgeInsets.all(AppDimensions.spacingMd),
       decoration: BoxDecoration(
         color: c.surfaceLight,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: c.border),
       ),
       child: Row(
@@ -433,7 +433,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
       duration: AppDimensions.animFast,
       decoration: BoxDecoration(
         color: isExpanded ? c.surfaceLight : Colors.transparent,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
         border: Border.all(color: isExpanded ? c.border : c.borderSubtle),
       ),
       child: Column(
@@ -442,7 +442,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
           Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
               onTap: _isLoading ? null : onToggle,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -505,17 +505,17 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
             ),
             border: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.borderSubtle),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.borderSubtle),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.accent),
             ),
           ),
@@ -532,7 +532,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(AppDimensions.borderRadiusSm),
+                    BorderRadius.circular(AppDimensions.radiusMicro),
               ),
               textStyle: AppTextStyles.captionSemibold,
             ),
@@ -569,17 +569,17 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
             ),
             border: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.borderSubtle),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.borderSubtle),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadiusSm),
+                  BorderRadius.circular(AppDimensions.radiusMicro),
               borderSide: BorderSide(color: c.accent),
             ),
           ),
@@ -596,7 +596,7 @@ class _RepoSelectionScreenState extends State<RepoSelectionScreen>
               padding: const EdgeInsets.symmetric(vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(AppDimensions.borderRadiusSm),
+                    BorderRadius.circular(AppDimensions.radiusMicro),
               ),
               textStyle: AppTextStyles.captionSemibold,
             ),

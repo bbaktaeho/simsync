@@ -13,7 +13,9 @@ enum ShortcutAction {
   formatInlineCode('인라인 코드'),
   formatLink('링크'),
   formatCheckbox('체크박스'),
-  formatHighlight('하이라이트');
+  formatHighlight('하이라이트'),
+  toggleSidebar('좌측 패널 토글'),
+  toggleDirectoryPanel('월별 목록 토글');
 
   const ShortcutAction(this.label);
   final String label;
@@ -176,5 +178,19 @@ const List<ShortcutBinding> defaultShortcutBindings = [
     key: LogicalKeyboardKey.keyH,
     meta: true,
     shift: true,
+  ),
+  // Panel toggles are listed AFTER the formatting bindings on purpose:
+  // cmd+B matches both formatBold and toggleSidebar, and the key handler
+  // only reaches this binding when the editor did not consume the event
+  // (no editor focus), so bold-in-editor keeps working.
+  ShortcutBinding(
+    action: ShortcutAction.toggleSidebar,
+    key: LogicalKeyboardKey.keyB,
+    meta: true,
+  ),
+  ShortcutBinding(
+    action: ShortcutAction.toggleDirectoryPanel,
+    key: LogicalKeyboardKey.keyR,
+    meta: true,
   ),
 ];

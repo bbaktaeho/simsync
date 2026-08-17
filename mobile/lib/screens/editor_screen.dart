@@ -6,10 +6,15 @@ import 'package:intl/intl.dart';
 import '../theme/app_text_styles.dart';
 
 import '../models/note.dart';
+import '../services/image_asset_service.dart';
+import '../services/markdown_editing.dart';
 import '../settings/app_settings_controller.dart';
+import '../storage/github/github_note_storage.dart';
 import '../storage/note_storage.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
+import '../widgets/editor_panel.dart';
+import '../widgets/markdown_editing_controller.dart';
 import '../widgets/markdown_preview.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -35,11 +40,19 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
+  late MarkdownEditingController _contentController;
   late TextEditingController _tagsController;
+  final FocusNode _contentFocusNode = FocusNode();
+
+  /// 노트 본문의 상대 src('assets/…') 이미지를 읽는다. 원격(GitHub) 스토리지는
+  /// 디스크 캐시를 써서 앱 재시작 후에도 네트워크 재요청 없이 뜬다.
+  late final ImageAssetService _imageService = ImageAssetService(
+    storage: widget.storage,
+    useDiskCache: widget.storage is GitHubNoteStorage,
+  );
   late Note _note;
   Timer? _saveDebounce;
   bool _isSaving = false;
@@ -51,10 +64,11 @@ class _EditorScreenState extends State<EditorScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _note = widget.note;
     _tabController = TabController(length: 3, vsync: this);
     _titleController = TextEditingController(text: _note.title);
-    _contentController = TextEditingController(text: _note.content);
+    _contentController = MarkdownEditingController(text: _note.content);
     _tagsController = TextEditingController(text: _note.tags.join(', '));
     _previewScale = widget.settingsController.value.contentScale;
     widget.refreshSignal?.addListener(_handleRefreshSignal);
@@ -69,8 +83,35 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  /// 앱이 백그라운드로 갈 때 디바운스 대기 중인 편집을 즉시 저장한다.
+  ///
+  /// 안드로이드는 백그라운드 프로세스를 예고 없이 회수한다. 그러면 dispose가
+  /// 돌지 않아 1초 디바운스 안에 있던 편집이 사라진다.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _flushPendingSave();
+    }
+  }
+
+  void _flushPendingSave() {
+    if (!_isDirty) return;
+    _saveDebounce?.cancel();
+    final noteToSave = _note;
+    final storage = widget.storage;
+    final notify = widget.onNoteChanged;
+    _isDirty = false;
+    storage.saveNote(noteToSave).then((_) => notify(noteToSave)).catchError((_) {
+      // 저장 실패는 조용히 넘긴다 — 다음 편집/복귀 때 다시 저장된다.
+      _isDirty = true;
+    });
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.refreshSignal?.removeListener(_handleRefreshSignal);
     _saveDebounce?.cancel();
     // Save pending changes on exit. Must be dispose-safe: no setState calls
@@ -90,6 +131,7 @@ class _EditorScreenState extends State<EditorScreen>
       });
     }
     _tabController.dispose();
+    _contentFocusNode.dispose();
     _titleController.dispose();
     _contentController.dispose();
     _tagsController.dispose();
@@ -173,7 +215,7 @@ class _EditorScreenState extends State<EditorScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           side: BorderSide(color: c.border),
         ),
         title: Text(
@@ -217,41 +259,63 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   // ── Markdown toolbar actions ──
+  //
+  // 모바일은 타이핑이 비싸다. 자주 쓰는 문법은 전부 버튼으로 만들고, 데스크탑의
+  // Tab 들여쓰기도 버튼으로 대신한다. 편집 연산은 데스크탑과 같은 서비스 함수를
+  // 쓰므로 두 플랫폼의 동작이 어긋나지 않는다.
 
-  void _insertMarkdown(String before, [String after = '']) {
-    final text = _contentController.text;
-    final selection = _contentController.selection;
-    final start = selection.baseOffset.clamp(0, text.length);
-    final end = selection.extentOffset.clamp(0, text.length);
-    final selectedText = text.substring(start, end);
-
-    final newText = text.replaceRange(start, end, '$before$selectedText$after');
-    _contentController.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(
-        offset: start + before.length + selectedText.length,
-      ),
-    );
-    _onContentChanged(newText);
+  void _apply(TextEditingValue updated) {
+    if (updated == _contentController.value) return;
+    _contentController.value = updated;
+    _onContentChanged(_contentController.text);
   }
 
-  void _insertAtLineStart(String prefix) {
+  /// 줄 머리 블록 프리픽스 토글 (같은 것 다시 누르면 해제, 다른 종류면 교체).
+  void _toggleLinePrefix(String prefix) =>
+      _apply(toggleLinePrefix(_contentController.value, prefix));
+
+  /// 선택을 인라인 마커로 감싸거나 벗긴다.
+  void _wrapSelection(String marker) =>
+      _apply(wrapSelection(_contentController.value, marker));
+
+  /// 리스트 들여쓰기/내어쓰기 — 데스크탑 Tab / Shift+Tab의 모바일 대체.
+  void _indent({required bool outdent}) {
+    final updated =
+        indentListSelection(_contentController.value, outdent: outdent);
+    if (updated == null) return; // 리스트 줄이 아니면 무시
+    _apply(updated);
+  }
+
+  /// 앞뒤 문자열이 다른 삽입 (링크처럼). 선택이 있으면 그것을 감싼다.
+  void _wrapSelection2(String before, String after) {
     final text = _contentController.text;
-    final cursorPos = _contentController.selection.baseOffset.clamp(
-      0,
-      text.length,
-    );
-    // Find the start of the current line.
-    var lineStart = cursorPos;
-    while (lineStart > 0 && text[lineStart - 1] != '\n') {
-      lineStart--;
-    }
-    final newText = text.replaceRange(lineStart, lineStart, prefix);
-    _contentController.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: cursorPos + prefix.length),
-    );
-    _onContentChanged(newText);
+    final selection = _contentController.selection;
+    if (!selection.isValid) return;
+    final start = selection.start.clamp(0, text.length);
+    final end = selection.end.clamp(start, text.length);
+    final selected = text.substring(start, end);
+    _apply(TextEditingValue(
+      text: text.replaceRange(start, end, '$before$selected$after'),
+      selection: TextSelection.collapsed(
+        offset: selected.isEmpty
+            ? start + before.length
+            : start + before.length + selected.length + after.length,
+      ),
+    ));
+  }
+
+  /// 캐럿이 있는 줄 뒤에 블록을 통째로 삽입한다 (표, 구분선, 코드 펜스).
+  void _insertBlock(String block) {
+    final text = _contentController.text;
+    final selection = _contentController.selection;
+    final caret =
+        (selection.isValid ? selection.baseOffset : text.length).clamp(0, text.length);
+    final needsLeadingNewline = caret > 0 && text[caret - 1] != '\n';
+    final insertion = '${needsLeadingNewline ? '\n' : ''}$block\n';
+    _apply(TextEditingValue(
+      text: text.replaceRange(caret, caret, insertion),
+      selection: TextSelection.collapsed(offset: caret + insertion.length),
+    ));
   }
 
   @override
@@ -322,7 +386,7 @@ class _EditorScreenState extends State<EditorScreen>
                       Text(
                         '저장 중...',
                         style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                          color: c.textMuted,
+                          color: c.textSecondary,
                         ),
                       ),
                     ],
@@ -340,7 +404,7 @@ class _EditorScreenState extends State<EditorScreen>
           icon: Icon(Icons.more_vert_rounded, color: c.textSecondary),
           color: c.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             side: BorderSide(color: c.border),
           ),
           onSelected: (value) {
@@ -393,55 +457,54 @@ class _EditorScreenState extends State<EditorScreen>
   Widget _buildEditorTab(AppColorsExtension c) {
     return Column(
       children: [
+        // 제목은 고정 헤더 (데스크탑과 같은 배치). 본문만 스크롤한다.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppDimensions.spacingLg,
+            AppDimensions.spacingLg,
+            AppDimensions.spacingLg,
+            AppDimensions.spacingSm,
+          ),
+          child: TextField(
+            controller: _titleController,
+            onChanged: _onTitleChanged,
+            style: Theme.of(context).textTheme.titleLarge!.copyWith(
+              fontWeight: FontWeight.w700,
+              color: c.textPrimary,
+            ),
+            decoration: InputDecoration(
+              hintText: '제목',
+              hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
+                fontWeight: FontWeight.w700,
+                color: c.textMuted,
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              filled: false,
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+          ),
+        ),
+        Divider(height: 1, color: c.borderSubtle),
         Expanded(
-          child: SingleChildScrollView(
+          child: Padding(
             padding: const EdgeInsets.all(AppDimensions.spacingLg),
-            child: Column(
-              children: [
-                // Title field
-                TextField(
-                  controller: _titleController,
-                  onChanged: _onTitleChanged,
-                  style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: c.textPrimary,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: '제목',
-                    hintStyle: Theme.of(context).textTheme.titleLarge!.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: c.textMuted,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding: EdgeInsets.zero,
-                  ),
+            // 설정의 콘텐츠 배율을 즉시 반영한다 (구독하지 않으면 다른 이유로
+            // 리빌드될 때까지 옛 배율로 남는다).
+            child: ListenableBuilder(
+              listenable: widget.settingsController,
+              builder: (context, _) => EditorPanel(
+                controller: _contentController,
+                focusNode: _contentFocusNode,
+                contentScale: widget.settingsController.value.contentScale,
+                onChanged: () => _onContentChanged(_contentController.text),
+                onLoadImage: (src) => _imageService.loadImage(
+                  noteDate: _note.noteDate,
+                  src: src,
                 ),
-                const SizedBox(height: AppDimensions.spacingSm),
-                Divider(height: 1, color: c.borderSubtle),
-                const SizedBox(height: AppDimensions.spacingSm),
-                // Content field
-                TextField(
-                  controller: _contentController,
-                  onChanged: _onContentChanged,
-                  maxLines: null,
-                  keyboardType: TextInputType.multiline,
-                  style: AppTextStyles.codeMono(size: 14, height: 1.6).copyWith(color: c.textPrimary),
-                  decoration: InputDecoration(
-                    hintText: '마크다운으로 작성하세요...',
-                    hintStyle: Theme.of(context).textTheme.bodySmall!.copyWith(
-                      color: c.textMuted,
-                    ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    filled: false,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -451,6 +514,8 @@ class _EditorScreenState extends State<EditorScreen>
     );
   }
 
+  /// 하단 마크다운 툴바. 자주 쓰는 순서로 배치하고 가로 스크롤한다.
+  /// (모바일에는 Tab이 없으므로 들여쓰기/내어쓰기도 여기 둔다.)
   Widget _buildMarkdownToolbar(AppColorsExtension c) {
     return Container(
       height: AppDimensions.toolbarHeight,
@@ -458,69 +523,144 @@ class _EditorScreenState extends State<EditorScreen>
         color: c.surface,
         border: Border(top: BorderSide(color: c.border)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppDimensions.spacingSm,
-        ),
-        child: Row(
-          children: [
-            _ToolbarButton(
-              label: 'H1',
-              onTap: () => _insertAtLineStart('# '),
-              colors: c,
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppDimensions.spacingSm,
+              ),
+              child: Row(
+                children: [
+                  // 가장 자주 쓰는 것부터: 할 일 → 불릿 → 번호
+                  _ToolbarButton(
+                    icon: Icons.check_box_outlined,
+                    tooltip: '할 일',
+                    onTap: () => _toggleLinePrefix('- [ ] '),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.format_list_bulleted_rounded,
+                    tooltip: '목록',
+                    onTap: () => _toggleLinePrefix('- '),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.format_list_numbered_rounded,
+                    tooltip: '번호 목록',
+                    onTap: () => _toggleLinePrefix('1. '),
+                    colors: c,
+                  ),
+                  _ToolbarDivider(colors: c),
+                  // Tab 대체
+                  _ToolbarButton(
+                    icon: Icons.format_indent_decrease_rounded,
+                    tooltip: '내어쓰기',
+                    onTap: () => _indent(outdent: true),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.format_indent_increase_rounded,
+                    tooltip: '들여쓰기',
+                    onTap: () => _indent(outdent: false),
+                    colors: c,
+                  ),
+                  _ToolbarDivider(colors: c),
+                  _ToolbarButton(
+                    label: 'H1',
+                    onTap: () => _toggleLinePrefix('# '),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    label: 'H2',
+                    onTap: () => _toggleLinePrefix('## '),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    label: 'H3',
+                    onTap: () => _toggleLinePrefix('### '),
+                    colors: c,
+                  ),
+                  _ToolbarDivider(colors: c),
+                  _ToolbarButton(
+                    label: 'B',
+                    fontWeight: FontWeight.w800,
+                    onTap: () => _wrapSelection('**'),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    label: 'I',
+                    fontStyle: FontStyle.italic,
+                    onTap: () => _wrapSelection('*'),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.format_strikethrough_rounded,
+                    tooltip: '취소선',
+                    onTap: () => _wrapSelection('~~'),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.format_color_fill_rounded,
+                    tooltip: '형광펜',
+                    onTap: () => _wrapSelection('=='),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.code_rounded,
+                    tooltip: '인라인 코드',
+                    onTap: () => _wrapSelection('`'),
+                    colors: c,
+                  ),
+                  _ToolbarDivider(colors: c),
+                  // 이 앱의 인용문 문법은 `| `다 (`> `는 details 트리거).
+                  _ToolbarButton(
+                    icon: Icons.format_quote_rounded,
+                    tooltip: '인용',
+                    onTap: () => _toggleLinePrefix('| '),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.link_rounded,
+                    tooltip: '링크',
+                    onTap: () => _wrapSelection2('[', '](url)'),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.data_object_rounded,
+                    tooltip: '코드 블록',
+                    onTap: () => _insertBlock('```\n\n```'),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.table_chart_outlined,
+                    tooltip: '표',
+                    onTap: () => _insertBlock(
+                      '| 항목 | 값 |\n| --- | --- |\n|  |  |',
+                    ),
+                    colors: c,
+                  ),
+                  _ToolbarButton(
+                    icon: Icons.horizontal_rule_rounded,
+                    tooltip: '구분선',
+                    onTap: () => _insertBlock('---'),
+                    colors: c,
+                  ),
+                ],
+              ),
             ),
-            _ToolbarButton(
-              label: 'H2',
-              onTap: () => _insertAtLineStart('## '),
-              colors: c,
-            ),
-            _ToolbarButton(
-              label: 'H3',
-              onTap: () => _insertAtLineStart('### '),
-              colors: c,
-            ),
-            _ToolbarDivider(colors: c),
-            _ToolbarButton(
-              label: 'B',
-              fontWeight: FontWeight.w800,
-              onTap: () => _insertMarkdown('**', '**'),
-              colors: c,
-            ),
-            _ToolbarButton(
-              label: 'I',
-              fontStyle: FontStyle.italic,
-              onTap: () => _insertMarkdown('*', '*'),
-              colors: c,
-            ),
-            _ToolbarButton(
-              icon: Icons.code_rounded,
-              onTap: () => _insertMarkdown('`', '`'),
-              colors: c,
-            ),
-            _ToolbarDivider(colors: c),
-            _ToolbarButton(
-              icon: Icons.format_list_bulleted_rounded,
-              onTap: () => _insertAtLineStart('- '),
-              colors: c,
-            ),
-            _ToolbarButton(
-              icon: Icons.check_box_outlined,
-              onTap: () => _insertAtLineStart('- [ ] '),
-              colors: c,
-            ),
-            _ToolbarButton(
-              icon: Icons.format_quote_rounded,
-              onTap: () => _insertAtLineStart('> '),
-              colors: c,
-            ),
-            _ToolbarButton(
-              icon: Icons.link_rounded,
-              onTap: () => _insertMarkdown('[', '](url)'),
-              colors: c,
-            ),
-          ],
-        ),
+          ),
+          // 스크롤에 딸려가지 않게 오른쪽에 고정 — 자주 누른다.
+          _ToolbarDivider(colors: c),
+          _ToolbarButton(
+            icon: Icons.keyboard_hide_rounded,
+            tooltip: '키보드 닫기',
+            onTap: () => _contentFocusNode.unfocus(),
+            colors: c,
+          ),
+          const SizedBox(width: AppDimensions.spacingSm),
+        ],
       ),
     );
   }
@@ -592,7 +732,7 @@ class _EditorScreenState extends State<EditorScreen>
                   decoration: BoxDecoration(
                     color: c.accentSubtle,
                     borderRadius: BorderRadius.circular(
-                      AppDimensions.borderRadius,
+                      AppDimensions.radiusStandard,
                     ),
                     border: Border.all(color: c.accent.withValues(alpha: 0.3)),
                   ),
@@ -621,6 +761,9 @@ class _ToolbarButton extends StatelessWidget {
   final FontWeight? fontWeight;
   final FontStyle? fontStyle;
 
+  /// 길게 눌렀을 때 뜨는 설명. 아이콘만으로는 뜻이 안 보이는 버튼에 붙인다.
+  final String? tooltip;
+
   const _ToolbarButton({
     this.label,
     this.icon,
@@ -628,19 +771,21 @@ class _ToolbarButton extends StatelessWidget {
     required this.colors,
     this.fontWeight,
     this.fontStyle,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final button = GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40,
-        height: 36,
+        // 손가락 타깃. 툴바 높이(48) 안에서 최대한 키운다.
+        height: 44,
         alignment: Alignment.center,
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
         ),
         child: icon != null
             ? Icon(icon, size: 18, color: colors.textSecondary)
@@ -654,6 +799,8 @@ class _ToolbarButton extends StatelessWidget {
               ),
       ),
     );
+    if (tooltip == null) return button;
+    return Tooltip(message: tooltip!, child: button);
   }
 }
 

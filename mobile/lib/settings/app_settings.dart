@@ -1,3 +1,6 @@
+/// 데스크탑과 같은 3단 테마 모드.
+enum AppThemeMode { system, light, dark }
+
 class AppSettings {
   static const double minContentScale = 0.8;
   static const double maxContentScale = 2.0;
@@ -12,6 +15,7 @@ class AppSettings {
   final int syncIntervalSeconds;
   final bool syncEnabled;
   final int searchContextLines;
+  final AppThemeMode themeMode;
 
   const AppSettings({
     required this.localNotePath,
@@ -19,6 +23,7 @@ class AppSettings {
     required this.syncIntervalSeconds,
     required this.syncEnabled,
     this.searchContextLines = defaultSearchContextLines,
+    this.themeMode = AppThemeMode.system,
   });
 
   AppSettings copyWith({
@@ -27,6 +32,7 @@ class AppSettings {
     int? syncIntervalSeconds,
     bool? syncEnabled,
     int? searchContextLines,
+    AppThemeMode? themeMode,
   }) {
     return AppSettings(
       localNotePath: localNotePath ?? this.localNotePath,
@@ -34,6 +40,7 @@ class AppSettings {
       syncIntervalSeconds: syncIntervalSeconds ?? this.syncIntervalSeconds,
       syncEnabled: syncEnabled ?? this.syncEnabled,
       searchContextLines: searchContextLines ?? this.searchContextLines,
+      themeMode: themeMode ?? this.themeMode,
     );
   }
 
@@ -45,7 +52,8 @@ class AppSettings {
         other.contentScale == contentScale &&
         other.syncIntervalSeconds == syncIntervalSeconds &&
         other.syncEnabled == syncEnabled &&
-        other.searchContextLines == searchContextLines;
+        other.searchContextLines == searchContextLines &&
+        other.themeMode == themeMode;
   }
 
   @override
@@ -55,5 +63,6 @@ class AppSettings {
     syncIntervalSeconds,
     syncEnabled,
     searchContextLines,
+    themeMode,
   );
 }

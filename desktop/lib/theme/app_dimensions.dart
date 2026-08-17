@@ -12,6 +12,7 @@ abstract final class AppDimensions {
 
   // ── Layout ──
   static const double sidebarDefaultWidth = 300.0;
+  static const double directoryPanelWidth = 260.0;
   static const double sidebarMinWidth = 200.0;
   static const double sidebarCollapseThreshold = 150.0;
   static const double sidebarMaxRatio = 0.4; // 화면의 40%까지

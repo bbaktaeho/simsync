@@ -105,6 +105,8 @@ class _MenuBarPanelState extends State<MenuBarPanel> {
           case ShortcutAction.openSettings:
           case ShortcutAction.search:
           case ShortcutAction.closeTab:
+          case ShortcutAction.toggleSidebar:
+          case ShortcutAction.toggleDirectoryPanel:
             // 팝오버에는 해당 화면이 없다 — 소비하지 않는다.
             return false;
         }

@@ -81,6 +81,15 @@ class SettingsScreen extends StatelessWidget {
               _buildSection(
                 context,
                 c,
+                title: 'Appearance',
+                children: [
+                  _buildThemeTile(context, c, settings),
+                ],
+              ),
+              const SizedBox(height: AppDimensions.spacingLg),
+              _buildSection(
+                context,
+                c,
                 title: 'Editor & Preview',
                 children: [
                   _buildStepperTile(
@@ -236,7 +245,7 @@ class SettingsScreen extends StatelessWidget {
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius:
-                BorderRadius.circular(AppDimensions.cardBorderRadius),
+                BorderRadius.circular(AppDimensions.radiusComfortable),
             border: Border.all(color: c.borderSubtle),
           ),
           child: Column(children: children),
@@ -327,7 +336,7 @@ class SettingsScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: c.surfaceLight,
               borderRadius:
-                  BorderRadius.circular(AppDimensions.borderRadius),
+                  BorderRadius.circular(AppDimensions.radiusStandard),
               border: Border.all(color: c.border),
             ),
             child: Row(
@@ -355,6 +364,54 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 테마 모드 선택. 데스크탑과 같은 3단(시스템/라이트/다크).
+  Widget _buildThemeTile(
+    BuildContext context,
+    AppColorsExtension c,
+    AppSettings settings,
+  ) {
+    const labels = {
+      AppThemeMode.system: '시스템',
+      AppThemeMode.light: '라이트',
+      AppThemeMode.dark: '다크',
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppDimensions.spacingLg,
+        vertical: AppDimensions.spacingMd,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.brightness_6_outlined, size: 20, color: c.textSecondary),
+          const SizedBox(width: AppDimensions.spacingMd),
+          Expanded(
+            child: Text(
+              '테마',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium!
+                  .copyWith(color: c.textPrimary),
+            ),
+          ),
+          SegmentedButton<AppThemeMode>(
+            segments: [
+              for (final entry in labels.entries)
+                ButtonSegment(value: entry.key, label: Text(entry.value)),
+            ],
+            selected: {settings.themeMode},
+            showSelectedIcon: false,
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStatePropertyAll(AppTextStyles.micro),
+            ),
+            onSelectionChanged: (v) =>
+                settingsController.setThemeMode(v.first),
           ),
         ],
       ),

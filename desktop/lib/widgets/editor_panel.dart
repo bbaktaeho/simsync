@@ -303,6 +303,8 @@ class EditorPanelState extends State<EditorPanel> {
       case ShortcutAction.zoomOut:
       case ShortcutAction.search:
       case ShortcutAction.closeTab:
+      case ShortcutAction.toggleSidebar:
+      case ShortcutAction.toggleDirectoryPanel:
         break;
     }
   }
@@ -1392,107 +1394,20 @@ class EditorPanelState extends State<EditorPanel> {
     _onContentChanged();
   }
 
-  static final RegExp _leadingIndent = RegExp(r'^[ \t]*');
-  static final List<RegExp> _blockPrefixes = [
-    RegExp(r'^#{1,6} '), // heading
-    RegExp(r'^[-*+] \[[ xX]\] '), // checkbox (before bullet)
-    RegExp(r'^[-*+] '), // bullet
-    RegExp(r'^\d+[.)] '), // ordered
-    RegExp(r'^\| '), // quote (new)
-    RegExp(r'^> '), // quote (legacy, 교체 인식용)
-  ];
-
-  /// Length of any recognized block prefix at the start of [body] (no indent),
-  /// or 0 when the line has no block marker.
-  int _blockPrefixLength(String body) {
-    for (final pattern in _blockPrefixes) {
-      final match = pattern.firstMatch(body);
-      if (match != null) return match.end;
-    }
-    return 0;
-  }
-
-  /// Toggles inline [marker] (e.g. `**` for bold) on the selection. An empty
-  /// selection inserts the markers with the cursor between them; a selection
-  /// already wrapped in [marker] is un-wrapped.
+  /// 선택을 [marker]로 감싼다/벗긴다 (구현은 서비스).
   void _wrapSelection(String marker) {
     if (widget.isReadOnly) return;
-    final value = _contentController.value;
-    final text = value.text;
-    final selection = value.selection;
-    if (!selection.isValid) return;
-    final start = selection.start.clamp(0, text.length);
-    final end = selection.end.clamp(0, text.length);
-    final selected = text.substring(start, end);
-
-    // Un-wrap if the selection is already exactly wrapped.
-    if (selected.length >= marker.length * 2 &&
-        selected.startsWith(marker) &&
-        selected.endsWith(marker)) {
-      final inner =
-          selected.substring(marker.length, selected.length - marker.length);
-      _contentController.value = TextEditingValue(
-        text: text.replaceRange(start, end, inner),
-        selection:
-            TextSelection(baseOffset: start, extentOffset: start + inner.length),
-      );
-      _onContentChanged();
-      return;
-    }
-
-    _contentController.value = TextEditingValue(
-      text: text.replaceRange(start, end, '$marker$selected$marker'),
-      selection: selected.isEmpty
-          ? TextSelection.collapsed(offset: start + marker.length)
-          : TextSelection(
-              baseOffset: start + marker.length,
-              extentOffset: end + marker.length,
-            ),
-    );
+    final updated = wrapSelection(_contentController.value, marker);
+    if (updated == _contentController.value) return;
+    _contentController.value = updated;
     _onContentChanged();
   }
 
-  /// Toggles a line-level [prefix] (`# `, `- `, `- [ ] `) on the caret's line.
-  /// Setting a new block type replaces any existing one (Notion/Obsidian style)
-  /// rather than stacking; pressing the same type again clears it. Leading
-  /// indentation is preserved.
+  /// 캐럿 줄의 블록 프리픽스를 토글한다 (구현은 서비스).
   void _toggleLinePrefix(String prefix) {
     if (widget.isReadOnly) return;
-    final value = _contentController.value;
-    final text = value.text;
-    final selection = value.selection;
-    final caret =
-        (selection.isValid ? selection.baseOffset : text.length).clamp(0, text.length);
-    final lineStart = caret == 0 ? 0 : text.lastIndexOf('\n', caret - 1) + 1;
-    var lineEnd = text.indexOf('\n', caret);
-    if (lineEnd == -1) lineEnd = text.length;
-    final line = text.substring(lineStart, lineEnd);
-
-    final indent = _leadingIndent.firstMatch(line)!.group(0)!;
-    final body = line.substring(indent.length);
-    final existingLen = _blockPrefixLength(body);
-    final content = body.substring(existingLen);
-    // Toggle off only when the existing block prefix is exactly this one;
-    // otherwise replace it (e.g. checkbox -> bullet, not strip to plain).
-    final toggleOff = body.substring(0, existingLen) == prefix;
-    final newPrefixLen = toggleOff ? 0 : prefix.length;
-    final newBody = toggleOff ? content : '$prefix$content';
-    final newLine = '$indent$newBody';
-
-    final caretInLine = caret - lineStart;
-    final contentStart = indent.length + existingLen;
-    final newContentStart = indent.length + newPrefixLen;
-    final newCaretInLine = caretInLine <= contentStart
-        ? newContentStart
-        : caretInLine - contentStart + newContentStart;
-
-    final newText = text.replaceRange(lineStart, lineEnd, newLine);
-    final newCaret =
-        (lineStart + newCaretInLine).clamp(lineStart, lineStart + newLine.length);
-    _contentController.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: newCaret),
-    );
+    _contentController.value =
+        toggleLinePrefix(_contentController.value, prefix);
     _onContentChanged();
   }
 

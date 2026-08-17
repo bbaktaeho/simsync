@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/note.dart';
+import '../services/note_conversion.dart';
 import '../services/note_service.dart';
 import '../settings/app_settings_controller.dart';
 import '../storage/github/repo_cache.dart';
@@ -219,7 +220,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       backgroundColor: c.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppDimensions.borderRadiusLg),
+          top: Radius.circular(AppDimensions.radiusComfortable),
         ),
       ),
       builder: (ctx) => SafeArea(
@@ -244,10 +245,73 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 _setMemoFlag(note, toMemo);
               },
             ),
+            // 로컬 ↔ 동기화 전환 (데스크탑과 같은 동작). 로컬 스토리지가
+            // 설정돼 있을 때만 뜬다.
+            if (widget.localStorage != null)
+              ListTile(
+                leading: Icon(
+                  note.storageType == StorageType.local
+                      ? Icons.cloud_upload_outlined
+                      : Icons.folder_outlined,
+                  color: c.textSecondary,
+                ),
+                title: Text(
+                  note.storageType == StorageType.local
+                      ? '동기화 노트로 전환'
+                      : '로컬 노트로 전환',
+                  style: Theme.of(
+                    ctx,
+                  ).textTheme.titleSmall?.copyWith(color: c.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _convertNoteStorage(note);
+                },
+              ),
           ],
         ),
       ),
     );
+  }
+
+  /// 노트를 반대편 스토리지로 옮긴다. 이미지 자산도 함께 복사하고, 옮기지 못한
+  /// 자산이 있으면 알려준다 (노트 자체는 전환된다).
+  Future<void> _convertNoteStorage(Note note) async {
+    final local = widget.localStorage;
+    if (local == null) return;
+    final toSynced = note.storageType == StorageType.local;
+    final label = toSynced ? '동기화' : '로컬';
+    try {
+      final result = toSynced
+          ? await convertLocalNoteToSynced(
+              note: note,
+              local: local,
+              synced: widget.storage,
+            )
+          : await convertSyncedNoteToLocal(
+              note: note,
+              synced: widget.storage,
+              local: local,
+            );
+      if (!mounted) return;
+      await _loadNotes();
+      if (!mounted) return;
+      final failed = result.failedAssets.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? '$label 노트로 전환했습니다.'
+                : '$label 노트로 전환했습니다. 이미지 $failed개는 옮기지 못했습니다.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('전환 실패: $e')));
+    }
   }
 
   Future<void> _createNote() async {
@@ -309,7 +373,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: c.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLg),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
           side: BorderSide(color: c.border),
         ),
         title: Text(
@@ -536,7 +600,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(
-                  AppDimensions.borderRadiusSm,
+                  AppDimensions.radiusMicro,
                 ),
                 border: Border.all(color: c.border),
               ),
@@ -625,18 +689,22 @@ class _CalendarScreenState extends State<CalendarScreen> {
         children: [
           // Weekday headers
           Row(
-            children: _weekdayHeaders.map((day) {
-              return Expanded(
-                child: Center(
-                  child: Text(
-                    day,
-                    style: AppTextStyles.microSemibold.copyWith(
-                      color: c.textMuted,
+            children: [
+              for (var i = 0; i < _weekdayHeaders.length; i++)
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      _weekdayHeaders[i],
+                      style: AppTextStyles.microSemibold.copyWith(
+                        // 0=일, 6=토
+                        color: i == 0 || i == 6
+                            ? c.calendarWeekend
+                            : c.textMuted,
+                      ),
                     ),
                   ),
                 ),
-              );
-            }).toList(),
+            ],
           ),
           const SizedBox(height: AppDimensions.spacingSm),
           // Calendar cells
@@ -691,7 +759,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 decoration: BoxDecoration(
                   color: isSelected ? c.calendarSelected : Colors.transparent,
                   borderRadius: BorderRadius.circular(
-                    AppDimensions.borderRadiusSm,
+                    AppDimensions.radiusMicro,
                   ),
                 ),
                 child: Column(
@@ -705,7 +773,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       decoration: BoxDecoration(
                         color: isToday ? c.accentSubtle : Colors.transparent,
                         borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadius,
+                          AppDimensions.radiusStandard,
                         ),
                         border: isToday
                             ? Border.all(
@@ -724,6 +792,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                               ? c.calendarToday
                               : isSelected
                               ? c.accent
+                              : (date.weekday == DateTime.saturday ||
+                                      date.weekday == DateTime.sunday)
+                              ? c.calendarWeekend
                               : c.textPrimary,
                         ),
                       ),
@@ -773,7 +844,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
             decoration: BoxDecoration(
               color: c.calendarSelected,
-              borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+              borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -797,7 +868,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     ),
                     Text(
                       '$noteCount개 노트',
-                      style: AppTextStyles.micro.copyWith(color: c.textMuted),
+                      style: AppTextStyles.micro.copyWith(color: c.textSecondary),
                     ),
                   ],
                 ),
@@ -823,7 +894,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               _calendarExpanded ? '접기' : '펼치기',
               style: Theme.of(context).textTheme.labelMedium!.copyWith(
                 fontWeight: FontWeight.w500,
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
             const SizedBox(width: 2),
@@ -872,7 +943,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 vertical: AppDimensions.spacingSm,
               ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.borderRadius),
+                borderRadius: BorderRadius.circular(AppDimensions.radiusStandard),
                 side: BorderSide(color: c.accent.withValues(alpha: 0.3)),
               ),
             ),
@@ -907,13 +978,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Text(
               '메모가 없습니다',
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
             const SizedBox(height: AppDimensions.spacingXs),
             Text(
               '노트를 길게 눌러 메모로 옮기세요',
-              style: AppTextStyles.micro.copyWith(color: c.textMuted),
+              style: AppTextStyles.micro.copyWith(color: c.textSecondary),
             ),
           ],
         ),
@@ -941,7 +1012,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Text(
               '이 날짜에 노트가 없습니다',
               style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                color: c.textMuted,
+                color: c.textSecondary,
               ),
             ),
           ],
@@ -978,7 +1049,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         padding: const EdgeInsets.only(right: AppDimensions.spacingLg),
         decoration: BoxDecoration(
           color: c.error.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+          borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
         ),
         child: Icon(Icons.delete_outline_rounded, color: c.error),
       ),
@@ -990,7 +1061,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           padding: const EdgeInsets.all(AppDimensions.spacingMd),
           decoration: BoxDecoration(
             color: c.surface,
-            borderRadius: BorderRadius.circular(AppDimensions.cardBorderRadius),
+            borderRadius: BorderRadius.circular(AppDimensions.radiusComfortable),
             border: Border.all(color: c.borderSubtle),
           ),
           child: Column(
@@ -1019,7 +1090,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                           ? c.localAccent.withValues(alpha: 0.15)
                           : c.accentSubtle,
                       borderRadius: BorderRadius.circular(
-                        AppDimensions.borderRadiusSm,
+                        AppDimensions.radiusMicro,
                       ),
                     ),
                     child: Text(
@@ -1066,7 +1137,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: c.accentSubtle,
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSm),
+        borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
       ),
       child: Text(
         '#$tag',

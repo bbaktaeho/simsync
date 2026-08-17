@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -244,4 +245,23 @@ class _FakeStorage implements NoteStorage {
   Future<void> saveNote(Note note) async {
     _upsert(note);
   }
+
+  // 파일 입출력은 이 테스트 페이크의 관심사가 아니다 (노트 CRUD만 검증한다).
+  @override
+  Future<String?> readTextFile(String relativePath) async => null;
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {}
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async => null;
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {}
+
+  @override
+  String noteDirPath(DateTime noteDate) =>
+      'notes/${noteDate.year}-${noteDate.month.toString().padLeft(2, '0')}/'
+      '${noteDate.day.toString().padLeft(2, '0')}';
+
 }

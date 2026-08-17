@@ -8,7 +8,7 @@ import 'package:http/http.dart' as http;
 /// 업데이트 감지가 이 값과 최신 태그를 비교하기 때문이다.
 /// `pubspec.yaml`의 version과 일치해야 하며, 어긋나면
 /// `test/services/update_checker_test.dart`가 실패한다.
-const String appVersion = '0.4.0';
+const String appVersion = '0.4.1';
 
 /// 릴리즈 목록 조회 URL. 모든 릴리즈가 prerelease라 `/releases/latest`는 404를
 /// 낸다 — 목록에서 최신(생성 역순 첫 항목)을 직접 고른다.

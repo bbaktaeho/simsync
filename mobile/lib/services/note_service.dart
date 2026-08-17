@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -241,4 +242,36 @@ ${note.content}''';
   String _escapeYaml(String value) {
     return value.replaceAll('"', '\\"');
   }
+
+  @override
+  Future<String?> readTextFile(String relativePath) async {
+    final file = File('$_basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsString();
+  }
+
+  @override
+  Future<void> writeTextFile(String relativePath, String content) async {
+    final file = File('$_basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(content);
+  }
+
+  @override
+  String noteDirPath(DateTime noteDate) => _dirDateFmt.format(noteDate);
+
+  @override
+  Future<Uint8List?> readBinaryFile(String relativePath) async {
+    final file = File('$_basePath/$relativePath');
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
+  }
+
+  @override
+  Future<void> writeBinaryFile(String relativePath, Uint8List bytes) async {
+    final file = File('$_basePath/$relativePath');
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes);
+  }
+
 }
