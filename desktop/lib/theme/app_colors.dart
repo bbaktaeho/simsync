@@ -27,6 +27,9 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
   /// 토/일 날짜 글자색. 평일과 구분되는 단일 주말 색.
   final Color calendarWeekend;
   final Color localAccent;
+
+  /// 메모(날짜 무관 퀵노트) 강조색 — DESIGN.md Teal.
+  final Color memoAccent;
   // ── DESIGN.md additions ──
   final Color focus;
   final Color badgeText;
@@ -55,6 +58,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     required this.calendarSelected,
     required this.calendarWeekend,
     required this.localAccent,
+    required this.memoAccent,
     required this.focus,
     required this.badgeText,
     required this.linkLight,
@@ -84,6 +88,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarSelected: Color(0xFFF2F9FF), // Badge Blue Bg (subtle)
     calendarWeekend: Color(0xFFDD5B00), // Orange (DESIGN.md semantic accent)
     localAccent: Color(0xFFDD5B00), // Orange (local note emphasis)
+    memoAccent: Color(0xFF2A9D99), // Teal (DESIGN.md semantic accent)
     focus: Color(0xFF097FE8), // Focus Blue (keyboard ring)
     badgeText: Color(0xFF097FE8), // Pill badge text on accentSubtle
     linkLight: Color(0xFF62AEF0), // Link variant for dark surfaces
@@ -116,6 +121,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
     calendarSelected: Color(0xFF16304C),
     calendarWeekend: Color(0xFFFF8A3D), // Orange lightened for dark contrast
     localAccent: Color(0xFFE8703A),
+    memoAccent: Color(0xFF43B5B0), // Teal brightened for dark contrast
     focus: Color(0xFF62AEF0),
     badgeText: Color(0xFF7FC0FF),
     linkLight: Color(0xFF7FC0FF),
@@ -146,6 +152,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarSelected: calendarSelected,
       calendarWeekend: calendarWeekend,
       localAccent: localAccent ?? this.localAccent,
+      memoAccent: memoAccent,
       focus: focus,
       badgeText: badgeText,
       linkLight: linkLight,
@@ -178,6 +185,7 @@ class AppColorsExtension extends ThemeExtension<AppColorsExtension> {
       calendarSelected: Color.lerp(calendarSelected, other.calendarSelected, t)!,
       calendarWeekend: Color.lerp(calendarWeekend, other.calendarWeekend, t)!,
       localAccent: Color.lerp(localAccent, other.localAccent, t)!,
+      memoAccent: Color.lerp(memoAccent, other.memoAccent, t)!,
       focus: Color.lerp(focus, other.focus, t)!,
       badgeText: Color.lerp(badgeText, other.badgeText, t)!,
       linkLight: Color.lerp(linkLight, other.linkLight, t)!,
