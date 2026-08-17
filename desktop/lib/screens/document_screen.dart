@@ -30,6 +30,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_dimensions.dart';
 import '../theme/app_text_styles.dart';
 import '../widgets/calendar_section.dart';
+import '../widgets/directory_panel.dart';
 import '../widgets/editor_panel.dart';
 import '../widgets/hover_builder.dart';
 import '../widgets/editor_tab_bar.dart';
@@ -141,6 +142,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
   DateTime _displayedMonth = DateTime.now();
   DateTime? _selectedDate;
   bool _sidebarOpen = true;
+  bool _directoryPanelOpen = false;
   bool _calendarExpanded = true;
   bool _weeklyViewActive = false;
   bool _monthlyViewActive = false;
@@ -537,6 +539,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
         _sidebarWidth = AppDimensions.sidebarDefaultWidth;
       }
     });
+  }
+
+  void _toggleDirectoryPanel() {
+    setState(() => _directoryPanelOpen = !_directoryPanelOpen);
   }
 
   // ── Actions ──
@@ -1383,11 +1389,16 @@ class _DocumentScreenState extends State<DocumentScreen> {
           case ShortcutAction.formatLink:
           case ShortcutAction.formatCheckbox:
           case ShortcutAction.formatHighlight:
-            // 에디터 본문에 포커스가 있을 때만 소비한다. 아니면 시스템 기본
-            // 동작(예: cmd+shift+X가 다른 곳에서 갖는 의미)을 막지 않는다.
+            // 에디터 본문에 포커스가 있을 때만 소비한다. 아니면 같은 키의 뒤쪽
+            // 바인딩(cmd+B의 toggleSidebar)에 기회를 넘기고, 그마저 없으면
+            // 시스템 기본 동작을 막지 않는다.
             final editor = _editorKey.currentState;
-            if (editor == null || !editor.hasEditorFocus) return false;
+            if (editor == null || !editor.hasEditorFocus) continue;
             editor.applyFormat(binding.action);
+          case ShortcutAction.toggleSidebar:
+            _toggleSidebar();
+          case ShortcutAction.toggleDirectoryPanel:
+            _toggleDirectoryPanel();
         }
         return true;
       }
@@ -1454,6 +1465,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
                         _onResizeUpdate(details, screenWidth),
                   ),
                   Expanded(child: _buildRightPanel()),
+                  if (_directoryPanelOpen) ...[
+                    VerticalDivider(width: 1, thickness: 1, color: c.border),
+                    SizedBox(
+                      width: AppDimensions.directoryPanelWidth,
+                      child: DirectoryPanel(
+                        notes: _allNotes,
+                        selectedNoteId: _selectedNote?.id,
+                        initialMonth: _selectedDate,
+                        onNoteTap: _onNoteSelected,
+                        onClose: _toggleDirectoryPanel,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1589,21 +1613,25 @@ class _DocumentScreenState extends State<DocumentScreen> {
             'SimSync',
             style: Theme.of(context).textTheme.titleSmall!.copyWith(fontWeight: FontWeight.w700, color: c.textPrimary, letterSpacing: -0.3),
           ),
-          const Spacer(),
-          SizedBox(
-            width: 320,
-            child: NoteSearchSection(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              query: _searchQuery.text,
-              hasActiveFilters: _searchQuery.hasFilters,
-              filterLink: _filterLink,
-              onQueryChanged: _onSearchTextChanged,
-              onClear: _clearSearch,
-              onOpenFilters: _openSearchFilters,
+          // Expanded + maxWidth: 넓은 창에서는 기존처럼 320 고정 폭으로 중앙에
+          // 앉고, 좁은 창에서는 검색창이 먼저 줄어들어 타이틀바가 넘치지 않는다.
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 320),
+                child: NoteSearchSection(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  query: _searchQuery.text,
+                  hasActiveFilters: _searchQuery.hasFilters,
+                  filterLink: _filterLink,
+                  onQueryChanged: _onSearchTextChanged,
+                  onClear: _clearSearch,
+                  onOpenFilters: _openSearchFilters,
+                ),
+              ),
             ),
           ),
-          const Spacer(),
           if (_updateChecker.hasUpdate) ...[
             UpdateButton(
               version: _updateChecker.availableTag!,
@@ -1612,6 +1640,19 @@ class _DocumentScreenState extends State<DocumentScreen> {
             ),
             const SizedBox(width: AppDimensions.spacingSm),
           ],
+          IconButton(
+            icon: Icon(
+              _directoryPanelOpen
+                  ? Icons.folder_open_rounded
+                  : Icons.folder_outlined,
+              size: 18,
+              color: _directoryPanelOpen ? c.accent : c.textSecondary,
+            ),
+            onPressed: _toggleDirectoryPanel,
+            tooltip: _directoryPanelOpen ? 'Hide monthly list' : 'Show monthly list',
+            splashRadius: 16,
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
           _ThemeToggleButton(settings: widget.settingsController),
           const SizedBox(width: AppDimensions.spacingXs),
           IconButton(

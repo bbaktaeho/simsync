@@ -303,6 +303,8 @@ class EditorPanelState extends State<EditorPanel> {
       case ShortcutAction.zoomOut:
       case ShortcutAction.search:
       case ShortcutAction.closeTab:
+      case ShortcutAction.toggleSidebar:
+      case ShortcutAction.toggleDirectoryPanel:
         break;
     }
   }
