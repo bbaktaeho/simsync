@@ -1474,6 +1474,7 @@ class _DocumentScreenState extends State<DocumentScreen> {
                         selectedNoteId: _selectedNote?.id,
                         initialMonth: _selectedDate,
                         onNoteTap: _onNoteSelected,
+                        onClose: _toggleDirectoryPanel,
                       ),
                     ),
                   ],

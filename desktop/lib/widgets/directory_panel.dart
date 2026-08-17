@@ -51,7 +51,8 @@ String directoryEntryLabel(Note note) {
 }
 
 /// 우측 월별 디렉토리 패널. 저장소의 월 폴더 구조 그대로 노트(md)를 월 단위로
-/// 접고 펼치며 탐색한다. 패널 자체는 타이틀바 버튼 또는 cmd+R(기본값)로 여닫는다.
+/// 접고 펼치며 탐색한다. 패널 자체는 타이틀바 버튼, 헤더의 닫기 버튼, 또는
+/// cmd+R(기본값)로 여닫는다.
 class DirectoryPanel extends StatefulWidget {
   final List<Note> notes;
   final String? selectedNoteId;
@@ -60,12 +61,16 @@ class DirectoryPanel extends StatefulWidget {
   final DateTime? initialMonth;
   final ValueChanged<Note> onNoteTap;
 
+  /// 헤더의 닫기 버튼. null이면 버튼을 숨긴다.
+  final VoidCallback? onClose;
+
   const DirectoryPanel({
     super.key,
     required this.notes,
     required this.onNoteTap,
     this.selectedNoteId,
     this.initialMonth,
+    this.onClose,
   });
 
   @override
@@ -154,6 +159,14 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
             onTap: _collapseAll,
             tooltip: '열린 디렉토리 전체 닫기',
           ),
+          if (widget.onClose != null) ...[
+            const SizedBox(width: AppDimensions.spacingXs),
+            AppIconButton(
+              icon: Icons.close_rounded,
+              onTap: widget.onClose!,
+              tooltip: '패널 닫기',
+            ),
+          ],
         ],
       ),
     );
@@ -254,7 +267,9 @@ class _MonthHeader extends StatelessWidget {
   }
 }
 
-/// 월 디렉토리 아래의 노트 한 줄("DD: 제목"). 메모는 teal로 구분한다.
+/// 월 디렉토리 아래의 노트 한 줄("DD: 제목"). 메모는 teal 글자, 로컬 노트는
+/// 좌측 리스트와 같은 문법의 주황(localAccent) 배경 틴트로 구분한다 — 두 축이
+/// 독립이라 로컬 메모는 주황 틴트 + teal 글자로 함께 표현된다.
 class _DirectoryEntry extends StatelessWidget {
   final Note note;
   final bool isSelected;
@@ -270,58 +285,72 @@ class _DirectoryEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final isMemo = note.isMemo;
+    final isLocal = note.storageType == StorageType.local;
 
     return HoverBuilder(
       cursor: SystemMouseCursors.click,
-      builder: (context, hovered) => GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 2),
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppDimensions.spacingSm,
-            vertical: AppDimensions.spacingXs,
-          ),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? (isMemo
-                    ? c.memoAccent.withValues(alpha: 0.10)
-                    : c.accentSubtle)
-                : hovered
-                    ? c.surfaceHover
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
-          ),
-          child: Row(
-            children: [
-              // 월 헤더의 chevron+folder 아이콘 폭만큼 들여쓴다.
-              const SizedBox(width: 22),
-              Icon(
-                isMemo
-                    ? Icons.sticky_note_2_outlined
-                    : Icons.description_outlined,
-                size: 13,
-                color: isMemo ? c.memoAccent : c.textMuted,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  directoryEntryLabel(note),
-                  style: AppTextStyles.caption.copyWith(
-                    color: isMemo
-                        ? c.memoAccent
-                        : isSelected
-                            ? c.textPrimary
-                            : c.textSecondary,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+      builder: (context, hovered) {
+        final Color bgColor;
+        if (isLocal) {
+          bgColor = c.localAccent.withValues(
+              alpha: isSelected ? 0.10 : (hovered ? 0.06 : 0.03));
+        } else if (isSelected) {
+          bgColor = isMemo
+              ? c.memoAccent.withValues(alpha: 0.10)
+              : c.accentSubtle;
+        } else {
+          bgColor = hovered ? c.surfaceHover : Colors.transparent;
+        }
+        return GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppDimensions.spacingSm,
+              vertical: AppDimensions.spacingXs,
+            ),
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusMicro),
+            ),
+            child: Row(
+              children: [
+                // 월 헤더의 chevron+folder 아이콘 폭만큼 들여쓴다.
+                const SizedBox(width: 22),
+                Icon(
+                  isMemo
+                      ? Icons.sticky_note_2_outlined
+                      : Icons.description_outlined,
+                  size: 13,
+                  color: isMemo
+                      ? c.memoAccent
+                      : isLocal
+                          ? c.localAccent.withValues(alpha: 0.7)
+                          : c.textMuted,
                 ),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    directoryEntryLabel(note),
+                    style: AppTextStyles.caption.copyWith(
+                      color: isMemo
+                          ? c.memoAccent
+                          : isLocal
+                              ? c.localAccent
+                              : isSelected
+                                  ? c.textPrimary
+                                  : c.textSecondary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

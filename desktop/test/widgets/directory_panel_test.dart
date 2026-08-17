@@ -10,6 +10,7 @@ Note _note({
   required DateTime date,
   String title = 'note',
   bool isMemo = false,
+  StorageType storageType = StorageType.synced,
   DateTime? createdAt,
 }) {
   final created = createdAt ?? date;
@@ -23,6 +24,7 @@ Note _note({
     createdAt: created,
     updatedAt: created,
     isMemo: isMemo,
+    storageType: storageType,
   );
 }
 
@@ -32,6 +34,7 @@ Future<void> _pump(
   DateTime? initialMonth,
   String? selectedNoteId,
   ValueChanged<Note>? onNoteTap,
+  VoidCallback? onClose,
 }) async {
   await tester.pumpWidget(MaterialApp(
     theme: buildLightTheme(),
@@ -44,6 +47,7 @@ Future<void> _pump(
           selectedNoteId: selectedNoteId,
           initialMonth: initialMonth,
           onNoteTap: onNoteTap ?? (_) {},
+          onClose: onClose,
         ),
       ),
     ),
@@ -172,5 +176,46 @@ void main() {
     expect(memoText.style?.color, AppColorsExtension.light.memoAccent);
     expect(dailyText.style?.color, isNot(AppColorsExtension.light.memoAccent));
     expect(find.byIcon(Icons.sticky_note_2_outlined), findsOneWidget);
+  });
+
+  testWidgets('로컬 노트 항목은 localAccent 글자색으로 표시된다', (tester) async {
+    await _pump(
+      tester,
+      [
+        _note(id: 's', date: DateTime(2026, 8, 3), title: 'synced'),
+        _note(
+          id: 'l',
+          date: DateTime(2026, 8, 3),
+          title: 'local',
+          storageType: StorageType.local,
+        ),
+      ],
+      initialMonth: DateTime(2026, 8, 17),
+    );
+
+    final localText = tester.widget<Text>(find.text('03: local'));
+    final syncedText = tester.widget<Text>(find.text('03: synced'));
+    expect(localText.style?.color, AppColorsExtension.light.localAccent);
+    expect(
+        syncedText.style?.color, isNot(AppColorsExtension.light.localAccent));
+  });
+
+  testWidgets('onClose가 있으면 닫기 버튼이 보이고 콜백을 태운다', (tester) async {
+    var closed = false;
+    await _pump(
+      tester,
+      const [],
+      onClose: () => closed = true,
+    );
+
+    final closeButton = find.byIcon(Icons.close_rounded);
+    expect(closeButton, findsOneWidget);
+    await tester.tap(closeButton);
+    expect(closed, isTrue);
+  });
+
+  testWidgets('onClose가 없으면 닫기 버튼이 숨는다', (tester) async {
+    await _pump(tester, const []);
+    expect(find.byIcon(Icons.close_rounded), findsNothing);
   });
 }
