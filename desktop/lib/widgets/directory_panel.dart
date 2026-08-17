@@ -20,14 +20,16 @@ String yearMonthKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-'
     '${date.month.toString().padLeft(2, '0')}';
 
-/// 노트를 YYYY-MM 디렉토리 단위로 묶는다. 월은 최신순, 월 안의 노트는
-/// 날짜·생성순 오름차순(디렉토리 나열 순서).
-List<MonthGroup> groupNotesByMonth(List<Note> notes) {
+/// 노트를 YYYY-MM 디렉토리 단위로 묶는다. 월은 [newestFirst]에 따라
+/// 최신순/과거순, 월 안의 노트는 항상 날짜·생성순 오름차순(디렉토리 나열 순서).
+List<MonthGroup> groupNotesByMonth(List<Note> notes,
+    {bool newestFirst = true}) {
   final byMonth = <String, List<Note>>{};
   for (final note in notes) {
     byMonth.putIfAbsent(yearMonthKey(note.noteDate), () => []).add(note);
   }
-  final keys = byMonth.keys.toList()..sort((a, b) => b.compareTo(a));
+  final keys = byMonth.keys.toList()
+    ..sort((a, b) => newestFirst ? b.compareTo(a) : a.compareTo(b));
   return [
     for (final key in keys)
       MonthGroup(
@@ -79,6 +81,7 @@ class DirectoryPanel extends StatefulWidget {
 
 class _DirectoryPanelState extends State<DirectoryPanel> {
   final Set<String> _expanded = {};
+  bool _newestFirst = true;
 
   @override
   void initState() {
@@ -96,10 +99,14 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
     setState(() => _expanded.clear());
   }
 
+  void _toggleSortOrder() {
+    setState(() => _newestFirst = !_newestFirst);
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final groups = groupNotesByMonth(widget.notes);
+    final groups = groupNotesByMonth(widget.notes, newestFirst: _newestFirst);
 
     return Container(
       color: c.surface,
@@ -154,6 +161,14 @@ class _DirectoryPanelState extends State<DirectoryPanel> {
                 .copyWith(color: c.textSecondary, letterSpacing: 0.5),
           ),
           const Spacer(),
+          AppIconButton(
+            icon: _newestFirst
+                ? Icons.arrow_downward_rounded
+                : Icons.arrow_upward_rounded,
+            onTap: _toggleSortOrder,
+            tooltip: _newestFirst ? '오래된 월부터 정렬' : '최신 월부터 정렬',
+          ),
+          const SizedBox(width: AppDimensions.spacingXs),
           AppIconButton(
             icon: Icons.unfold_less_rounded,
             onTap: _collapseAll,

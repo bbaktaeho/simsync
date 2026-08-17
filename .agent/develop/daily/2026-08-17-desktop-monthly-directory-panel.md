@@ -42,6 +42,15 @@ related:
 - 헤더에 닫기(X) 버튼 추가 — 단축키 없이 패널 안에서 닫을 수 있다.
   `DirectoryPanel.onClose`가 null이면 버튼이 숨는다.
 
+## 추가 반영 (같은 날 3차, v0.4.1 재릴리즈)
+
+- 헤더에 월 정렬 토글 버튼 추가(전체 닫기 왼쪽): 최신 월 우선(기본, 아래 화살표)
+  ↔ 과거 월 우선(위 화살표). `groupNotesByMonth(newestFirst:)` 파라미터로 구현,
+  월 안의 노트 순서(날짜·생성순 오름차순)는 방향과 무관하게 유지. 정렬 상태는
+  expand 상태처럼 패널 내부 상태.
+- v0.4.1 릴리즈에 끼워넣기 위해 태그를 새 main 커밋으로 강제 이동하고 DMG 자산을
+  교체(`gh release upload --clobber`)했다. 앱 버전/빌드번호(0.4.1+13)는 그대로.
+
 ## 검증
 
 1. `flutter analyze` clean, `flutter test` 550개 전부 통과(신규 13개 포함)

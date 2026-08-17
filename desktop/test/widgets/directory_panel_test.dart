@@ -79,6 +79,20 @@ void main() {
 
       expect(groups.single.notes.map((n) => n.id), ['early', 'late']);
     });
+
+    test('newestFirst가 false면 월이 과거순이고 월 안 순서는 그대로다', () {
+      final groups = groupNotesByMonth(
+        [
+          _note(id: 'b', date: DateTime(2026, 8, 2)),
+          _note(id: 'c', date: DateTime(2026, 8, 1)),
+          _note(id: 'a', date: DateTime(2026, 7, 30)),
+        ],
+        newestFirst: false,
+      );
+
+      expect(groups.map((g) => g.yearMonth), ['2026-07', '2026-08']);
+      expect(groups[1].notes.map((n) => n.id), ['c', 'b']);
+    });
   });
 
   group('directoryEntryLabel', () {
@@ -217,5 +231,39 @@ void main() {
   testWidgets('onClose가 없으면 닫기 버튼이 숨는다', (tester) async {
     await _pump(tester, const []);
     expect(find.byIcon(Icons.close_rounded), findsNothing);
+  });
+
+  testWidgets('정렬 버튼을 탭하면 월 순서가 과거순으로 뒤집힌다', (tester) async {
+    await _pump(
+      tester,
+      [
+        _note(id: 'a', date: DateTime(2026, 8, 3), title: 'august'),
+        _note(id: 'b', date: DateTime(2026, 7, 9), title: 'july'),
+      ],
+      initialMonth: DateTime(2026, 8, 17),
+    );
+
+    expect(find.byIcon(Icons.arrow_downward_rounded), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('2026-08')).dy,
+      lessThan(tester.getTopLeft(find.text('2026-07')).dy),
+    );
+
+    await tester.tap(find.byIcon(Icons.arrow_downward_rounded));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('2026-07')).dy,
+      lessThan(tester.getTopLeft(find.text('2026-08')).dy),
+    );
+
+    // 다시 탭하면 최신순으로 돌아온다.
+    await tester.tap(find.byIcon(Icons.arrow_upward_rounded));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('2026-08')).dy,
+      lessThan(tester.getTopLeft(find.text('2026-07')).dy),
+    );
   });
 }
