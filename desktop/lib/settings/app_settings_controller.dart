@@ -28,6 +28,7 @@ class AppSettingsController extends ChangeNotifier {
   static const String anthropicApiKeyKey = 'anthropic_api_key';
   static const String anthropicModelKey = 'anthropic_model';
   static const String themeModeKey = 'theme_mode';
+  static const String remindersKey = 'reminders';
   static const String _shortcutPrefix = 'shortcut_';
 
   AppSettingsController({required String defaultLocalNotePath})
@@ -84,6 +85,7 @@ class AppSettingsController extends ChangeNotifier {
       anthropicModel: prefs.getString(anthropicModelKey) ??
           AppSettings.defaultAnthropicModel,
       themeMode: _parseThemeMode(prefs.getString(themeModeKey)),
+      reminders: _parseReminders(prefs.getString(remindersKey)),
     );
     _bindings = _loadBindings(prefs);
     notifyListeners();
@@ -120,6 +122,51 @@ class AppSettingsController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(themeModeKey, mode.name);
+  }
+
+  static List<Reminder> _parseReminders(String? raw) {
+    if (raw == null) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded.map(Reminder.fromJson).whereType<Reminder>().toList();
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  /// Appends a new reminder with defaults and returns it (the UI then lets the
+  /// user edit time and message in place).
+  Future<Reminder> addReminder() async {
+    final reminder = Reminder(
+      id: DateTime.now().microsecondsSinceEpoch.toRadixString(36),
+    );
+    await _saveReminders([..._value.reminders, reminder]);
+    return reminder;
+  }
+
+  Future<void> updateReminder(Reminder reminder) async {
+    final next = [
+      for (final r in _value.reminders) r.id == reminder.id ? reminder : r,
+    ];
+    if (listEquals(next, _value.reminders)) return;
+    await _saveReminders(next);
+  }
+
+  Future<void> removeReminder(String id) async {
+    await _saveReminders(
+      _value.reminders.where((r) => r.id != id).toList(),
+    );
+  }
+
+  Future<void> _saveReminders(List<Reminder> reminders) async {
+    _value = _value.copyWith(reminders: reminders);
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      remindersKey,
+      jsonEncode(reminders.map((r) => r.toJson()).toList()),
+    );
   }
 
   /// The portable settings as pretty JSON — what the JSON editor shows and what

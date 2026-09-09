@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import UserNotifications
 import desktop_multi_window
 
 class MainFlutterWindow: NSWindow {
@@ -16,6 +17,7 @@ class MainFlutterWindow: NSWindow {
     // Where should the tray popover appear? Computed natively — see
     // TrayAnchorChannel below and MenuBarManager._popoverAnchor (Dart).
     TrayAnchorChannel.register(flutterViewController.engine.binaryMessenger)
+    ReminderChannel.register(flutterViewController.engine.binaryMessenger)
 
     // The menu bar popover runs in a desktop_multi_window sub-window. That
     // sub-window is a plain titled NSWindow, and that class is why every
@@ -135,6 +137,80 @@ enum TrayAnchorChannel {
         iconRight: iconRight,
         width: width)
       result(["x": anchor.x, "y": anchor.y])
+    }
+  }
+}
+
+/// Main-engine channel for the user-defined daily reminders (Dart:
+/// ReminderNotifications). macOS owns the schedule: each enabled reminder is a
+/// repeating calendar-triggered request whose identifier carries a fixed
+/// prefix, so a `sync` call is "drop everything with the prefix, add the new
+/// list". Delivery/click handling lives in AppDelegate.
+enum ReminderChannel {
+  private static let idPrefix = "simsync.reminder."
+  private static let categoryId = "simsync.reminder"
+
+  static func register(_ messenger: FlutterBinaryMessenger) {
+    let center = UNUserNotificationCenter.current()
+    center.delegate = NSApp.delegate as? UNUserNotificationCenterDelegate
+    let open = UNNotificationAction(
+      identifier: "open", title: "SimSync 열기", options: [.foreground])
+    center.setNotificationCategories([
+      UNNotificationCategory(
+        identifier: categoryId, actions: [open], intentIdentifiers: [],
+        options: [])
+    ])
+
+    let channel = FlutterMethodChannel(
+      name: "simsync/notifications", binaryMessenger: messenger)
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "sync" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let items = (call.arguments as? [[String: Any]]) ?? []
+      sync(center, items: items) { ok in
+        DispatchQueue.main.async { result(ok) }
+      }
+    }
+  }
+
+  private static func sync(
+    _ center: UNUserNotificationCenter, items: [[String: Any]],
+    completion: @escaping (Bool) -> Void
+  ) {
+    center.getPendingNotificationRequests { pending in
+      center.removePendingNotificationRequests(
+        withIdentifiers: pending.map(\.identifier).filter { $0.hasPrefix(idPrefix) })
+      guard !items.isEmpty else {
+        completion(true)
+        return
+      }
+      center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        guard granted else {
+          completion(false)
+          return
+        }
+        for item in items {
+          guard let id = item["id"] as? String,
+            let hour = item["hour"] as? Int, let minute = item["minute"] as? Int
+          else { continue }
+          let content = UNMutableNotificationContent()
+          content.title = "SimSync"
+          content.body = (item["body"] as? String) ?? ""
+          content.sound = .default
+          content.categoryIdentifier = categoryId
+          var time = DateComponents()
+          time.hour = hour
+          time.minute = minute
+          center.add(
+            UNNotificationRequest(
+              identifier: idPrefix + id, content: content,
+              trigger: UNCalendarNotificationTrigger(
+                dateMatching: time, repeats: true)))
+        }
+        completion(true)
+      }
     }
   }
 }
