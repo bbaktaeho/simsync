@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -14,6 +15,7 @@ import 'screens/document_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/repo_selection_screen.dart';
 import 'services/menu_bar_manager.dart';
+import 'services/reminder_notifications.dart';
 import 'storage/github/github_api_client.dart';
 import 'storage/github/github_note_storage.dart';
 import 'storage/github/repo_cache.dart';
@@ -170,6 +172,7 @@ class _AppShellState extends State<_AppShell> {
       },
     );
     _settingsController.addListener(_syncThemeMode);
+    _settingsController.addListener(_syncReminders);
     unawaited(_menuBar.setUp());
     _initialize();
   }
@@ -179,6 +182,7 @@ class _AppShellState extends State<_AppShell> {
     _stopSessionMonitor();
     _bundle?.syncEngine?.dispose();
     _settingsController.removeListener(_syncThemeMode);
+    _settingsController.removeListener(_syncReminders);
     _settingsController.dispose();
     _refreshSignal.dispose();
     unawaited(_menuBar.dispose());
@@ -189,6 +193,7 @@ class _AppShellState extends State<_AppShell> {
   Future<void> _initialize() async {
     await _settingsController.load();
     _syncThemeMode();
+    _syncReminders();
     await _restoreSession();
   }
 
@@ -207,6 +212,19 @@ class _AppShellState extends State<_AppShell> {
     if (dark == _trayMenuDark) return;
     _trayMenuDark = dark;
     unawaited(_menuBar.refreshMenu());
+  }
+
+  /// Last reminder list pushed to macOS, so the OS schedule is only rewritten
+  /// when the reminders themselves change (this listener fires for EVERY
+  /// settings notification).
+  List<Reminder>? _remindersApplied;
+
+  /// Mirrors the reminder settings into the OS notification schedule.
+  void _syncReminders() {
+    final reminders = _settingsController.value.reminders;
+    if (listEquals(reminders, _remindersApplied)) return;
+    _remindersApplied = reminders;
+    unawaited(ReminderNotifications.sync(reminders));
   }
 
   /// Whether the app currently renders dark (accounting for System mode).
