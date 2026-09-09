@@ -1,6 +1,80 @@
+import 'package:flutter/foundation.dart';
+
 /// User's theme preference. [system] follows the macOS appearance; [light] and
 /// [dark] force that mode. Stored locally (device-specific), not synced.
 enum AppThemeMode { system, light, dark }
+
+/// One user-defined daily macOS notification: fires every day at [minutes]
+/// (since midnight) with [message] as the body. Device-local, not synced.
+class Reminder {
+  static const String defaultMessage = '오늘 한 일과 남은 할 일을 노트에 정리해 보세요.';
+  static const int defaultMinutes = 18 * 60;
+  static const int maxMinutes = 24 * 60 - 1;
+
+  const Reminder({
+    required this.id,
+    this.minutes = defaultMinutes,
+    this.message = defaultMessage,
+    this.enabled = true,
+  });
+
+  final String id;
+  final int minutes;
+  final String message;
+  final bool enabled;
+
+  int get hour => minutes ~/ 60;
+  int get minute => minutes % 60;
+
+  /// "HH:mm".
+  String get timeLabel =>
+      '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+
+  Reminder copyWith({int? minutes, String? message, bool? enabled}) {
+    return Reminder(
+      id: id,
+      minutes: (minutes ?? this.minutes).clamp(0, maxMinutes),
+      message: message ?? this.message,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'minutes': minutes,
+        'message': message,
+        'enabled': enabled,
+      };
+
+  /// Null when [json] is not a usable reminder (missing id).
+  static Reminder? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final id = json['id'];
+    if (id is! String || id.isEmpty) return null;
+    final minutes = json['minutes'];
+    final message = json['message'];
+    final enabled = json['enabled'];
+    return Reminder(
+      id: id,
+      minutes: minutes is num ? minutes.toInt().clamp(0, maxMinutes) : defaultMinutes,
+      message: message is String && message.trim().isNotEmpty
+          ? message.trim()
+          : defaultMessage,
+      enabled: enabled is bool ? enabled : true,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is Reminder &&
+      other.id == id &&
+      other.minutes == minutes &&
+      other.message == message &&
+      other.enabled == enabled;
+
+  @override
+  int get hashCode => Object.hash(id, minutes, message, enabled);
+}
 
 class AppSettings {
   static const double minContentScale = 0.8;
@@ -113,6 +187,9 @@ class AppSettings {
   /// Theme preference (device-local, not synced). Defaults to following the OS.
   final AppThemeMode themeMode;
 
+  /// User-defined daily reminders (device-local, not synced).
+  final List<Reminder> reminders;
+
   const AppSettings({
     required this.localNotePath,
     required this.contentScale,
@@ -128,6 +205,7 @@ class AppSettings {
     this.anthropicApiKey = '',
     this.anthropicModel = defaultAnthropicModel,
     this.themeMode = AppThemeMode.system,
+    this.reminders = const [],
   });
 
   AppSettings copyWith({
@@ -145,6 +223,7 @@ class AppSettings {
     String? anthropicApiKey,
     String? anthropicModel,
     AppThemeMode? themeMode,
+    List<Reminder>? reminders,
   }) {
     return AppSettings(
       localNotePath: localNotePath ?? this.localNotePath,
@@ -161,6 +240,7 @@ class AppSettings {
       anthropicApiKey: anthropicApiKey ?? this.anthropicApiKey,
       anthropicModel: anthropicModel ?? this.anthropicModel,
       themeMode: themeMode ?? this.themeMode,
+      reminders: reminders ?? this.reminders,
     );
   }
 
@@ -215,7 +295,8 @@ class AppSettings {
         other.aiProvider == aiProvider &&
         other.anthropicApiKey == anthropicApiKey &&
         other.anthropicModel == anthropicModel &&
-        other.themeMode == themeMode;
+        other.themeMode == themeMode &&
+        listEquals(other.reminders, reminders);
   }
 
   @override
@@ -234,5 +315,6 @@ class AppSettings {
     anthropicApiKey,
     anthropicModel,
     themeMode,
+    Object.hashAll(reminders),
   );
 }

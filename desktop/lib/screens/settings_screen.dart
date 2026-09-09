@@ -19,7 +19,7 @@ import '../theme/app_dimensions.dart';
 import '../theme/app_shadows.dart';
 import '../theme/app_text_styles.dart';
 
-enum _SettingsPane { storage, editor, ai, sync, shortcuts }
+enum _SettingsPane { storage, editor, ai, sync, reminder, shortcuts }
 
 /// Outcome of an AI provider availability probe shown in the AI pane
 /// (API key validation, or a `--version` check for the selected CLI).
@@ -360,6 +360,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   const SizedBox(height: AppDimensions.spacingSm),
                   _NavigationItem(
+                    selectionKey: 'reminder',
+                    label: 'Reminders',
+                    description: 'Daily macOS notifications',
+                    icon: Icons.notifications_rounded,
+                    isSelected: _selectedPane == _SettingsPane.reminder,
+                    onTap: () =>
+                        setState(() => _selectedPane = _SettingsPane.reminder),
+                  ),
+                  const SizedBox(height: AppDimensions.spacingSm),
+                  _NavigationItem(
                     selectionKey: 'shortcuts',
                     label: 'Shortcuts',
                     description: 'Keyboard bindings',
@@ -417,6 +427,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return _buildAiPane(c, settings);
       case _SettingsPane.sync:
         return _buildSyncPane(c, settings);
+      case _SettingsPane.reminder:
+        return _buildReminderPane(c, settings);
       case _SettingsPane.shortcuts:
         return _buildShortcutsPane(c);
     }
@@ -1121,6 +1133,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildReminderPane(AppColorsExtension c, AppSettings settings) {
+    final controller = widget.settingsController;
+    return SingleChildScrollView(
+      key: const ValueKey(_SettingsPane.reminder),
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, AppDimensions.spacingXl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _PaneHeader(
+            title: 'Daily reminders',
+            description:
+                '정해진 시각에 macOS 알림으로 멘트를 보냅니다. 알림의 SimSync 열기 버튼으로 바로 이동합니다. '
+                '처음 켤 때 알림 권한을 요청하며, 시스템 설정 > 알림에서 SimSync가 허용되어 있어야 합니다.',
+          ),
+          const SizedBox(height: AppDimensions.spacingLg),
+          _DetailCard(
+            title: '알림 목록',
+            description: '시각과 멘트를 직접 정합니다. 각 항목은 개별로 켜고 끌 수 있습니다.',
+            action: _ActionButton(
+              label: '+ 추가',
+              onTap: () => controller.addReminder(),
+            ),
+            child: settings.reminders.isEmpty
+                ? Text(
+                    '아직 알림이 없습니다.',
+                    style: AppTextStyles.caption.copyWith(
+                      color: c.textSecondary,
+                    ),
+                  )
+                : Column(
+                    children: [
+                      for (final r in settings.reminders) ...[
+                        _ReminderRow(
+                          key: ValueKey(r.id),
+                          reminder: r,
+                          onChanged: controller.updateReminder,
+                          onRemove: () => controller.removeReminder(r.id),
+                        ),
+                        if (r != settings.reminders.last)
+                          Divider(height: AppDimensions.spacingLg, color: c.border),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildShortcutsPane(AppColorsExtension c) {
     final bindings = widget.settingsController.bindings;
 
@@ -1364,6 +1425,101 @@ class _NavigationItem extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// One reminder: time button, editable message, on/off switch, delete. The
+/// message commits on submit or focus loss (not per keystroke) so the OS
+/// schedule isn't rewritten while typing.
+class _ReminderRow extends StatefulWidget {
+  const _ReminderRow({
+    super.key,
+    required this.reminder,
+    required this.onChanged,
+    required this.onRemove,
+  });
+
+  final Reminder reminder;
+  final ValueChanged<Reminder> onChanged;
+  final VoidCallback onRemove;
+
+  @override
+  State<_ReminderRow> createState() => _ReminderRowState();
+}
+
+class _ReminderRowState extends State<_ReminderRow> {
+  late final TextEditingController _message =
+      TextEditingController(text: widget.reminder.message);
+
+  @override
+  void dispose() {
+    _message.dispose();
+    super.dispose();
+  }
+
+  void _commitMessage() {
+    if (!mounted) return;
+    final text = _message.text.trim();
+    if (text.isEmpty) {
+      _message.text = widget.reminder.message;
+      return;
+    }
+    if (text != widget.reminder.message) {
+      widget.onChanged(widget.reminder.copyWith(message: text));
+    }
+  }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(
+        hour: widget.reminder.hour,
+        minute: widget.reminder.minute,
+      ),
+      initialEntryMode: TimePickerEntryMode.input,
+    );
+    if (picked == null) return;
+    widget.onChanged(
+      widget.reminder.copyWith(minutes: picked.hour * 60 + picked.minute),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final r = widget.reminder;
+    return Row(
+      children: [
+        _ActionButton(label: r.timeLabel, onTap: _pickTime),
+        const SizedBox(width: AppDimensions.spacingMd),
+        Expanded(
+          child: Focus(
+            onFocusChange: (focused) {
+              if (!focused) _commitMessage();
+            },
+            child: TextField(
+              controller: _message,
+              onSubmitted: (_) => _commitMessage(),
+              style: AppTextStyles.caption.copyWith(color: c.textPrimary),
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: Reminder.defaultMessage,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: AppDimensions.spacingMd),
+        Switch.adaptive(
+          value: r.enabled,
+          onChanged: (v) => widget.onChanged(r.copyWith(enabled: v)),
+        ),
+        AppIconButton(
+          icon: Icons.delete_outline_rounded,
+          tooltip: '삭제',
+          onTap: widget.onRemove,
+        ),
+      ],
     );
   }
 }
